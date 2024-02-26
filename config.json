@@ -5,6 +5,11 @@
         "type": "MambaUNet",
         "args": {}
     },
+    "flac2wav": {
+        "source_sr": 48000,
+        "dest_path": "VCTK-Corpus-0.92/wav48_silence_trimmed_wav",
+        "timestamps": "vctk-silence-labels/vctk-silences.0.92.txt"
+    },
     "data_loader": {
         "type": "VCTKDataLoader",
         "args": {
