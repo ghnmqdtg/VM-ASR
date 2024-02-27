@@ -114,3 +114,6 @@ __MACOSX/
 
 # Exclude the following files
 !data/trim_flac2wav.py
+
+# Specific File Extensions
+*.zip
