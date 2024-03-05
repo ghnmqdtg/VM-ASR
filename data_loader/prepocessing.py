@@ -167,16 +167,18 @@ def cut2chunks(waveform: torch.Tensor, chunk_size: int, overlap: int, return_pad
     while start + chunk_size <= length:
         chunks.append(waveform[..., start:start + chunk_size])
         start += step_size
-    
+
     # Pad the last chunk with zeros
     if start < length:
         last_chunk = waveform[..., start:]
         # If padding is required, pad the last chunk to the chunk_size
         padding_length = chunk_size - last_chunk.size(-1)
-        last_chunk = torch.nn.functional.pad(last_chunk, (0, padding_length), 'constant', 0)
+        last_chunk = torch.nn.functional.pad(
+            last_chunk, (0, padding_length), 'constant', 0)
         chunks.append(last_chunk)
 
-    print(f"Length: {length}, Chunk number: {len(chunks)}, Padding length: {padding_length}")
+    # print(
+    #     f"Length: {length}, Chunk number: {len(chunks)}, Padding length: {padding_length}")
 
     if return_padding_length:
         return chunks, padding_length
@@ -209,6 +211,7 @@ def low_sr_simulation_pipeline(waveform: torch.Tensor, sr_org: int, sr_new: int 
     # Return the list of chunks
     return chunks
 
+
 def concatenate_chunks(chunks: list[torch.Tensor], chunk_size: int, overlap: int, padding_length) -> torch.Tensor:
     """
     Concatenate the chunks into a single waveform by averaging the overlap regions and removing the padding of the last chunk.
@@ -227,7 +230,8 @@ def concatenate_chunks(chunks: list[torch.Tensor], chunk_size: int, overlap: int
         return torch.tensor([])
     # Adjust total_length calculation
     if len(chunks) > 1:
-        total_length = chunk_size + (len(chunks) - 1) * (chunk_size - overlap) - padding_length
+        total_length = chunk_size + \
+            (len(chunks) - 1) * (chunk_size - overlap) - padding_length
     else:
         total_length = chunk_size - padding_length
 
@@ -238,12 +242,15 @@ def concatenate_chunks(chunks: list[torch.Tensor], chunk_size: int, overlap: int
         curr_chunk = chunks[i]
         # Handle overlap by averaging
         if overlap > 0:
-            averaged_overlap = (concatenated[:, -overlap:] + curr_chunk[:, :overlap]) / 2 
-            concatenated = torch.cat([concatenated[:, :-overlap], averaged_overlap, curr_chunk[:, overlap:]], dim=-1)
+            averaged_overlap = (
+                concatenated[:, -overlap:] + curr_chunk[:, :overlap]) / 2
+            concatenated = torch.cat(
+                [concatenated[:, :-overlap], averaged_overlap, curr_chunk[:, overlap:]], dim=-1)
         else:
             concatenated = torch.cat([concatenated, curr_chunk], dim=-1)
 
-    print(f"Total length: {total_length}, Concatenated length: {concatenated.size(-1)}, Padding length: {padding_length}")
+    # print(
+    #     f"Total length: {total_length}, Concatenated length: {concatenated.size(-1)}, Padding length: {padding_length}")
 
     # Remove the padding from the last chunk if any
     concatenated = concatenated[..., :total_length]
@@ -269,22 +276,26 @@ if __name__ == '__main__':
     waveform, sr_org = torchaudio.load(filepath)
     waveform_filtered = low_pass_filter(waveform, sr_org, sr_new)
     waveform_downsampled = resample_audio(waveform_filtered, sr_org, sr_new)
-    chunks, padding_length = cut2chunks(waveform_downsampled, chunk_size, overlap, return_padding_length=True)
+    # Apply upsampling to get a unified sample rate as input
+    waveform_upsampled = resample_audio(waveform_downsampled, sr_new, sr_org)
+    # Cut the waveform into chunks
+    chunks, padding_length = cut2chunks(
+        waveform_upsampled, chunk_size, overlap, return_padding_length=True)
     timestr = time.strftime("%Y%m%d-%H%M%S")
     # Plot the waveform, magnitude and phase
-    plot_all(waveform_downsampled, sr_new,
+    plot_all(waveform_upsampled, sr_new,
              f"./output/dev/data_preprocessing/lr_simulation_{sr_new}_{timestr}.png")
-    # Save the chunks to the output folder
-    for i, chunk in enumerate(chunks):
-        torchaudio.save(
-            f"./output/dev/data_preprocessing/chunk_{timestr}_{i}_{sr_new}.wav", chunk, sr_new)
+    # # Save the chunks to the output folder
+    # for i, chunk in enumerate(chunks):
+    #     torchaudio.save(
+    #         f"./output/dev/data_preprocessing/chunk_{timestr}_{i}_{sr_new}.wav", chunk, sr_org)
     print(
         f"Processed {len(chunks)} chunks from {filepath} at {sr_new} Hz sample rate")
-    
+
     # Reconstruct the waveform from the chunks
-    waveform_reconstructed = concatenate_chunks(chunks, chunk_size, overlap, padding_length)
-    # Upsample the reconstructed waveform
-    waveform_reconstructed = resample_audio(waveform_reconstructed, sr_new, sr_org)
+    waveform_reconstructed = concatenate_chunks(
+        chunks, chunk_size, overlap, padding_length)
+
     # Save the reconstructed waveform
     torchaudio.save(
         f"./output/dev/data_preprocessing/reconstructed_{timestr}_{sr_new}.wav", waveform_reconstructed, sr_org)
