@@ -117,3 +117,6 @@ __MACOSX/
 
 # Specific File Extensions
 *.zip
+
+# Ignore the output folder
+output/
