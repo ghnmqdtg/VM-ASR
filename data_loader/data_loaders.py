@@ -5,6 +5,7 @@ import torchaudio
 import torch.nn.functional as F
 import random
 from torchvision import datasets, transforms
+import prepocessing
 
 try:
     from base import BaseDataLoader
@@ -43,34 +44,7 @@ class VCTKDataLoader(BaseDataLoader):
         print(f"Total number of samples: {len(self.dataset)}")
         # Set up the data loader
         super().__init__(self.dataset, batch_size, shuffle,
-                         validation_split, num_workers, collate_fn=self._collate_fn)
-
-    def _collate_fn(self, batch):
-        """
-        Collate function for the VCTK_092 dataset.
-
-        Args:
-            batch (list): List of samples from the dataset
-
-        Returns:
-            Tuple of the following items;
-
-            Tensor:
-                Mel spectrogram (low resolution)
-            Tensor:
-                Mel spectrogram (high resolution)
-        """
-        mel_lr_list = []
-        mel_hr_list = []
-        # Iterate over the batch
-        for mel_lr, mel_hr in batch:
-            mel_lr_list.append(mel_lr)
-            mel_hr_list.append(mel_hr)
-        # Stack the mel spectrograms
-        mel_lr_batch = torch.stack(mel_lr_list, dim=0)
-        mel_hr_batch = torch.stack(mel_hr_list, dim=0)
-        # Return the batch
-        return mel_lr_batch, mel_hr_batch
+                         validation_split, num_workers)
 
 
 class CustomVCTK_092(torchaudio.datasets.VCTK_092):
