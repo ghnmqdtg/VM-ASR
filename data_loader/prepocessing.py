@@ -2,6 +2,7 @@ import time
 import torch
 import torchaudio
 import random
+from typing import Tuple
 import matplotlib.pyplot as plt
 from scipy.signal import cheby1
 from scipy.signal import sosfiltfilt
@@ -18,7 +19,7 @@ except:
     from utils import ensure_dir
 
 
-def get_mag_phase(waveform):
+def get_mag_phase(waveform: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
     """
     Apply short time Fourier transform to the waveform and return the magnitude and phase
 
@@ -30,16 +31,15 @@ def get_mag_phase(waveform):
         torch.Tensor: The phase
     """
     # TODO: Set the parameters from the config file
+    n_fft = 1024
+    hop_length = 80
+    win_length = 320
+    window = torch.hann_window(win_length)
     # Apply short time Fourier transform to the waveform
-    spec = torch.stft(waveform, n_fft=2048, hop_length=512, win_length=2048,
-                      window=torch.hann_window(2048), return_complex=True)
-    # View the spec as real tensor
-    spec = torch.view_as_real(spec)
-    real = spec[..., 0]
-    imag = spec[..., 1]
-    # Get the magnitude and phase
-    mag = torch.sqrt(real ** 2 + imag ** 2)
-    phase = torch.atan2(imag, real)
+    spec = torch.stft(waveform, n_fft=n_fft, hop_length=hop_length,
+                      win_length=win_length, window=window, return_complex=True)
+    mag = torch.abs(spec)
+    phase = torch.angle(spec)
     # Return the magnitude and phase
     return mag, phase
 
@@ -140,7 +140,7 @@ def low_sr_simulation(waveform, sr_org, sr_new):
     return waveform_lr
 
 
-def cut2chunks(waveform: torch.Tensor, chunk_size: int, overlap: int, return_padding_length: bool = False) -> list[torch.Tensor] | tuple[list[torch.Tensor], int]:
+def cut2chunks(waveform: torch.Tensor, chunk_size: int, overlap: int, return_padding_length: bool = False) -> torch.Tensor | tuple[torch.Tensor, int]:
     """
     Cut the waveform into chunks with the specified size and overlap.
 
@@ -151,7 +151,7 @@ def cut2chunks(waveform: torch.Tensor, chunk_size: int, overlap: int, return_pad
         return_padding_length (bool, optional): Whether to return the padding length. Defaults to False.
 
     Returns:
-        List[torch.Tensor]: A list of chunks
+        torch.Tensor: A stack of chunks
         padding_length (int, optional): The length of the padding. Defaults to None.
     """
     # Initialize the list of chunks
@@ -181,9 +181,9 @@ def cut2chunks(waveform: torch.Tensor, chunk_size: int, overlap: int, return_pad
     #     f"Length: {length}, Chunk number: {len(chunks)}, Padding length: {padding_length}")
 
     if return_padding_length:
-        return chunks, padding_length
+        return torch.stack(chunks), padding_length
     else:
-        return chunks
+        return torch.stack(chunks)
 
 
 def low_sr_simulation_pipeline(waveform: torch.Tensor, sr_org: int, sr_new: int | list[int], chunk_size: int, overlap: int) -> list[torch.Tensor]:
@@ -212,12 +212,12 @@ def low_sr_simulation_pipeline(waveform: torch.Tensor, sr_org: int, sr_new: int 
     return chunks
 
 
-def concatenate_chunks(chunks: list[torch.Tensor], chunk_size: int, overlap: int, padding_length) -> torch.Tensor:
+def concatenate_chunks(chunks: torch.Tensor, chunk_size: int, overlap: int, padding_length) -> torch.Tensor:
     """
     Concatenate the chunks into a single waveform by averaging the overlap regions and removing the padding of the last chunk.
 
     Args:
-        chunks (List[torch.Tensor]): A list of chunks
+        chunks (torch.Tensor): A list of chunks
         chunk_size (int): The size of each chunk
         overlap (int): The overlap between chunks
         padding_length (int): The length of the padding for the last chunk
@@ -226,7 +226,7 @@ def concatenate_chunks(chunks: list[torch.Tensor], chunk_size: int, overlap: int
         torch.Tensor: The concatenated waveform
     """
     # Return the concatenated waveform if it's empty
-    if not chunks:
+    if len(chunks) == 0:
         return torch.tensor([])
     # Adjust total_length calculation
     if len(chunks) > 1:
@@ -267,8 +267,10 @@ if __name__ == '__main__':
     # Set the parameters
     # List of target sample rates to choose from
     target_sample_rates = [8000, 16000, 24000]
-    chunk_size = 2048  # Size of each audio chunk
-    overlap = 512  # Overlap size between chunks
+    # Size of each audio chunk
+    chunk_size = 8000
+    # Overlap size between chunks
+    overlap = 0
     # Apply the audio preprocessing pipeline
     sr_new = random.choice(target_sample_rates)
     print(f"Randomly selected new sample rate: {sr_new} Hz")
