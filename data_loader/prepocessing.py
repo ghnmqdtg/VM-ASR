@@ -301,3 +301,24 @@ if __name__ == '__main__':
     # Save the reconstructed waveform
     torchaudio.save(
         f"./output/dev/data_preprocessing/reconstructed_{timestr}_{sr_new}.wav", waveform_reconstructed, sr_org)
+
+
+    # FIX: Chunking -> STFT -> Concatenate -> iSTFT will cause high frequency peak artifacts
+    # Get the magnitude and phase of the chunks
+    mag = []
+    phase = []
+    for chunk in chunks:
+        mag_chunk, phase_chunk = get_mag_phase(chunk)
+        mag.append(mag_chunk)
+        phase.append(phase_chunk)
+
+    # Apply inverse STFT to the magnitude and phase
+    # Concatenate the magnitude and phase
+    mag = torch.cat(mag, dim=-1)
+    phase = torch.cat(phase, dim=-1)
+    # Apply inverse STFT to the magnitude and phase
+    waveform_reconstructed_stft = torch.istft(
+        mag * torch.exp(1j * phase), n_fft=1024, hop_length=80, win_length=320, window=torch.hann_window(320))
+    # Save the reconstructed waveform
+    torchaudio.save(
+        f"./output/dev/data_preprocessing/reconstructed_stft_{timestr}_{sr_new}.wav", waveform_reconstructed_stft, sr_org)
