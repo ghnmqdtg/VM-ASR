@@ -1,17 +1,15 @@
-import numpy as np
 from typing import Tuple
 import torch
 import torchaudio
-import torch.nn.functional as F
 import random
-from torchvision import datasets, transforms
 import prepocessing
+import json
+import os
+import sys
 
 try:
     from base import BaseDataLoader
 except:
-    import os
-    import sys
     # Used for debugging data_loader
     # Add the project root directory to the Python path
     project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -20,18 +18,13 @@ except:
     # Now you can import BaseDataLoader
     from base.base_data_loader import BaseDataLoader
 
-    # Load the `./config.json` as config
-    import json
-    with open('config.json') as f:
-        config = json.load(f)
-
 
 class VCTKDataLoader(BaseDataLoader):
     """
     VCTK_092 data loading
     """
 
-    def __init__(self, data_dir, batch_size, shuffle=True, validation_split=0.0, num_workers=1, training=True, random_resample=[8000], length=32768):
+    def __init__(self, data_dir, batch_size, shuffle=True, validation_split=0.0, num_workers=1, training=True, random_resample=[8000], length=115200):
         # Set up data directory
         self.data_dir = data_dir
         self.random_resample = random_resample
@@ -61,7 +54,7 @@ class CustomVCTK_092(torchaudio.datasets.VCTK_092):
         root (str): Root directory of dataset where `VCTK-Corpus-0.92` folder exists.
     """
 
-    def __init__(self, root, audio_ext=".wav", random_resample=[8000], length=32768, **kwargs):
+    def __init__(self, root, audio_ext=".wav", random_resample=[8000], length=115200, **kwargs):
         super().__init__(root, **kwargs)
         self._path = os.path.join(root, "VCTK-Corpus-0.92")
         self._txt_dir = os.path.join(self._path, "txt")
@@ -97,37 +90,25 @@ class CustomVCTK_092(torchaudio.datasets.VCTK_092):
         return super()._load_audio(file_path)
 
     def _load_sample(self, speaker_id: str, utterance_id: str) -> Tuple[torch.Tensor, int, str, str]:
-        transcript_path = os.path.join(
-            self._txt_dir, speaker_id, f"{speaker_id}_{utterance_id}.txt")
+        # Get the transcript and audio file path
+        # transcript_path = os.path.join(
+        #     self._txt_dir, speaker_id, f"{speaker_id}_{utterance_id}.txt")
         audio_path = os.path.join(
             self._audio_dir,
             speaker_id,
             f"{speaker_id}_{utterance_id}{self._audio_ext}",
         )
-        # Read text
-        transcript = self._load_text(transcript_path)
+        # Read text (Optional)
+        # transcript = self._load_text(transcript_path)
         # Read audio file
-        waveform, sample_rate = self._load_audio(audio_path)
-        # Equal length
-        waveform = self.equal_length(waveform, sample_rate)
+        waveform, sr = self._load_audio(audio_path)
+        # TODO: Return the padding length for post-processing
         # Process the waveform with the audio processing pipeline
-        mel_lr, mel_hr = self._process_audio(waveform, sample_rate)
+        mag_phase_pair_x, mag_phase_pair_y = self.get_io_pairs(waveform, sr)
 
-        # return (mel_lr, mel_hr, sample_rate, transcript, speaker_id, utterance_id)
-        return (mel_lr, mel_hr)
+        return mag_phase_pair_x, mag_phase_pair_y
     
-    def equal_length(self, waveform: torch.Tensor, sample_rate: int) -> torch.Tensor:
-        """
-        Pad or crop the waveform to a fixed length as required.
-
-        Args:
-            waveform (torch.Tensor): Waveform
-            sample_rate (int): Sample rate
-
-        Returns:
-            torch.Tensor: Padded or cropped waveform
-        """
-        # print(f'Shape of waveform: {waveform.shape}, target length: {self._length}')
+    def _crop_or_pad_waveform(self, waveform: torch.Tensor) -> torch.Tensor:
         # If the waveform is shorter than the required length, pad it
         if waveform.shape[1] < self._length:
             pad_length = self._length - waveform.shape[1]
@@ -136,7 +117,7 @@ class CustomVCTK_092(torchaudio.datasets.VCTK_092):
             r = random.randint(0, pad_length)
             # Pad the waveform with zeros to the left and right
             # Left: random length between 0 and pad_length, Right: pad_length - r
-            waveform = F.pad(waveform, (r, pad_length - r), mode='constant', value=0)
+            waveform = torch.nn.functional.pad(waveform, (r, pad_length - r), mode='constant', value=0)
             # print(f"Pad length: {pad_length}, Random length: {r}")
         else:
             # If the waveform is longer than the required length, crop it randomly from the beginning
@@ -148,62 +129,96 @@ class CustomVCTK_092(torchaudio.datasets.VCTK_092):
         # print(f'New shape of padded or cropped waveform: {waveform.shape}')
         return waveform
 
-    def _process_audio(self, waveform_hr: torch.Tensor, source_sr: int) -> Tuple[torch.Tensor, torch.Tensor]:
+
+    def get_io_pairs(self, waveform: torch.Tensor, sr_org: int) -> Tuple[torch.Tensor, torch.Tensor]:
         """
-        Convert high resolution waveform to low resolution mel spectrogram and high resolution mel spectrogram.
+        Get the input-output pairs for the audio processing pipeline.
+        1. Apply low pass filter to avoid aliasing
+        2. Downsample the audio to a lower sample rate (simulating a low resolution audio)
+        3. Upsample the audio to a higher sample rate (unifying the input shape)
+        4. Crop or pad the waveform to a fixed length (consistent shapes within batches for efficient computation)
+        5. Chunk the audio into smaller fixed-length segments (to fit the model input shape)
+        6. Compute STFT for each segment and convert to magnitude and phase
+        7. Return the magnitude and phase in tensors
 
         Args:
-            waveform_hr (torch.Tensor): High resolution waveform
-            source_sr (int): Sample rate of the source waveform (e.g. 48000 Hz)
+            waveform (Tensor): The input audio waveform
+            sr (int): The sample rate of the audio waveform
+
+        Returns:
+            Tuple of the following items;
+
+            Tensor:
+                Magnitude of the audio in the time-frequency domain
+            Tensor:
+                Phase of the audio in the time-frequency domain
         """
-        # Randomly select a sample rate for the low resolution waveform
-        target_sr = random.choice(self._random_resample)
-        # Resample the waveform
-        waveform_lr = torchaudio.transforms.Resample(
-            source_sr, target_sr)(waveform_hr)
-        # print(f'Chosen target sample rate: {target_sr}',
-        #       f'Original sample rate: {source_sr}')
-        # Convert the waveform to mel spectrogram
-        n_fft = 1024
-        win_length = None
-        hop_length = 512
-        n_mels = 80
-        mel_lr = torchaudio.transforms.MelSpectrogram(
-            sample_rate=target_sr,
-            n_fft=n_fft,
-            win_length=win_length,
-            hop_length=hop_length,
-            n_mels=n_mels,
-        )(waveform_lr)
-        mel_hr = torchaudio.transforms.MelSpectrogram(
-            sample_rate=source_sr,
-            n_fft=n_fft,
-            win_length=win_length,
-            hop_length=hop_length,
-            n_mels=n_mels,
-        )(waveform_hr)
-        # Print the shape of the mel spectrogram
-        # Reshape the mel spectrogram
-        mel_lr = mel_lr.squeeze(0)
-        mel_hr = mel_hr.squeeze(0)
-        # Print the shape of the mel spectrogram
-        # print(
-        #     f"Low resolution mel shape: {mel_lr.shape}, High resolution mel shape: {mel_hr.shape}")
+        # TODO: Set the parameters in the config file
+        # List of target sample rates to choose from
+        target_sample_rates = [8000, 16000, 24000]
+        # Apply the audio preprocessing pipeline
+        sr_new = random.choice(target_sample_rates)
+        # Get magnitude and phase of the original audio
+        mag_phase_pair_x = self._get_mag_phase(waveform)
+        
+        # Preprocess the audio
+        # Apply low pass filter to avoid aliasing
+        waveform = prepocessing.low_pass_filter(waveform, sr_org, sr_new)
+        # Downsample the audio to a lower sample rate
+        waveform = prepocessing.resample_audio(waveform, sr_org, sr_new)
+        # Upsample the audio to a higher sample rate
+        waveform = prepocessing.resample_audio(waveform, sr_new, sr_org)
+        # Get magnitude and phase of the preprocessed audio
+        mag_phase_pair_y = self._get_mag_phase(waveform)
 
-        # Plot the mel spectrogram
-        # import matplotlib.pyplot as plt
-        # plt.figure()
-        # plt.subplot(2, 1, 1)
-        # plt.title("Low resolution mel spectrogram")
-        # plt.imshow(mel_lr.log2().detach().numpy()[0], aspect="auto", origin="lower")
-        # plt.subplot(2, 1, 2)
-        # plt.title("High resolution mel spectrogram")
-        # plt.imshow(mel_hr.log2().detach().numpy()[0], aspect="auto", origin="lower")
-        # # Save the plot to a file
-        # plt.savefig("mel_spectrogram.png")
+        return mag_phase_pair_x, mag_phase_pair_y
 
-        # Return the mel spectrogram
-        return mel_lr, mel_hr
+
+    def _get_mag_phase(self, waveform: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
+        """
+        Compute the magnitude and phase of the audio in the time-frequency domain.
+
+        Args:
+            waveform (Tensor): The input audio waveform
+
+        Returns:
+            Tuple of the following items;
+
+            Tensor:
+                Magnitude of the audio in the time-frequency domain
+            Tensor:
+                Phase of the audio in the time-frequency domain
+        """
+        # Size of each audio chunk
+        chunk_size = 8000
+        # Overlap size between chunks
+        overlap = 0
+        # Crop or pad the waveform to a fixed length
+        waveform = self._crop_or_pad_waveform(waveform)
+        # Chunk the audio into smaller fixed-length segments
+        # chunks is torch.stack() with shape (num_chunks, chunk_size)
+        chunks, padding_length = prepocessing.cut2chunks(
+            waveform=waveform, chunk_size=chunk_size, overlap=overlap, return_padding_length=True)
+        # Compute STFT for each segment and convert to magnitude and phase
+        mag = []
+        phase = []
+        for chunk_y in chunks:
+            mag_chunk, phase_chunk = prepocessing.get_mag_phase(chunk_y)
+            mag.append(mag_chunk)
+            phase.append(phase_chunk)
+        
+        # Make mag and phase to tensors, shape (num_chunks, 1, num_frequencies, num_frames)
+        mag = torch.stack(mag)
+        phase = torch.stack(phase)
+        # Remove the dimension of 1
+        mag = mag.squeeze(1)
+        phase = phase.squeeze(1)
+        # Make mag and phase to a pair, shape (2, num_chunks, num_frequencies, num_frames)
+        mag_phase_pair = torch.stack((mag, phase))
+        
+        # Return the magnitude and phase in tensors
+        return mag_phase_pair
+    
 
     def __getitem__(self, n: int) -> Tuple[torch.Tensor | int | str]:
         """Load the n-th sample from the dataset.
@@ -215,24 +230,16 @@ class CustomVCTK_092(torchaudio.datasets.VCTK_092):
             Tuple of the following items;
 
             Tensor:
-                Mel spectrogram (low resolution)
+                Magnitude of the audio in the time-frequency domain
             Tensor:
-                Mel spectrogram (high resolution)
-            int:
-                Sample rate
-            str:
-                Transcript
-            str:
-                Speaker ID
-            str:
-                Utterance ID
+                Phase of the audio in the time-frequency domain
         """
         speaker_id, utterance_id = self._sample_ids[n]
         return self._load_sample(speaker_id, utterance_id)
 
     def __len__(self) -> int:
         return len(self._sample_ids)
-
+    
 
 # Debugging
 if __name__ == '__main__':
@@ -246,5 +253,5 @@ if __name__ == '__main__':
     # Iterate over the data loader
     for batch_idx, data in enumerate(data_loader):
         # Print the batch index and the data
-        print(f'data: {data}, shape: {data[0].shape}')
+        print(f'data.shape: {data[0].shape}')
         break

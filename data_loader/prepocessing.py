@@ -312,10 +312,18 @@ if __name__ == '__main__':
         mag.append(mag_chunk)
         phase.append(phase_chunk)
 
+    # Shapes are [1, freq, time] for both mag and phase
+    print(f"Shape of mag: {mag[0].shape}, Shape of phase: {phase[0].shape}")
+    # Stack the magnitude and phase, shapes are [1, chunk_num, freq, time]
+    mag = torch.stack(mag, dim=1)
+    phase = torch.stack(phase, dim=1)
+    print(f"Shape of mag: {mag.shape}, Shape of phase: {phase.shape}")
+
     # Apply inverse STFT to the magnitude and phase
-    # Concatenate the magnitude and phase
-    mag = torch.cat(mag, dim=-1)
-    phase = torch.cat(phase, dim=-1)
+    # Concatenate the chunks magnitude and phase
+    mag = mag.squeeze(0)
+    phase = phase.squeeze(0)
+    print(f"Shape of mag: {mag.shape}, Shape of phase: {phase.shape}")
     # Apply inverse STFT to the magnitude and phase
     waveform_reconstructed_stft = torch.istft(
         mag * torch.exp(1j * phase), n_fft=1024, hop_length=80, win_length=320, window=torch.hann_window(320))
