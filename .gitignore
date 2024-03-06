@@ -111,6 +111,7 @@ datasets/
 .idea/
 __MACOSX/
 .DS_Store
+._.DS_Store
 
 # Exclude the following files
 !data/*.py

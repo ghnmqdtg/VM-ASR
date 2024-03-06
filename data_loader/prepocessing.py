@@ -1,6 +1,7 @@
 import time
 import torch
 import torchaudio
+import torchaudio.transforms as T
 import random
 from typing import Tuple
 import matplotlib.pyplot as plt
@@ -59,7 +60,7 @@ def resample_audio(waveform, sr_org, sr_new):
     Returns:
         torch.Tensor: The downsampled waveform
     """
-    waveform_downsampled = torchaudio.transforms.Resample(
+    waveform_downsampled = T.Resample(
         sr_org, sr_new)(waveform)
     return waveform_downsampled
 
@@ -259,6 +260,49 @@ def get_mag_phase(waveform: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
     return mag, phase
 
 
+# TODO: This function should be moved to postprocessing.py
+def reconstruct_waveform_stft(mag: torch.Tensor, phase: torch.Tensor, padding_length: int = 0) -> torch.Tensor:
+    # TODO: Set the parameters from the config file
+    # Size of each audio chunk
+    chunk_size = 8000
+    # Overlap size between chunks
+    overlap = 0
+    n_fft = 1024
+    hop_length = 80
+    win_length = 320
+    window = torch.hann_window(win_length)
+    # Combine magnitude and phase to get the complex STFT
+    complex_stft = mag * torch.exp(1j * phase)
+    # torch.Size([1, 9, 513, 101])
+    # Swap the channel 1 and channel 0 and get torch.Size([9, 1, 513, 101])
+    complex_stft = complex_stft.permute(1, 0, 2, 3)
+
+    # Prepare an empty list to store each iSTFT chunk
+    waveform_chunks = []
+
+    # Iterate over chunks and apply iSTFT
+    for i in range(complex_stft.size(0)):
+        # Extract the i-th chunk
+        chunk = complex_stft[i]
+        # Apply iSTFT
+        waveform_chunk = torch.istft(
+            chunk,
+            n_fft=n_fft,
+            hop_length=hop_length,
+            win_length=win_length,
+            window=window
+        )
+
+        # Append the waveform chunk to the list
+        waveform_chunks.append(waveform_chunk)
+
+    # Concatenate chunks
+    waveform = concatenate_chunks(
+        waveform_chunks, chunk_size, overlap, padding_length)
+
+    return waveform
+
+
 if __name__ == '__main__':
     # Test the toy_load function
     filepath = "./data/VCTK-Corpus-0.92/wav48_silence_trimmed_wav/p225/p225_001.wav"
@@ -302,7 +346,6 @@ if __name__ == '__main__':
     torchaudio.save(
         f"./output/dev/data_preprocessing/reconstructed_{timestr}_{sr_new}.wav", waveform_reconstructed, sr_org)
 
-
     # FIX: Chunking -> STFT -> Concatenate -> iSTFT will cause high frequency peak artifacts
     # Get the magnitude and phase of the chunks
     mag = []
@@ -319,14 +362,9 @@ if __name__ == '__main__':
     phase = torch.stack(phase, dim=1)
     print(f"Shape of mag: {mag.shape}, Shape of phase: {phase.shape}")
 
-    # Apply inverse STFT to the magnitude and phase
-    # Concatenate the chunks magnitude and phase
-    mag = mag.squeeze(0)
-    phase = phase.squeeze(0)
-    print(f"Shape of mag: {mag.shape}, Shape of phase: {phase.shape}")
-    # Apply inverse STFT to the magnitude and phase
-    waveform_reconstructed_stft = torch.istft(
-        mag * torch.exp(1j * phase), n_fft=1024, hop_length=80, win_length=320, window=torch.hann_window(320))
+    # Reconstruct the waveform from the magnitude and phase
+    waveform_reconstructed_stft = reconstruct_waveform_stft(
+        mag, phase, padding_length)
     # Save the reconstructed waveform
     torchaudio.save(
         f"./output/dev/data_preprocessing/reconstructed_stft_{timestr}_{sr_new}.wav", waveform_reconstructed_stft, sr_org)
