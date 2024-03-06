@@ -62,14 +62,33 @@ class CustomVCTK_092(torchaudio.datasets.VCTK_092):
         self._audio_ext = audio_ext
         self._random_resample = random_resample
         self._length = length
+        self._sample_ids = []
         # Check if the trimmed wav files exist
         if not os.path.isdir(self._audio_dir):
             raise RuntimeError(
                 "Dataset not found. Please run data/trim_flac2wav.py to download and trim the silence first.")
+
+        self.sample_ids_file = os.path.join(self._path, "sample_ids.json")
+
+        if os.path.isfile(self.sample_ids_file):
+            # Print the message
+            print("Loading sample IDs from file...")
+            # Load the sample IDs from the file
+            self._load_sample_ids_from_file()
+        else:
+            # Print the message
+            print("Can't find sample IDs file. Parsing the folder structure...")
+            # Parse the folder structure and create the sample IDs
+            self._parse_folder_and_create_sample_ids()
+            
+
+    def _parse_folder_and_create_sample_ids(self):
+        """
+        Parse the folder structure and create the sample IDs.
+        """
         # Extracting speaker IDs from the folder structure
         # Note: Some of speakers has been removed by VCTK_092 class while running `trim_flac2wav.py`
         self._speaker_ids = sorted(os.listdir(self._audio_dir))
-        self._sample_ids = []
 
         # Get _sample_ids
         for speaker_id in self._speaker_ids:
@@ -85,6 +104,19 @@ class CustomVCTK_092(torchaudio.datasets.VCTK_092):
                 if not os.path.isfile(audio_path):
                     continue
                 self._sample_ids.append(utterance_id.split("_"))
+
+        # Save the generated sample IDs
+        with open(self.sample_ids_file, 'w') as f:
+            json.dump(self._sample_ids, f)
+
+
+    def _load_sample_ids_from_file(self):
+        """
+        Load the sample IDs from the file if it exists.
+        """
+        with open(self.sample_ids_file, 'r') as f:
+            self._sample_ids = json.load(f)
+
 
     def _load_audio(self, file_path) -> Tuple[torch.Tensor | int]:
         return super()._load_audio(file_path)
