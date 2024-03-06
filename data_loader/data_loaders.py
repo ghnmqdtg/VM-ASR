@@ -1,11 +1,13 @@
 from typing import Tuple
 import torch
-import torchaudio
+import torchaudio.datasets as datasets
+import torch.nn.functional as F
 import random
 import prepocessing
 import json
 import os
 import sys
+from tqdm import tqdm
 
 try:
     from base import BaseDataLoader
@@ -40,7 +42,7 @@ class VCTKDataLoader(BaseDataLoader):
                          validation_split, num_workers)
 
 
-class CustomVCTK_092(torchaudio.datasets.VCTK_092):
+class CustomVCTK_092(datasets.VCTK_092):
     """
     Inherit the VCTK_092 dataset and make custom data processing pipeline.
 
@@ -80,7 +82,6 @@ class CustomVCTK_092(torchaudio.datasets.VCTK_092):
             print("Can't find sample IDs file. Parsing the folder structure...")
             # Parse the folder structure and create the sample IDs
             self._parse_folder_and_create_sample_ids()
-            
 
     def _parse_folder_and_create_sample_ids(self):
         """
@@ -109,7 +110,6 @@ class CustomVCTK_092(torchaudio.datasets.VCTK_092):
         with open(self.sample_ids_file, 'w') as f:
             json.dump(self._sample_ids, f)
 
-
     def _load_sample_ids_from_file(self):
         """
         Load the sample IDs from the file if it exists.
@@ -117,11 +117,13 @@ class CustomVCTK_092(torchaudio.datasets.VCTK_092):
         with open(self.sample_ids_file, 'r') as f:
             self._sample_ids = json.load(f)
 
-
     def _load_audio(self, file_path) -> Tuple[torch.Tensor | int]:
         return super()._load_audio(file_path)
 
-    def _load_sample(self, speaker_id: str, utterance_id: str) -> Tuple[torch.Tensor, int, str, str]:
+    def _load_sample(self, speaker_id: str, utterance_id: str) -> Tuple[torch.Tensor, torch.Tensor]:
+        """
+        Load and preprocess the audio and transcript for a given speaker and utterance ID.
+        """
         # Get the transcript and audio file path
         # transcript_path = os.path.join(
         #     self._txt_dir, speaker_id, f"{speaker_id}_{utterance_id}.txt")
@@ -139,7 +141,7 @@ class CustomVCTK_092(torchaudio.datasets.VCTK_092):
         mag_phase_pair_x, mag_phase_pair_y = self.get_io_pairs(waveform, sr)
 
         return mag_phase_pair_x, mag_phase_pair_y
-    
+
     def _crop_or_pad_waveform(self, waveform: torch.Tensor) -> torch.Tensor:
         # If the waveform is shorter than the required length, pad it
         if waveform.shape[1] < self._length:
@@ -149,7 +151,8 @@ class CustomVCTK_092(torchaudio.datasets.VCTK_092):
             r = random.randint(0, pad_length)
             # Pad the waveform with zeros to the left and right
             # Left: random length between 0 and pad_length, Right: pad_length - r
-            waveform = torch.nn.functional.pad(waveform, (r, pad_length - r), mode='constant', value=0)
+            waveform = F.pad(waveform, (r, pad_length - r),
+                             mode='constant', value=0)
             # print(f"Pad length: {pad_length}, Random length: {r}")
         else:
             # If the waveform is longer than the required length, crop it randomly from the beginning
@@ -202,8 +205,7 @@ class CustomVCTK_092(torchaudio.datasets.VCTK_092):
 
         return mag_phase_pair_x, mag_phase_pair_y
 
-
-    def _get_mag_phase(self, waveform: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
+    def _get_mag_phase(self, waveform: torch.Tensor) -> torch.Tensor:
         """
         Compute the magnitude and phase of the audio in the time-frequency domain.
 
@@ -211,19 +213,12 @@ class CustomVCTK_092(torchaudio.datasets.VCTK_092):
             waveform (Tensor): The input audio waveform
 
         Returns:
-            Tuple of the following items;
-
-            Tensor:
-                Magnitude of the audio in the time-frequency domain
-            Tensor:
-                Phase of the audio in the time-frequency domain
+            Tensor: The magnitude and phase of the audio in the time-frequency domain
         """
         # Size of each audio chunk
         chunk_size = 8000
         # Overlap size between chunks
         overlap = 0
-        # Crop or pad the waveform to a fixed length
-        waveform = self._crop_or_pad_waveform(waveform)
         # Chunk the audio into smaller fixed-length segments
         # chunks is torch.stack() with shape (num_chunks, chunk_size)
         chunks, padding_length = prepocessing.cut2chunks(
@@ -235,7 +230,7 @@ class CustomVCTK_092(torchaudio.datasets.VCTK_092):
             mag_chunk, phase_chunk = prepocessing.get_mag_phase(chunk_y)
             mag.append(mag_chunk)
             phase.append(phase_chunk)
-        
+
         # Make mag and phase to tensors, shape (num_chunks, 1, num_frequencies, num_frames)
         mag = torch.stack(mag)
         phase = torch.stack(phase)
@@ -244,12 +239,11 @@ class CustomVCTK_092(torchaudio.datasets.VCTK_092):
         phase = phase.squeeze(1)
         # Make mag and phase to a pair, shape (2, num_chunks, num_frequencies, num_frames)
         mag_phase_pair = torch.stack((mag, phase))
-        
+
         # Return the magnitude and phase in tensors
         return mag_phase_pair
-    
 
-    def __getitem__(self, n: int) -> Tuple[torch.Tensor | int | str]:
+    def __getitem__(self, n: int) -> Tuple[torch.Tensor, torch.Tensor]:
         """Load the n-th sample from the dataset.
 
         Args:
@@ -268,19 +262,45 @@ class CustomVCTK_092(torchaudio.datasets.VCTK_092):
 
     def __len__(self) -> int:
         return len(self._sample_ids)
-    
+
 
 # Debugging
 if __name__ == '__main__':
+    # Load packages that only used for debugging
+    import time
+    import torchaudio
+    timestr = time.strftime("%Y%m%d-%H%M%S")
+
     with open('./config.json') as f:
         config = json.load(f)
 
+    print("Loading the VCTK_092 dataset...")
+
     # Set up the data loader
     data_loader = VCTKDataLoader(
-        data_dir=config['data_loader']['args']['data_dir'], batch_size=128, num_workers=2, validation_split=0.1)
+        data_dir=config['data_loader']['args']['data_dir'], batch_size=128, num_workers=4, validation_split=0.1)
 
-    # Iterate over the data loader
-    for batch_idx, data in enumerate(data_loader):
+    # Iterate over the data loader with tqdm
+    for batch_idx, data in enumerate(tqdm(data_loader)):
         # Print the batch index and the data
-        print(f'data.shape: {data[0].shape}')
+        print(
+            f'batch_idx: {batch_idx}, len(data): {len(data)}, data[0].shape (x): {data[0].shape}, data[1].shape (y): {data[1].shape}')
+        # Check the data
+        # x and y are in the shape of torch.Size([128 (batch_size), 2 (mag and phase), 15 (chunks), 513 (frequency bins), 101 (frames)])
+        x, y = data
+        x_mag, x_phase = x[0]
+        y_mag, y_phase = y[0]
+        # Print the shape
+        print(
+            f'x_mag.shape: {x_mag.shape}, x_phase.shape: {x_phase.shape}, y_mag.shape: {y_mag.shape}, y_phase.shape: {y_phase.shape}')
+
+        # TODO: Padding is not passed to reconstruct waveform from STFT
+        # Reconstruct the waveform from the magnitude and phase
+        for x_or_y, mag, phase in zip(['x', 'y'], [x_mag, y_mag], [x_phase, y_phase]):
+            # Reconstruct the waveform from the magnitude and phase
+            waveform = prepocessing.reconstruct_waveform_stft(
+                mag.unsqueeze(0), phase.unsqueeze(0))
+            # Save the waveform as a wav file
+            torchaudio.save(
+                f'./output/dev/data_preprocessing/reconstructed_stft_{timestr}_{x_or_y}.wav', waveform, 48000)
         break
