@@ -113,7 +113,7 @@ __MACOSX/
 .DS_Store
 
 # Exclude the following files
-!data/trim_flac2wav.py
+!data/*.py
 
 # Specific File Extensions
 *.zip
