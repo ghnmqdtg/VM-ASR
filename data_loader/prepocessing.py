@@ -247,7 +247,7 @@ def get_mag_phase(waveform: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
         torch.Tensor: The phase
     """
     # TODO: Set the parameters from the config file
-    n_fft = 1024
+    n_fft = 1022
     hop_length = 80
     win_length = 320
     window = torch.hann_window(win_length)
@@ -264,10 +264,10 @@ def get_mag_phase(waveform: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
 def reconstruct_waveform_stft(mag: torch.Tensor, phase: torch.Tensor, padding_length: int = 0) -> torch.Tensor:
     # TODO: Set the parameters from the config file
     # Size of each audio chunk
-    chunk_size = 8000
+    chunk_size = 10160
     # Overlap size between chunks
     overlap = 0
-    n_fft = 1024
+    n_fft = 1022
     hop_length = 80
     win_length = 320
     window = torch.hann_window(win_length)
@@ -312,7 +312,7 @@ if __name__ == '__main__':
     # List of target sample rates to choose from
     target_sample_rates = [8000, 16000, 24000]
     # Size of each audio chunk
-    chunk_size = 8000
+    chunk_size = 10160
     # Overlap size between chunks
     overlap = 0
     # Apply the audio preprocessing pipeline

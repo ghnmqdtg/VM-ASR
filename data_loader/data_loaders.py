@@ -3,7 +3,7 @@ import torch
 import torchaudio.datasets as datasets
 import torch.nn.functional as F
 import random
-import prepocessing
+import data_loader.prepocessing as prepocessing
 import json
 import os
 import sys
@@ -216,7 +216,7 @@ class CustomVCTK_092(datasets.VCTK_092):
             Tensor: The magnitude and phase of the audio in the time-frequency domain
         """
         # Size of each audio chunk
-        chunk_size = 8000
+        chunk_size = 10160
         # Overlap size between chunks
         overlap = 0
         # Chunk the audio into smaller fixed-length segments
