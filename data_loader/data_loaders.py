@@ -157,42 +157,39 @@ class CustomVCTK_092(torchaudio.datasets.VCTK_092):
             # Crop the waveform from start to start + length (fixed length)
             waveform = waveform[:, start:start + self._length]
             # print(f"Crop to length: {self._length}, Start: {start}")
-        
+
         # print(f'New shape of padded or cropped waveform: {waveform.shape}')
         return waveform
 
-
-    def get_io_pairs(self, waveform: torch.Tensor, sr_org: int) -> Tuple[torch.Tensor, torch.Tensor]:
+    def get_io_pairs(self, waveform: torch.Tensor, sr_org: int) -> torch.Tensor:
         """
         Get the input-output pairs for the audio processing pipeline.
-        1. Apply low pass filter to avoid aliasing
-        2. Downsample the audio to a lower sample rate (simulating a low resolution audio)
-        3. Upsample the audio to a higher sample rate (unifying the input shape)
-        4. Crop or pad the waveform to a fixed length (consistent shapes within batches for efficient computation)
-        5. Chunk the audio into smaller fixed-length segments (to fit the model input shape)
-        6. Compute STFT for each segment and convert to magnitude and phase
-        7. Return the magnitude and phase in tensors
+        1. Crop or pad the waveform to a fixed length (consistent shapes within batches for efficient computation)
+        2. Get magnitude and phase of the original audio
+        3. Apply low pass filter to avoid aliasing
+        4. Downsample the audio to a lower sample rate (simulating a low resolution audio)
+        5. Upsample the audio to a higher sample rate (unifying the input shape)
+        6. Chunk the audio into smaller fixed-length segments (to fit the model input shape)
+        7. Get magnitude and phase of the low resolution audio
+        8. Return the x-y pair of magnitude and phase
 
         Args:
             waveform (Tensor): The input audio waveform
             sr (int): The sample rate of the audio waveform
 
         Returns:
-            Tuple of the following items;
-
-            Tensor:
-                Magnitude of the audio in the time-frequency domain
-            Tensor:
-                Phase of the audio in the time-frequency domain
+            Tensor: The input-output pair of magnitude and phase
         """
         # TODO: Set the parameters in the config file
         # List of target sample rates to choose from
         target_sample_rates = [8000, 16000, 24000]
         # Apply the audio preprocessing pipeline
         sr_new = random.choice(target_sample_rates)
+        # Crop or pad the waveform to a fixed length
+        waveform = self._crop_or_pad_waveform(waveform)
         # Get magnitude and phase of the original audio
         mag_phase_pair_x = self._get_mag_phase(waveform)
-        
+
         # Preprocess the audio
         # Apply low pass filter to avoid aliasing
         waveform = prepocessing.low_pass_filter(waveform, sr_org, sr_new)
