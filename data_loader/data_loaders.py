@@ -234,31 +234,17 @@ class CustomVCTK_092(torchaudio.datasets.VCTK_092):
         return len(self._sample_ids)
 
 
-class MnistDataLoader(BaseDataLoader):
-    """
-    MNIST data loading demo using BaseDataLoader.
-    """
-
-    def __init__(self, data_dir, batch_size, shuffle=True, validation_split=0.0, num_workers=1, training=True):
-        trsfm = transforms.Compose([
-            transforms.ToTensor(),
-            transforms.Normalize((0.1307,), (0.3081,))
-        ])
-        self.data_dir = data_dir
-        self.dataset = datasets.MNIST(
-            self.data_dir, train=training, download=True, transform=trsfm)
-        super().__init__(self.dataset, batch_size, shuffle, validation_split, num_workers)
-
-
 # Debugging
 if __name__ == '__main__':
+    with open('./config.json') as f:
+        config = json.load(f)
+
     # Set up the data loader
     data_loader = VCTKDataLoader(
         data_dir=config['data_loader']['args']['data_dir'], batch_size=128, num_workers=2, validation_split=0.1)
-    # data_loader = MnistDataLoader(data_dir=config['data_loader']['args']['data_dir'], batch_size=16, num_workers=2, validation_split=0.1)
 
     # Iterate over the data loader
     for batch_idx, data in enumerate(data_loader):
         # Print the batch index and the data
-        print(f'data: {data}')
+        print(f'data: {data}, shape: {data[0].shape}')
         break

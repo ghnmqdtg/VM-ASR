@@ -19,62 +19,6 @@ except:
     from utils import ensure_dir
 
 
-def get_mag_phase(waveform: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
-    """
-    Apply short time Fourier transform to the waveform and return the magnitude and phase
-
-    Args:
-        waveform (torch.Tensor): The waveform
-
-    Returns:
-        torch.Tensor: The magnitude
-        torch.Tensor: The phase
-    """
-    # TODO: Set the parameters from the config file
-    n_fft = 1024
-    hop_length = 80
-    win_length = 320
-    window = torch.hann_window(win_length)
-    # Apply short time Fourier transform to the waveform
-    spec = torch.stft(waveform, n_fft=n_fft, hop_length=hop_length,
-                      win_length=win_length, window=window, return_complex=True)
-    mag = torch.abs(spec)
-    phase = torch.angle(spec)
-    # Return the magnitude and phase
-    return mag, phase
-
-
-def plot_all(waveform, sample_rate, filename):
-    """
-    Plot the waveform, magnitude and phase in a row at the same figure and save it to the output folder
-
-    Args:
-        waveform (torch.Tensor): The waveform
-        sample_rate (int): The sample rate
-        filename (str): The filename of the output figure
-
-    Returns:
-        None
-    """
-    # Get the magnitude and phase
-    mag, phase = get_mag_phase(waveform)
-    # Plot the waveform, magnitude and phase
-    plt.figure(figsize=(12, 4))
-    # Add title to the figure
-    plt.suptitle(f"Waveform, Magnitude and Phase at {sample_rate} Hz")
-    plt.subplot(1, 3, 1)
-    plt.plot(waveform.t().numpy())
-    plt.title("Waveform")
-    plt.subplot(1, 3, 2)
-    plt.imshow(mag.log2().numpy().squeeze(0), aspect='auto', origin='lower')
-    plt.title("Magnitude")
-    plt.subplot(1, 3, 3)
-    plt.imshow(phase.numpy().squeeze(0), aspect='auto', origin='lower')
-    plt.title("Phase")
-    plt.savefig(filename)
-    plt.close()
-
-
 def low_pass_filter(waveform, sr_org, sr_new):
     """
     Apply low pass filter to the waveform to remove the high frequency components.
@@ -257,6 +201,62 @@ def concatenate_chunks(chunks: torch.Tensor, chunk_size: int, overlap: int, padd
 
     # Return the concatenated waveform
     return concatenated
+
+
+def plot_all(waveform, sample_rate, filename):
+    """
+    Plot the waveform, magnitude and phase in a row at the same figure and save it to the output folder
+
+    Args:
+        waveform (torch.Tensor): The waveform
+        sample_rate (int): The sample rate
+        filename (str): The filename of the output figure
+
+    Returns:
+        None
+    """
+    # Get the magnitude and phase
+    mag, phase = get_mag_phase(waveform)
+    # Plot the waveform, magnitude and phase
+    plt.figure(figsize=(12, 4))
+    # Add title to the figure
+    plt.suptitle(f"Waveform, Magnitude and Phase at {sample_rate} Hz")
+    plt.subplot(1, 3, 1)
+    plt.plot(waveform.t().numpy())
+    plt.title("Waveform")
+    plt.subplot(1, 3, 2)
+    plt.imshow(mag.log2().numpy().squeeze(0), aspect='auto', origin='lower')
+    plt.title("Magnitude")
+    plt.subplot(1, 3, 3)
+    plt.imshow(phase.numpy().squeeze(0), aspect='auto', origin='lower')
+    plt.title("Phase")
+    plt.savefig(filename)
+    plt.close()
+
+
+def get_mag_phase(waveform: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
+    """
+    Apply short time Fourier transform to the waveform and return the magnitude and phase
+
+    Args:
+        waveform (torch.Tensor): The waveform
+
+    Returns:
+        torch.Tensor: The magnitude
+        torch.Tensor: The phase
+    """
+    # TODO: Set the parameters from the config file
+    n_fft = 1024
+    hop_length = 80
+    win_length = 320
+    window = torch.hann_window(win_length)
+    # Apply short time Fourier transform to the waveform
+    spec = torch.stft(waveform, n_fft=n_fft, hop_length=hop_length,
+                      win_length=win_length, window=window, return_complex=True)
+    mag = torch.abs(spec)
+    phase = torch.angle(spec)
+    # Return the magnitude and phase
+    return mag, phase
 
 
 if __name__ == '__main__':
