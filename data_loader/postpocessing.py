@@ -1,7 +1,7 @@
 import torch
 
 
-def concatenate_chunks(chunks: torch.Tensor, chunk_size: int, overlap: int, padding_length) -> torch.Tensor:
+def concatenate_wave_chunks(chunks: torch.Tensor, chunk_size: int, overlap: int, padding_length) -> torch.Tensor:
     """
     Concatenate the chunks into a single waveform by averaging the overlap regions and removing the padding of the last chunk.
 
@@ -48,7 +48,18 @@ def concatenate_chunks(chunks: torch.Tensor, chunk_size: int, overlap: int, padd
     return concatenated
 
 
-def reconstruct_waveform_stft(mag: torch.Tensor, phase: torch.Tensor, padding_length: int = 0) -> torch.Tensor:
+def reconstruct_from_stft_chunks(mag: torch.Tensor, phase: torch.Tensor, padding_length: int = 0) -> torch.Tensor:
+    """
+    Reconstruct the waveform from chunks of magnitude and phase spectrograms.
+
+    Args:
+        mag (torch.Tensor): The magnitude spectrogram
+        phase (torch.Tensor): The phase spectrogram
+        padding_length (int, optional): The length of the padding for the last chunk. Defaults to 0.
+
+    Returns:
+        torch.Tensor: The reconstructed waveform
+    """
     # TODO: Set the parameters from the config file
     # Size of each audio chunk
     chunk_size = 10160
@@ -84,7 +95,34 @@ def reconstruct_waveform_stft(mag: torch.Tensor, phase: torch.Tensor, padding_le
         waveform_chunks.append(waveform_chunk)
 
     # Concatenate chunks
-    waveform = concatenate_chunks(
+    waveform = concatenate_wave_chunks(
         waveform_chunks, chunk_size, overlap, padding_length)
 
+    return waveform
+
+
+def reconstruct_from_stft(mag: torch.Tensor, phase: torch.Tensor) -> torch.Tensor:
+    """
+    Reconstruct the waveform from magnitude and phase spectrograms (not chunks).
+
+    Args:
+        mag (torch.Tensor): The magnitude spectrogram
+        phase (torch.Tensor): The phase spectrogram
+    """
+    # TODO: Set the parameters from the config file
+    n_fft = 1022
+    hop_length = 451
+    win_length = 902
+    window = torch.hann_window(win_length)
+    # Combine magnitude and phase to get the complex STFT
+    complex_stft = mag * torch.exp(1j * phase)
+    # Apply iSTFT
+    waveform = torch.istft(
+        complex_stft,
+        n_fft=n_fft,
+        hop_length=hop_length,
+        win_length=win_length,
+        window=window
+    )
+    
     return waveform

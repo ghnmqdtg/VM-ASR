@@ -7,7 +7,7 @@ from typing import Tuple
 import matplotlib.pyplot as plt
 from scipy.signal import cheby1
 from scipy.signal import sosfiltfilt
-from postpocessing import concatenate_chunks, reconstruct_waveform_stft
+from postpocessing import concatenate_wave_chunks, reconstruct_from_stft, reconstruct_from_stft_chunks
 
 try:
     from utils import ensure_dir
@@ -49,7 +49,7 @@ def low_pass_filter(waveform, sr_org, sr_new):
     return waveform_tensor
 
 
-def resample_audio(waveform, sr_org, sr_new):
+def resample_audio(waveform: torch.Tensor, sr_org: int, sr_new: int) -> torch.Tensor:
     """
     Downsample the waveform to the new sample rate
 
@@ -66,7 +66,7 @@ def resample_audio(waveform, sr_org, sr_new):
     return waveform_downsampled
 
 
-def low_sr_simulation(waveform, sr_org, sr_new):
+def low_sr_simulation(waveform: torch.Tensor, sr_org: int, sr_new: int) -> torch.Tensor:
     """
     Simulate the low sample rate
 
@@ -158,7 +158,7 @@ def low_sr_simulation_pipeline(waveform: torch.Tensor, sr_org: int, sr_new: int 
     return chunks
 
 
-def plot_all(waveform, sample_rate, filename):
+def plot_all(waveform: torch.Tensor, sample_rate: int, filename: str) -> None:
     """
     Plot the waveform, magnitude and phase in a row at the same figure and save it to the output folder
 
@@ -171,7 +171,7 @@ def plot_all(waveform, sample_rate, filename):
         None
     """
     # Get the magnitude and phase
-    mag, phase = get_mag_phase(waveform)
+    mag, phase = get_mag_phase(waveform, chunk_wave=False)
     # Plot the waveform, magnitude and phase
     plt.figure(figsize=(12, 4))
     # Add title to the figure
@@ -189,7 +189,7 @@ def plot_all(waveform, sample_rate, filename):
     plt.close()
 
 
-def get_mag_phase(waveform: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
+def get_mag_phase(waveform: torch.Tensor, chunk_wave: bool = True) -> Tuple[torch.Tensor, torch.Tensor]:
     """
     Apply short time Fourier transform to the waveform and return the magnitude and phase
 
@@ -201,10 +201,16 @@ def get_mag_phase(waveform: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
         torch.Tensor: The phase
     """
     # TODO: Set the parameters from the config file
-    n_fft = 1022
-    hop_length = 80
-    win_length = 320
-    window = torch.hann_window(win_length)
+    if chunk_wave:
+        n_fft = 1022
+        hop_length = 80
+        win_length = 320
+        window = torch.hann_window(win_length)
+    else:
+        n_fft = 1022
+        hop_length = 451
+        win_length = 902
+        window = torch.hann_window(win_length)
     # Apply short time Fourier transform to the waveform
     spec = torch.stft(waveform, n_fft=n_fft, hop_length=hop_length,
                       win_length=win_length, window=window, return_complex=True)
@@ -250,19 +256,31 @@ if __name__ == '__main__':
         f"Processed {len(chunks)} chunks from {filepath} at {sr_new} Hz sample rate")
 
     # Reconstruct the waveform from the chunks
-    waveform_reconstructed = concatenate_chunks(
+    waveform_reconstructed = concatenate_wave_chunks(
         chunks, chunk_size, overlap, padding_length)
 
     # Save the reconstructed waveform
     torchaudio.save(
-        f"./output/dev/data_preprocessing/reconstructed_{timestr}_{sr_new}.wav", waveform_reconstructed, sr_org)
+        f"./output/dev/data_preprocessing/reconstructed_wave_chunks_{timestr}_{sr_new}.wav", waveform_reconstructed, sr_org)
+
+
+    # Get the magnitude and phase of the full waveform
+    mag, phase = get_mag_phase(waveform, chunk_wave=False)
+    # Print the shapes of the magnitude and phase
+    print(f"Shape of mag: {mag.shape}, Shape of phase: {phase.shape}")
+    # Reconstruct the waveform from the magnitude and phase
+    waveform_reconstructed_stft = reconstruct_from_stft(mag, phase)
+    # Save the reconstructed waveform
+    torchaudio.save(
+        f"./output/dev/data_preprocessing/reconstructed_stft_full_{timestr}_{sr_new}.wav", waveform_reconstructed_stft, sr_org)
+
 
     # FIX: Chunking -> STFT -> Concatenate -> iSTFT will cause high frequency peak artifacts
     # Get the magnitude and phase of the chunks
     mag = []
     phase = []
     for chunk in chunks:
-        mag_chunk, phase_chunk = get_mag_phase(chunk)
+        mag_chunk, phase_chunk = get_mag_phase(chunk, chunk_wave=True)
         mag.append(mag_chunk)
         phase.append(phase_chunk)
 
@@ -274,8 +292,8 @@ if __name__ == '__main__':
     print(f"Shape of mag: {mag.shape}, Shape of phase: {phase.shape}")
 
     # Reconstruct the waveform from the magnitude and phase
-    waveform_reconstructed_stft = reconstruct_waveform_stft(
+    waveform_reconstructed_stft = reconstruct_from_stft_chunks(
         mag, phase, padding_length)
     # Save the reconstructed waveform
     torchaudio.save(
-        f"./output/dev/data_preprocessing/reconstructed_stft_{timestr}_{sr_new}.wav", waveform_reconstructed_stft, sr_org)
+        f"./output/dev/data_preprocessing/reconstructed_stft_chunks_{timestr}_{sr_new}.wav", waveform_reconstructed_stft, sr_org)

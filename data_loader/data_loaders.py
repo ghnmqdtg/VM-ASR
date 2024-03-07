@@ -3,7 +3,6 @@ import torch
 import torchaudio.datasets as datasets
 import torch.nn.functional as F
 import random
-import data_loader.prepocessing as prepocessing
 import json
 import os
 import sys
@@ -11,14 +10,17 @@ from tqdm import tqdm
 
 try:
     from base import BaseDataLoader
+    import data_loader.prepocessing as prepocessing
 except:
     # Used for debugging data_loader
     # Add the project root directory to the Python path
     project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     sys.path.append(project_root)
 
-    # Now you can import BaseDataLoader
+    from utils import ensure_dir
     from base.base_data_loader import BaseDataLoader
+    import data_loader.prepocessing as prepocessing
+    import data_loader.postpocessing as postpocessing
 
 
 class VCTKDataLoader(BaseDataLoader):
@@ -168,12 +170,12 @@ class CustomVCTK_092(datasets.VCTK_092):
         """
         Get the input-output pairs for the audio processing pipeline.
         1. Crop or pad the waveform to a fixed length (consistent shapes within batches for efficient computation)
-        2. Get magnitude and phase of the original audio
+        2. Get magnitude and phase of the original audio without chunking
         3. Apply low pass filter to avoid aliasing
         4. Downsample the audio to a lower sample rate (simulating a low resolution audio)
         5. Upsample the audio to a higher sample rate (unifying the input shape)
         6. Chunk the audio into smaller fixed-length segments (to fit the model input shape)
-        7. Get magnitude and phase of the low resolution audio
+        7. Get magnitude and phase of the chunked low resolution audio
         8. Return the x-y pair of magnitude and phase
 
         Args:
@@ -191,7 +193,7 @@ class CustomVCTK_092(datasets.VCTK_092):
         # Crop or pad the waveform to a fixed length
         waveform = self._crop_or_pad_waveform(waveform)
         # Get magnitude and phase of the original audio
-        mag_phase_pair_y = self._get_mag_phase(waveform)
+        mag_phase_pair_y = self._get_mag_phase(waveform, chunk_wave=False)
 
         # Preprocess the audio
         # Apply low pass filter to avoid aliasing
@@ -201,44 +203,51 @@ class CustomVCTK_092(datasets.VCTK_092):
         # Upsample the audio to a higher sample rate
         waveform = prepocessing.resample_audio(waveform, sr_new, sr_org)
         # Get magnitude and phase of the preprocessed audio
-        mag_phase_pair_x = self._get_mag_phase(waveform)
+        mag_phase_pair_x = self._get_mag_phase(waveform, chunk_wave=True)
 
         return mag_phase_pair_x, mag_phase_pair_y
 
-    def _get_mag_phase(self, waveform: torch.Tensor) -> torch.Tensor:
+    def _get_mag_phase(self, waveform: torch.Tensor, chunk_wave: bool=True) -> torch.Tensor:
         """
         Compute the magnitude and phase of the audio in the time-frequency domain.
 
         Args:
             waveform (Tensor): The input audio waveform
+            chunk_wave (bool): Whether to chunk the audio into smaller fixed-length segments
 
         Returns:
             Tensor: The magnitude and phase of the audio in the time-frequency domain
         """
-        # Size of each audio chunk
-        chunk_size = 10160
-        # Overlap size between chunks
-        overlap = 0
-        # Chunk the audio into smaller fixed-length segments
-        # chunks is torch.stack() with shape (num_chunks, chunk_size)
-        chunks, padding_length = prepocessing.cut2chunks(
-            waveform=waveform, chunk_size=chunk_size, overlap=overlap, return_padding_length=True)
-        # Compute STFT for each segment and convert to magnitude and phase
-        mag = []
-        phase = []
-        for chunk_y in chunks:
-            mag_chunk, phase_chunk = prepocessing.get_mag_phase(chunk_y)
-            mag.append(mag_chunk)
-            phase.append(phase_chunk)
+        if chunk_wave:
+            # Size of each audio chunk
+            chunk_size = 10160
+            # Overlap size between chunks
+            overlap = 0
+            # Chunk the audio into smaller fixed-length segments
+            # chunks is torch.stack() with shape (num_chunks, chunk_size)
+            chunks, padding_length = prepocessing.cut2chunks(
+                waveform=waveform, chunk_size=chunk_size, overlap=overlap, return_padding_length=True)
+            # Compute STFT for each segment and convert to magnitude and phase
+            mag = []
+            phase = []
+            for chunk_y in chunks:
+                mag_chunk, phase_chunk = prepocessing.get_mag_phase(chunk_y, chunk_wave=True)
+                mag.append(mag_chunk)
+                phase.append(phase_chunk)
 
-        # Make mag and phase to tensors, shape (num_chunks, 1, num_frequencies, num_frames)
-        mag = torch.stack(mag)
-        phase = torch.stack(phase)
-        # Remove the dimension of 1
-        mag = mag.squeeze(1)
-        phase = phase.squeeze(1)
-        # Make mag and phase to a pair, shape (2, num_chunks, num_frequencies, num_frames)
-        mag_phase_pair = torch.stack((mag, phase))
+            # Make mag and phase to tensors, shape (num_chunks, 1, num_frequencies, num_frames)
+            mag = torch.stack(mag)
+            phase = torch.stack(phase)
+            # Remove the dimension of 1
+            mag = mag.squeeze(1)
+            phase = phase.squeeze(1)
+            # Make mag and phase to a pair, shape (2, num_chunks, num_frequencies, num_frames)
+            mag_phase_pair = torch.stack((mag, phase))
+        else:
+            # Compute STFT for the waveform and convert to magnitude and phase
+            mag, phase = prepocessing.get_mag_phase(waveform, chunk_wave=False)
+            # Make mag and phase to a pair, shape (2, num_frequencies, num_frames)
+            mag_phase_pair = torch.stack((mag, phase))
 
         # Return the magnitude and phase in tensors
         return mag_phase_pair
