@@ -191,7 +191,7 @@ class CustomVCTK_092(datasets.VCTK_092):
         # Crop or pad the waveform to a fixed length
         waveform = self._crop_or_pad_waveform(waveform)
         # Get magnitude and phase of the original audio
-        mag_phase_pair_x = self._get_mag_phase(waveform)
+        mag_phase_pair_y = self._get_mag_phase(waveform)
 
         # Preprocess the audio
         # Apply low pass filter to avoid aliasing
@@ -201,7 +201,7 @@ class CustomVCTK_092(datasets.VCTK_092):
         # Upsample the audio to a higher sample rate
         waveform = prepocessing.resample_audio(waveform, sr_new, sr_org)
         # Get magnitude and phase of the preprocessed audio
-        mag_phase_pair_y = self._get_mag_phase(waveform)
+        mag_phase_pair_x = self._get_mag_phase(waveform)
 
         return mag_phase_pair_x, mag_phase_pair_y
 
