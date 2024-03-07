@@ -111,8 +111,8 @@ def reconstruct_from_stft(mag: torch.Tensor, phase: torch.Tensor) -> torch.Tenso
     """
     # TODO: Set the parameters from the config file
     n_fft = 1022
-    hop_length = 451
-    win_length = 902
+    hop_length = 478
+    win_length = 956
     window = torch.hann_window(win_length)
     # Combine magnitude and phase to get the complex STFT
     complex_stft = mag * torch.exp(1j * phase)
@@ -124,5 +124,5 @@ def reconstruct_from_stft(mag: torch.Tensor, phase: torch.Tensor) -> torch.Tenso
         win_length=win_length,
         window=window
     )
-    
+
     return waveform

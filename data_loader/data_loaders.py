@@ -258,6 +258,10 @@ if __name__ == '__main__':
     with open('./config.json') as f:
         config = json.load(f)
 
+    # Ensure the output directory exists
+    output_dir = "./output/dev/data_loader"
+    ensure_dir(output_dir)
+
     print("Loading the VCTK_092 dataset...")
 
     # Set up the data loader
@@ -270,21 +274,33 @@ if __name__ == '__main__':
         print(
             f'batch_idx: {batch_idx}, len(data): {len(data)}, data[0].shape (x): {data[0].shape}, data[1].shape (y): {data[1].shape}')
         # Check the data
-        # x and y are in the shape of torch.Size([128 (batch_size), 2 (mag and phase), 15 (chunks), 513 (frequency bins), 101 (frames)])
+        # The shape of x is torch.Size([128 (batch_size), 2 (mag and phase), 15 (chunks), 513 (frequency bins), 101 (frames)])
+        # The shape of y is torch.Size([128 (batch_size), 2 (mag and phase), 513 (frequency bins), 256 (frames)])
         x, y = data
         x_mag, x_phase = x[0]
         y_mag, y_phase = y[0]
-        # Print the shape
-        print(
-            f'x_mag.shape: {x_mag.shape}, x_phase.shape: {x_phase.shape}, y_mag.shape: {y_mag.shape}, y_phase.shape: {y_phase.shape}')
+        print(f"x_mag.shape: {x_mag.shape}, x_phase.shape: {x_phase.shape}")
+        print(f"y_mag.shape: {y_mag.shape}, y_phase.shape: {y_phase.shape}")
+        
+        # Post-processing
+        # Reconstruct the chunked waveform of magnitude and phase spectrograms
+        reconstructed_waveform_x = postpocessing.reconstruct_from_stft_chunks(
+            mag=x_mag.unsqueeze(0), phase=x_phase.unsqueeze(0))
+        # Crop or pad the waveform to a fixed length (because breaking full length into chunks is indivisible)
+        reconstructed_waveform_x = prepocessing.crop_or_pad_waveform(
+            reconstructed_waveform_x)
+        # Save the reconstructed waveform
+        torchaudio.save(
+            f"{output_dir}/reconstructed_waveform_x_{timestr}.wav", reconstructed_waveform_x, 48000)
+        # Print the reconstructed waveform shape
+        print(f"Reconstructed waveform shape: {reconstructed_waveform_x.shape}")
 
-        # TODO: Padding is not passed to reconstruct waveform from STFT
-        # Reconstruct the waveform from the magnitude and phase
-        for x_or_y, mag, phase in zip(['x', 'y'], [x_mag, y_mag], [x_phase, y_phase]):
-            # Reconstruct the waveform from the magnitude and phase
-            waveform = prepocessing.reconstruct_waveform_stft(
-                mag.unsqueeze(0), phase.unsqueeze(0))
-            # Save the waveform as a wav file
-            torchaudio.save(
-                f'./output/dev/data_preprocessing/reconstructed_stft_{timestr}_{x_or_y}.wav', waveform, 48000)
+        # Reconstruct the full waveform of magnitude and phase spectrograms
+        reconstructed_waveform_y = postpocessing.reconstruct_from_stft(
+            mag=y_mag, phase=y_phase)
+        # Save the reconstructed waveform
+        torchaudio.save(
+            f"{output_dir}/reconstructed_waveform_y_{timestr}.wav", reconstructed_waveform_y, 48000)
+        # Print the reconstructed waveform shape
+        print(f"Reconstructed waveform shape: {reconstructed_waveform_y.shape}")
         break

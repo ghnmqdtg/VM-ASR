@@ -23,7 +23,8 @@ except:
 
 
 def crop_or_pad_waveform(waveform: torch.Tensor) -> torch.Tensor:
-        length = 115200
+        # TODO: Set the length from the config file
+        length = 121890
         # If the waveform is shorter than the required length, pad it
         if waveform.shape[1] < length:
             pad_length = length - waveform.shape[1]
@@ -233,8 +234,8 @@ def get_mag_phase(waveform: torch.Tensor, chunk_wave: bool = True) -> Tuple[torc
         window = torch.hann_window(win_length)
     else:
         n_fft = 1022
-        hop_length = 451
-        win_length = 902
+        hop_length = 478
+        win_length = 956
         window = torch.hann_window(win_length)
     # Apply short time Fourier transform to the waveform
     spec = torch.stft(waveform, n_fft=n_fft, hop_length=hop_length,
