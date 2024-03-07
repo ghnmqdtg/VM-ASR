@@ -1,5 +1,5 @@
 import torch
-from data_loader import prepocessing
+from data_loader import preprocessing
 
 
 def concatenate_wave_chunks(chunks: torch.Tensor, chunk_size: int, overlap: int, padding_length) -> torch.Tensor:
@@ -104,7 +104,7 @@ def reconstruct_from_stft_chunks(mag: torch.Tensor, phase: torch.Tensor, padding
         
         # Crop the waveform to the original length
         if crop:
-            waveform = prepocessing.crop_or_pad_waveform(waveform)
+            waveform = preprocessing.crop_or_pad_waveform(waveform)
 
         return waveform
     else:
@@ -149,7 +149,7 @@ def reconstruct_from_stft_chunks(mag: torch.Tensor, phase: torch.Tensor, padding
             
             # Crop the waveform to the original length
             if crop:
-                waveform = prepocessing.crop_or_pad_waveform(waveform)
+                waveform = preprocessing.crop_or_pad_waveform(waveform)
             
             # Append the waveform to the batch
             waveform_batch.append(waveform)

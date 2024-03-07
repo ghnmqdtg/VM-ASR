@@ -8,7 +8,7 @@ from typing import Tuple
 import matplotlib.pyplot as plt
 from scipy.signal import cheby1
 from scipy.signal import sosfiltfilt
-from data_loader.postpocessing import concatenate_wave_chunks, reconstruct_from_stft, reconstruct_from_stft_chunks
+from data_loader.postprocessing import concatenate_wave_chunks, reconstruct_from_stft, reconstruct_from_stft_chunks
 
 try:
     from utils import ensure_dir

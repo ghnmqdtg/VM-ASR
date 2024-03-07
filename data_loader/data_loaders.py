@@ -9,7 +9,7 @@ from tqdm import tqdm
 
 try:
     from base import BaseDataLoader
-    import data_loader.prepocessing as prepocessing
+    import data_loader.preprocessing as preprocessing
 except:
     # Used for debugging data_loader
     # Add the project root directory to the Python path
@@ -18,8 +18,8 @@ except:
 
     from utils import ensure_dir
     from base.base_data_loader import BaseDataLoader
-    import data_loader.prepocessing as prepocessing
-    import data_loader.postpocessing as postpocessing
+    import data_loader.preprocessing as preprocessing
+    import data_loader.postprocessing as postprocessing
 
 
 class VCTKDataLoader(BaseDataLoader):
@@ -166,17 +166,17 @@ class CustomVCTK_092(datasets.VCTK_092):
         # Apply the audio preprocessing pipeline
         sr_new = random.choice(target_sample_rates)
         # Crop or pad the waveform to a fixed length
-        waveform = prepocessing.crop_or_pad_waveform(waveform)
+        waveform = preprocessing.crop_or_pad_waveform(waveform)
         # Get magnitude and phase of the original audio
         mag_phase_pair_y = self._get_mag_phase(waveform, chunk_wave=True)
 
         # Preprocess the audio
         # Apply low pass filter to avoid aliasing
-        waveform = prepocessing.low_pass_filter(waveform, sr_org, sr_new)
+        waveform = preprocessing.low_pass_filter(waveform, sr_org, sr_new)
         # Downsample the audio to a lower sample rate
-        waveform = prepocessing.resample_audio(waveform, sr_org, sr_new)
+        waveform = preprocessing.resample_audio(waveform, sr_org, sr_new)
         # Upsample the audio to a higher sample rate
-        waveform = prepocessing.resample_audio(waveform, sr_new, sr_org)
+        waveform = preprocessing.resample_audio(waveform, sr_new, sr_org)
         # Get magnitude and phase of the preprocessed audio
         mag_phase_pair_x = self._get_mag_phase(waveform, chunk_wave=True)
 
@@ -200,13 +200,13 @@ class CustomVCTK_092(datasets.VCTK_092):
             overlap = 0
             # Chunk the audio into smaller fixed-length segments
             # chunks is torch.stack() with shape (num_chunks, chunk_size)
-            chunks, padding_length = prepocessing.cut2chunks(
+            chunks, padding_length = preprocessing.cut2chunks(
                 waveform=waveform, chunk_size=chunk_size, overlap=overlap, return_padding_length=True)
             # Compute STFT for each segment and convert to magnitude and phase
             mag = []
             phase = []
             for chunk_y in chunks:
-                mag_chunk, phase_chunk = prepocessing.get_mag_phase(chunk_y, chunk_wave=True)
+                mag_chunk, phase_chunk = preprocessing.get_mag_phase(chunk_y, chunk_wave=True)
                 mag.append(mag_chunk)
                 phase.append(phase_chunk)
 
@@ -220,7 +220,7 @@ class CustomVCTK_092(datasets.VCTK_092):
             mag_phase_pair = torch.stack((mag, phase))
         else:
             # Compute STFT for the waveform and convert to magnitude and phase
-            mag, phase = prepocessing.get_mag_phase(waveform, chunk_wave=False)
+            mag, phase = preprocessing.get_mag_phase(waveform, chunk_wave=False)
             # Make mag and phase to a pair, shape (2, num_frequencies, num_frames)
             mag_phase_pair = torch.stack((mag, phase))
 
@@ -285,7 +285,7 @@ if __name__ == '__main__':
         
         # Post-processing
         # Reconstruct the chunked waveform of magnitude and phase spectrograms
-        reconstructed_waveform_x = postpocessing.reconstruct_from_stft_chunks(
+        reconstructed_waveform_x = postprocessing.reconstruct_from_stft_chunks(
             mag=x_mag.unsqueeze(0), phase=x_phase.unsqueeze(0), crop=True)
         # Save the reconstructed waveform
         torchaudio.save(
@@ -295,10 +295,10 @@ if __name__ == '__main__':
 
         # Reconstruct the full waveform of magnitude and phase spectrograms
         # Test for not chunked original waveform
-        # reconstructed_waveform_y = postpocessing.reconstruct_from_stft(
+        # reconstructed_waveform_y = postprocessing.reconstruct_from_stft(
         #     mag=y_mag, phase=y_phase)
         # Test for chunked original waveform
-        reconstructed_waveform_y = postpocessing.reconstruct_from_stft_chunks(
+        reconstructed_waveform_y = postprocessing.reconstruct_from_stft_chunks(
             mag=y_mag.unsqueeze(0), phase=y_phase.unsqueeze(0), crop=True)
         # Save the reconstructed waveform
         torchaudio.save(

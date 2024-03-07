@@ -4,7 +4,7 @@ from torchvision.utils import make_grid
 from base import BaseTrainer
 from utils import inf_loop, MetricTracker
 from tqdm import tqdm
-from data_loader import prepocessing, postpocessing
+from data_loader import preprocessing, postprocessing
 
 
 class Trainer(BaseTrainer):
@@ -72,16 +72,16 @@ class Trainer(BaseTrainer):
             # Concatenate the outputs along the chunk dimension
             chunk_outputs = torch.cat(chunk_outputs, dim=1)
             # Reconstruct the waveform from the concatenated output and target
-            output_waveform = postpocessing.reconstruct_from_stft_chunks(
+            output_waveform = postprocessing.reconstruct_from_stft_chunks(
                 mag=chunk_outputs, phase=target[:, 1, ...].unsqueeze(1), batch_input=True)
-            target_waveform = postpocessing.reconstruct_from_stft_chunks(
+            target_waveform = postprocessing.reconstruct_from_stft_chunks(
                 mag=target[:, 0, ...].unsqueeze(1), phase=target[:, 1, ...].unsqueeze(1), batch_input=True, crop=True)
             # # Print the shape of the output and target waveforms
             # print(f'Output waveform shape: {output_waveform.shape}, Target waveform shape: {target_waveform.shape}')
             # Compute the STFT of the output and target waveforms
-            output_mag, output_phase = prepocessing.get_mag_phase(
+            output_mag, output_phase = preprocessing.get_mag_phase(
                 output_waveform, chunk_wave=False, batch_input=True)
-            target_mag, target_phase = prepocessing.get_mag_phase(
+            target_mag, target_phase = preprocessing.get_mag_phase(
                 target_waveform, chunk_wave=False, batch_input=True)
             # # Print the shape of the output and target mag
             # print(f'Output mag shape: {output_mag.shape}, Target mag shape: {target_mag.shape}')
