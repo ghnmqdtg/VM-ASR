@@ -286,10 +286,7 @@ if __name__ == '__main__':
         # Post-processing
         # Reconstruct the chunked waveform of magnitude and phase spectrograms
         reconstructed_waveform_x = postpocessing.reconstruct_from_stft_chunks(
-            mag=x_mag.unsqueeze(0), phase=x_phase.unsqueeze(0))
-        # Crop or pad the waveform to a fixed length (because breaking full length into chunks is indivisible)
-        reconstructed_waveform_x = prepocessing.crop_or_pad_waveform(
-            reconstructed_waveform_x)
+            mag=x_mag.unsqueeze(0), phase=x_phase.unsqueeze(0), crop=True)
         # Save the reconstructed waveform
         torchaudio.save(
             f"{output_dir}/reconstructed_waveform_x_{timestr}.wav", reconstructed_waveform_x, 48000)
@@ -302,10 +299,7 @@ if __name__ == '__main__':
         #     mag=y_mag, phase=y_phase)
         # Test for chunked original waveform
         reconstructed_waveform_y = postpocessing.reconstruct_from_stft_chunks(
-            mag=y_mag.unsqueeze(0), phase=y_phase.unsqueeze(0))
-        # Crop or pad the waveform to a fixed length (because breaking full length into chunks is indivisible)
-        reconstructed_waveform_y = prepocessing.crop_or_pad_waveform(
-            reconstructed_waveform_y)
+            mag=y_mag.unsqueeze(0), phase=y_phase.unsqueeze(0), crop=True)
         # Save the reconstructed waveform
         torchaudio.save(
             f"{output_dir}/reconstructed_waveform_y_{timestr}.wav", reconstructed_waveform_y, 48000)

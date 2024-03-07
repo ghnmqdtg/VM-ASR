@@ -1,4 +1,5 @@
 import torch
+from data_loader import prepocessing
 
 
 def concatenate_wave_chunks(chunks: torch.Tensor, chunk_size: int, overlap: int, padding_length) -> torch.Tensor:
@@ -48,7 +49,7 @@ def concatenate_wave_chunks(chunks: torch.Tensor, chunk_size: int, overlap: int,
     return concatenated
 
 
-def reconstruct_from_stft_chunks(mag: torch.Tensor, phase: torch.Tensor, padding_length: int = 0, batch_input: bool = False) -> torch.Tensor:
+def reconstruct_from_stft_chunks(mag: torch.Tensor, phase: torch.Tensor, padding_length: int = 0, batch_input: bool = False, crop: bool = True) -> torch.Tensor:
     """
     Reconstruct the waveform from chunks of magnitude and phase spectrograms.
 
@@ -100,6 +101,10 @@ def reconstruct_from_stft_chunks(mag: torch.Tensor, phase: torch.Tensor, padding
         # Concatenate chunks
         waveform = concatenate_wave_chunks(
             waveform_chunks, chunk_size, overlap, padding_length)
+        
+        # Crop the waveform to the original length
+        if crop:
+            waveform = prepocessing.crop_or_pad_waveform(waveform)
 
         return waveform
     else:
@@ -141,6 +146,10 @@ def reconstruct_from_stft_chunks(mag: torch.Tensor, phase: torch.Tensor, padding
             # Concatenate chunks
             waveform = concatenate_wave_chunks(
                 waveform_chunks, chunk_size, overlap, padding_length)
+            
+            # Crop the waveform to the original length
+            if crop:
+                waveform = prepocessing.crop_or_pad_waveform(waveform)
             
             # Append the waveform to the batch
             waveform_batch.append(waveform)
