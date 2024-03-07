@@ -2,7 +2,7 @@
     "name": "MambaASR",
     "n_gpu": 1,
     "arch": {
-        "type": "MambaUNet",
+        "type": "ToyUNet",
         "args": {}
     },
     "flac2wav": {
@@ -14,7 +14,7 @@
         "type": "VCTKDataLoader",
         "args": {
             "data_dir": "data/",
-            "batch_size": 128,
+            "batch_size": 64,
             "shuffle": true,
             "validation_split": 0.1,
             "num_workers": 2,
@@ -35,11 +35,8 @@
             "amsgrad": true
         }
     },
-    "loss": "nll_loss",
-    "metrics": [
-        "accuracy",
-        "top_k_acc"
-    ],
+    "loss": "mse_loss",
+    "metrics": [],
     "lr_scheduler": {
         "type": "StepLR",
         "args": {
