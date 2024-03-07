@@ -27,7 +27,7 @@ class VCTKDataLoader(BaseDataLoader):
     VCTK_092 data loading
     """
 
-    def __init__(self, data_dir, batch_size, shuffle=True, validation_split=0.0, num_workers=1, training=True, random_resample=[8000]):
+    def __init__(self, data_dir, batch_size, shuffle=True, validation_split=0.0, num_workers=1, training=True, random_resample=[8000], **kwargs):
         # Set up data directory
         self.data_dir = data_dir
         self.random_resample = random_resample
@@ -145,7 +145,7 @@ class CustomVCTK_092(datasets.VCTK_092):
         """
         Get the input-output pairs for the audio processing pipeline.
         1. Crop or pad the waveform to a fixed length (consistent shapes within batches for efficient computation)
-        2. Get magnitude and phase of the original audio without chunking
+        2. Get magnitude and phase of the original audio
         3. Apply low pass filter to avoid aliasing
         4. Downsample the audio to a lower sample rate (simulating a low resolution audio)
         5. Upsample the audio to a higher sample rate (unifying the input shape)
@@ -168,7 +168,7 @@ class CustomVCTK_092(datasets.VCTK_092):
         # Crop or pad the waveform to a fixed length
         waveform = prepocessing.crop_or_pad_waveform(waveform)
         # Get magnitude and phase of the original audio
-        mag_phase_pair_y = self._get_mag_phase(waveform, chunk_wave=False)
+        mag_phase_pair_y = self._get_mag_phase(waveform, chunk_wave=True)
 
         # Preprocess the audio
         # Apply low pass filter to avoid aliasing
@@ -275,7 +275,8 @@ if __name__ == '__main__':
             f'batch_idx: {batch_idx}, len(data): {len(data)}, data[0].shape (x): {data[0].shape}, data[1].shape (y): {data[1].shape}')
         # Check the data
         # The shape of x is torch.Size([128 (batch_size), 2 (mag and phase), 15 (chunks), 513 (frequency bins), 101 (frames)])
-        # The shape of y is torch.Size([128 (batch_size), 2 (mag and phase), 513 (frequency bins), 256 (frames)])
+        # The shape of chunked y is torch.Size([128 (batch_size), 2 (mag and phase), 15 (chunks), 513 (frequency bins), 101 (frames)])
+        # The shape of not chunked y is torch.Size([128 (batch_size), 2 (mag and phase), 513 (frequency bins), 256 (frames)])
         x, y = data
         x_mag, x_phase = x[0]
         y_mag, y_phase = y[0]
@@ -293,14 +294,21 @@ if __name__ == '__main__':
         torchaudio.save(
             f"{output_dir}/reconstructed_waveform_x_{timestr}.wav", reconstructed_waveform_x, 48000)
         # Print the reconstructed waveform shape
-        print(f"Reconstructed waveform shape: {reconstructed_waveform_x.shape}")
+        print(f"Reconstructed waveform x shape: {reconstructed_waveform_x.shape}")
 
         # Reconstruct the full waveform of magnitude and phase spectrograms
-        reconstructed_waveform_y = postpocessing.reconstruct_from_stft(
-            mag=y_mag, phase=y_phase)
+        # Test for not chunked original waveform
+        # reconstructed_waveform_y = postpocessing.reconstruct_from_stft(
+        #     mag=y_mag, phase=y_phase)
+        # Test for chunked original waveform
+        reconstructed_waveform_y = postpocessing.reconstruct_from_stft_chunks(
+            mag=y_mag.unsqueeze(0), phase=y_phase.unsqueeze(0))
+        # Crop or pad the waveform to a fixed length (because breaking full length into chunks is indivisible)
+        reconstructed_waveform_y = prepocessing.crop_or_pad_waveform(
+            reconstructed_waveform_y)
         # Save the reconstructed waveform
         torchaudio.save(
             f"{output_dir}/reconstructed_waveform_y_{timestr}.wav", reconstructed_waveform_y, 48000)
         # Print the reconstructed waveform shape
-        print(f"Reconstructed waveform shape: {reconstructed_waveform_y.shape}")
+        print(f"Reconstructed waveform y shape: {reconstructed_waveform_y.shape}")
         break
