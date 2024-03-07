@@ -1,6 +1,7 @@
 import time
 import torch
 import torchaudio
+import torch.nn.functional as F
 import torchaudio.transforms as T
 import random
 from typing import Tuple
@@ -21,7 +22,31 @@ except:
     from utils import ensure_dir
 
 
-def low_pass_filter(waveform, sr_org, sr_new):
+def crop_or_pad_waveform(waveform: torch.Tensor) -> torch.Tensor:
+        length = 115200
+        # If the waveform is shorter than the required length, pad it
+        if waveform.shape[1] < length:
+            pad_length = length - waveform.shape[1]
+            # If the phase is training or validation, pad the waveform randomly
+            # If the phase is testing, pad the waveform from the beginning
+            r = random.randint(0, pad_length)
+            # Pad the waveform with zeros to the left and right
+            # Left: random length between 0 and pad_length, Right: pad_length - r
+            waveform = F.pad(waveform, (r, pad_length - r),
+                             mode='constant', value=0)
+            # print(f"Pad length: {pad_length}, Random length: {r}")
+        else:
+            # If the waveform is longer than the required length, crop it randomly from the beginning
+            start = random.randint(0, waveform.shape[1] - length)
+            # Crop the waveform from start to start + length (fixed length)
+            waveform = waveform[:, start:start + length]
+            # print(f"Crop to length: {length}, Start: {start}")
+
+        # print(f'New shape of padded or cropped waveform: {waveform.shape}')
+        return waveform
+
+
+def low_pass_filter(waveform: torch.Tensor, sr_org: int, sr_new: int) -> torch.Tensor:
     """
     Apply low pass filter to the waveform to remove the high frequency components.
     This can avoid aliasing when downsampling the waveform.
@@ -237,6 +262,8 @@ if __name__ == '__main__':
     print(f"Randomly selected new sample rate: {sr_new} Hz")
     # Apply the audio preprocessing pipeline
     waveform, sr_org = torchaudio.load(filepath)
+    # Crop or pad the waveform to the required length
+    waveform = crop_or_pad_waveform(waveform)
     waveform_filtered = low_pass_filter(waveform, sr_org, sr_new)
     waveform_downsampled = resample_audio(waveform_filtered, sr_org, sr_new)
     # Apply upsampling to get a unified sample rate as input
