@@ -215,12 +215,14 @@ def plot_all(waveform: torch.Tensor, sample_rate: int, filename: str) -> None:
     plt.close()
 
 
-def get_mag_phase(waveform: torch.Tensor, chunk_wave: bool = True) -> Tuple[torch.Tensor, torch.Tensor]:
+def get_mag_phase(waveform: torch.Tensor, chunk_wave: bool = True, batch_input: bool = False) -> Tuple[torch.Tensor, torch.Tensor]:
     """
     Apply short time Fourier transform to the waveform and return the magnitude and phase
 
     Args:
         waveform (torch.Tensor): The waveform
+        chunk_wave (bool, optional): Whether to chunk the waveform. Defaults to True.
+        batch_input (bool, optional): Whether the input is a batch. Defaults to False.
 
     Returns:
         torch.Tensor: The magnitude
@@ -231,19 +233,44 @@ def get_mag_phase(waveform: torch.Tensor, chunk_wave: bool = True) -> Tuple[torc
         n_fft = 1022
         hop_length = 80
         win_length = 320
-        window = torch.hann_window(win_length)
+        window = torch.hann_window(win_length).to(waveform.device)
     else:
         n_fft = 1022
         hop_length = 478
         win_length = 956
-        window = torch.hann_window(win_length)
-    # Apply short time Fourier transform to the waveform
-    spec = torch.stft(waveform, n_fft=n_fft, hop_length=hop_length,
-                      win_length=win_length, window=window, return_complex=True)
-    mag = torch.abs(spec)
-    phase = torch.angle(spec)
-    # Return the magnitude and phase
-    return mag, phase
+        window = torch.hann_window(win_length).to(waveform.device)
+
+    if not batch_input:
+        # Apply short time Fourier transform to the waveform
+        spec = torch.stft(waveform, n_fft=n_fft, hop_length=hop_length,
+                        win_length=win_length, window=window, return_complex=True)
+        # Magnitude is calculated as the absolute value, and log2 is applied to compress the dynamic range
+        mag = torch.log2(torch.abs(spec) + 1e-8)
+        phase = torch.angle(spec)
+        # Return the magnitude and phase
+        return mag, phase
+    else:
+        # The input would be of shape (batch_size, 1 (mono), waveform_length)
+        # Loop over the batch and apply STFT to each waveform
+        mags = []
+        phases = []
+        for i in range(waveform.size(0)):
+            # Apply short time Fourier transform to the waveform
+            spec = torch.stft(waveform[i], n_fft=n_fft, hop_length=hop_length,
+                            win_length=win_length, window=window, return_complex=True)
+            # Magnitude is calculated as the absolute value, and log2 is applied to compress the dynamic range
+            mag = torch.log2(torch.abs(spec) + 1e-8)
+            phase = torch.angle(spec)
+            mags.append(mag)
+            phases.append(phase)
+        # Stack the magnitude and phase
+        mags = torch.stack(mags, dim=0)
+        phases = torch.stack(phases, dim=0)
+        # Print the shapes of the magnitude and phase
+        # print(f"Shape of mag: {mags.shape}, Shape of phase: {phases.shape}")
+        # Return the magnitude and phase
+        return mags, phases
+
 
 
 if __name__ == '__main__':

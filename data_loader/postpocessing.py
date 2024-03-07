@@ -48,7 +48,7 @@ def concatenate_wave_chunks(chunks: torch.Tensor, chunk_size: int, overlap: int,
     return concatenated
 
 
-def reconstruct_from_stft_chunks(mag: torch.Tensor, phase: torch.Tensor, padding_length: int = 0) -> torch.Tensor:
+def reconstruct_from_stft_chunks(mag: torch.Tensor, phase: torch.Tensor, padding_length: int = 0, batch_input: bool = False) -> torch.Tensor:
     """
     Reconstruct the waveform from chunks of magnitude and phase spectrograms.
 
@@ -68,37 +68,84 @@ def reconstruct_from_stft_chunks(mag: torch.Tensor, phase: torch.Tensor, padding
     n_fft = 1022
     hop_length = 80
     win_length = 320
-    window = torch.hann_window(win_length)
-    # Combine magnitude and phase to get the complex STFT
-    complex_stft = mag * torch.exp(1j * phase)
-    # torch.Size([1, 9, 513, 101])
-    # Swap the channel 1 and channel 0 and get torch.Size([9, 1, 513, 101])
-    complex_stft = complex_stft.permute(1, 0, 2, 3)
+    window = torch.hann_window(win_length).to(mag.device)
 
-    # Prepare an empty list to store each iSTFT chunk
-    waveform_chunks = []
+    # Normally, input would be of shape (1 (mono), num_chunks, frequency_bins, frames)
+    if not batch_input:
+        # Combine magnitude and phase to get the complex STFT
+        complex_stft = mag * torch.exp(1j * phase)
+        # torch.Size([1, 9, 513, 101])
+        # Swap the channel 1 and channel 0 and get torch.Size([9, 1, 513, 101])
+        complex_stft = complex_stft.permute(1, 0, 2, 3)
 
-    # Iterate over chunks and apply iSTFT
-    for i in range(complex_stft.size(0)):
-        # Extract the i-th chunk
-        chunk = complex_stft[i]
-        # Apply iSTFT
-        waveform_chunk = torch.istft(
-            chunk,
-            n_fft=n_fft,
-            hop_length=hop_length,
-            win_length=win_length,
-            window=window
-        )
+        # Prepare an empty list to store each iSTFT chunk
+        waveform_chunks = []
 
-        # Append the waveform chunk to the list
-        waveform_chunks.append(waveform_chunk)
+        # Iterate over chunks and apply iSTFT
+        for i in range(complex_stft.size(0)):
+            # Extract the i-th chunk
+            chunk = complex_stft[i]
+            # Apply iSTFT
+            waveform_chunk = torch.istft(
+                chunk,
+                n_fft=n_fft,
+                hop_length=hop_length,
+                win_length=win_length,
+                window=window
+            )
 
-    # Concatenate chunks
-    waveform = concatenate_wave_chunks(
-        waveform_chunks, chunk_size, overlap, padding_length)
+            # Append the waveform chunk to the list
+            waveform_chunks.append(waveform_chunk)
 
-    return waveform
+        # Concatenate chunks
+        waveform = concatenate_wave_chunks(
+            waveform_chunks, chunk_size, overlap, padding_length)
+
+        return waveform
+    else:
+        # Sometimes, we have to handle batch input of shape (batch_size, 1 (mono), num_chunks, frequency_bins, frames)
+        # In this case, we have to loop through each batch and and add channel dimension to the input, it's mono for our case.
+        waveform_batch = []
+        # Loop through the batch
+        for batch_idx in range(mag.size(0)):
+            # Get the magnitude and phase for the current batch
+            _mag = mag[batch_idx]
+            _phase = phase[batch_idx]
+            # Print the shape of the chunk data and target
+            # print(f'Chunk data shape: {_mag.shape}, Chunk target shape: {_phase.shape}')
+            # Combine magnitude and phase to get the complex STFT
+            complex_stft = _mag * torch.exp(1j * _phase)
+            # torch.Size([1, 9, 513, 101])
+            # Swap the channel 1 and channel 0 and get torch.Size([9, 1, 513, 101])
+            complex_stft = complex_stft.permute(1, 0, 2, 3)
+
+            # Prepare an empty list to store each iSTFT chunk
+            waveform_chunks = []
+
+            # Iterate over chunks and apply iSTFT
+            for i in range(complex_stft.size(0)):
+                # Extract the i-th chunk
+                chunk = complex_stft[i]
+                # Apply iSTFT
+                waveform_chunk = torch.istft(
+                    chunk,
+                    n_fft=n_fft,
+                    hop_length=hop_length,
+                    win_length=win_length,
+                    window=window
+                )
+
+                # Append the waveform chunk to the list
+                waveform_chunks.append(waveform_chunk)
+
+            # Concatenate chunks
+            waveform = concatenate_wave_chunks(
+                waveform_chunks, chunk_size, overlap, padding_length)
+            
+            # Append the waveform to the batch
+            waveform_batch.append(waveform)
+
+        return torch.stack(waveform_batch)
 
 
 def reconstruct_from_stft(mag: torch.Tensor, phase: torch.Tensor) -> torch.Tensor:
