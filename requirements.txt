@@ -1,5 +1,7 @@
+matplotlib
 numpy
 pandas
 tqdm
+scipy
 tensorboard>=1.14
 wandb

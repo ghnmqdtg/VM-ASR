@@ -20,16 +20,16 @@ with open('config.json') as f:
 
 
 if __name__ == '__main__':
-    # Set the destination path
-    dest_path = os.path.join(config['data_loader']['args']['data_dir'], "VCTK-Corpus-0.92/wav48_silence_trimmed_wav")
-    # Make sure the output directory exists, if not, create it
-    ensure_dir(dest_path)
-    
     # Download VCTK_092 dataset, default mic is "mic2"
     dataset = torchaudio.datasets.VCTK_092(root=config['data_loader']['args']['data_dir'], download=True)
     # Check the total number of samples, and print the first sample
     print(f"Total number of samples: {len(dataset)}")
     print(dataset[0])
+
+    # Set the destination path
+    dest_path = os.path.join(config['data_loader']['args']['data_dir'], "VCTK-Corpus-0.92/wav48_silence_trimmed_wav")
+    # Make sure the output directory exists, if not, create it
+    ensure_dir(dest_path)
     
     # Read the timestamps txt as pandas dataframe
     timestamps = pd.read_csv(config['flac2wav']['timestamps'], sep=" ", header=None)
