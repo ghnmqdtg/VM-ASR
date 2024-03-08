@@ -42,6 +42,33 @@ class DualStreamBlock(BaseModel):
         combined_phase = phase + mag
 
         return combined_mag, combined_phase
+    
+
+class DualStreamUNet(BaseModel):
+    """
+    Dual-Stream model for learning the magnitude and phase of the image.
+    """
+    def __init__(self, in_channels=1, out_channels=1, scale=2, dropout=0.0, batchnorm=False):
+        super().__init__()
+        # Define magnitude and phase networks
+        self.mag_net = ToyUNet(in_channels, out_channels, scale, dropout, batchnorm)
+        self.phase_net = ToyUNet(in_channels, out_channels, scale, dropout, batchnorm)
+
+    def forward(self, x):
+        # Clone the input for residual connection
+        residual = x.clone()
+        # Input dimension: (batch_size, mag_(0)or_phase(1), in_channels, H, W)
+        # Get the magnitude and phase
+        mag = x[:, 0, :, :, :]
+        phase = x[:, 1, :, :, :]
+        # Forward pass through the dual-stream blocks
+        mag = self.mag_net(mag)
+        phase = self.phase_net(phase)
+        # Residual connection
+        mag = mag + residual[:, 0, :, :, :]
+        phase = phase + residual[:, 1, :, :, :]
+
+        return mag, phase
 
 
 class DualStreamModel(BaseModel):
