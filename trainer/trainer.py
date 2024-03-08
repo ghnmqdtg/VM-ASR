@@ -1,6 +1,5 @@
 import numpy as np
 import torch
-from torchvision.utils import make_grid
 from base import BaseTrainer
 from utils import inf_loop, MetricTracker
 from tqdm import tqdm
@@ -31,9 +30,9 @@ class Trainer(BaseTrainer):
         self.log_step = int(np.sqrt(data_loader.batch_size))
 
         self.train_metrics = MetricTracker(
-            'loss', 'waveform_loss', *[m.__name__ for m in self.metric_ftns], writer=self.writer)
+            'loss', 'mag_loss', 'phase_loss', *[m.__name__ for m in self.metric_ftns], writer=self.writer)
         self.valid_metrics = MetricTracker(
-            'loss', 'waveform_loss', *[m.__name__ for m in self.metric_ftns], writer=self.writer)
+            'loss', 'mag_loss', 'phase_loss', *[m.__name__ for m in self.metric_ftns], writer=self.writer)
 
     def _train_epoch(self, epoch):
         """
@@ -50,48 +49,47 @@ class Trainer(BaseTrainer):
             # Set the gradients to zero before starting to do backpropragation because PyTorch accumulates the gradients on subsequent backward passes
             self.optimizer.zero_grad()
             # Initialize the chunk ouptut and losses
-            chunk_outputs = []
+            chunk_outputs = {"mag": [], "phase": []}
             total_loss = 0
             chunk_losses = []
             # Iterate through the chunks and calculate the loss for each chunk
             for chunk_idx in range(data.size(2)):
-                # Get current chunk data and target (only focus on mag for now)
-                chunk_data = data[:, 0, chunk_idx, :, :].unsqueeze(1)
-                chunk_target = target[:, 0, chunk_idx, :, :].unsqueeze(1)
-                # Print the shape of the chunk data and target
-                # print(f'Chunk data shape: {chunk_data.shape}, Chunk target shape: {chunk_target.shape}')
+                # Get current chunk data (and unsqueeze the chunk dimension)
+                chunk_data = data[:, :, chunk_idx, :, :].unsqueeze(2)
+                # Get current chunk target (and unsqueeze the chunk dimension)
+                chunk_target = target[:, :, chunk_idx, :, :].unsqueeze(2)
                 # Forward pass
-                chunk_output = self.model(chunk_data)
+                chunk_mag, chunk_phase = self.model(chunk_data)
                 # Calculate the chunk loss
-                chunk_loss = self.criterion(chunk_output, chunk_target)
+                chunk_mag_loss = self.criterion(chunk_mag, chunk_target[:, 0, ...])
+                chunk_phase_loss = self.criterion(chunk_phase, chunk_target[:, 1, ...])
+                # print(f'chunk_mag.shape: {chunk_mag.shape}, chunk_target[:, 0, ...].shape: {chunk_target[:, 0, ...].shape}')
                 # Accumulate the chunk loss
-                chunk_losses.append(chunk_loss)
+                chunk_losses.append(chunk_mag_loss + chunk_phase_loss)
                 # Store the chunk output
-                chunk_outputs.append(chunk_output)
-
+                chunk_outputs["mag"].append(chunk_mag)
+                chunk_outputs["phase"].append(chunk_phase)
+                
             # Concatenate the outputs along the chunk dimension
-            chunk_outputs = torch.cat(chunk_outputs, dim=1)
+            chunk_outputs["mag"] = torch.cat(chunk_outputs["mag"], dim=1).unsqueeze(1)
+            chunk_outputs["phase"] = torch.cat(chunk_outputs["phase"], dim=1).unsqueeze(1)
+            # print(f'chunk_outputs["mag"].shape: {chunk_outputs["mag"].shape}, chunk_outputs["phase"].shape: {chunk_outputs["phase"].shape}')
             # Reconstruct the waveform from the concatenated output and target
             output_waveform = postprocessing.reconstruct_from_stft_chunks(
-                mag=chunk_outputs, phase=target[:, 1, ...].unsqueeze(1), batch_input=True)
+                mag=chunk_outputs["mag"], phase=chunk_outputs["phase"], batch_input=True, crop=True)
             target_waveform = postprocessing.reconstruct_from_stft_chunks(
                 mag=target[:, 0, ...].unsqueeze(1), phase=target[:, 1, ...].unsqueeze(1), batch_input=True, crop=True)
-            # # Print the shape of the output and target waveforms
-            # print(f'Output waveform shape: {output_waveform.shape}, Target waveform shape: {target_waveform.shape}')
             # Compute the STFT of the output and target waveforms
             output_mag, output_phase = preprocessing.get_mag_phase(
                 output_waveform, chunk_wave=False, batch_input=True)
             target_mag, target_phase = preprocessing.get_mag_phase(
                 target_waveform, chunk_wave=False, batch_input=True)
-            # # Print the shape of the output and target mag
-            # print(f'Output mag shape: {output_mag.shape}, Target mag shape: {target_mag.shape}')
-            # # Print the shape of the output and target phase
-            # print(f'Output phase shape: {output_phase.shape}, Target phase shape: {target_phase.shape}')
             
-            waveform_loss = self.criterion(output_mag, target_mag)
-
-            # Calculate the average chunk loss and add the waveform loss
-            total_loss = torch.stack(chunk_losses).mean() + waveform_loss
+            # Calculate the mag and phase loss
+            mag_loss = self.criterion(output_mag, target_mag)
+            phase_loss = self.criterion(output_phase, target_phase)
+            # Calculate total loss
+            total_loss = torch.stack(chunk_losses).mean() + mag_loss + phase_loss
             # Backward pass
             total_loss.backward()
             # Update the weights
@@ -99,20 +97,29 @@ class Trainer(BaseTrainer):
             
             # Update the train metrics
             self.train_metrics.update('loss', total_loss.item())
-            self.train_metrics.update('waveform_loss', waveform_loss.item())
+            self.train_metrics.update('mag_loss', mag_loss.item())
+            self.train_metrics.update('phase_loss', phase_loss.item())
 
             self.writer.set_step((epoch - 1) * self.len_epoch + batch_idx)
             for met in self.metric_ftns:
-                # Calculate the loss for the reconstructed waveform
+                # Calculate the loss for the reconstructed mag
                 self.train_metrics.update(met.__name__, met(output_mag, target_mag))
 
             if batch_idx % self.log_step == 0:
-                self.logger.debug('Train Epoch: {} {} Loss: {:.6f}'.format(
-                    epoch,
-                    self._progress(batch_idx),
-                    total_loss.item()))
-                # self.writer.add_image('input', make_grid(`
-                #     data.cpu(), nrow=8, normalize=True))`
+                # Use f-string to log detailed information about the loss
+                self.logger.debug(f'Train Epoch: {epoch} {self._progress(batch_idx)} Total Loss: {total_loss.item()}, Mag Loss: {mag_loss.item()}, Phase Loss: {phase_loss.item()}')
+                # Get the input waveform and stft of the output and target waveforms
+                # print(f'data shape: {data.shape}, data[0, ...].shape: {data[0, ...].shape}, data[0, 0, ...].shape: {data[0, 0, ...].shape}')
+                input_waveform = postprocessing.reconstruct_from_stft_chunks(
+                    mag=data[0, 0, ...].unsqueeze(0), phase=data[0, 1, ...].unsqueeze(0), batch_input=False, crop=True)
+                # Name the audio files
+                name_list = ['input', 'output', 'target']
+                # Add the waveforms to the tensorboard
+                # print(f'output_waveform.shape: {output_waveform.shape}, target_waveform.shape: {target_waveform.shape}')
+                # print(f'output_waveform[0].shape: {output_waveform[0].shape}, target_waveform[0].shape: {target_waveform[0].shape}')
+                for name, waveform in zip(name_list, [input_waveform, output_waveform[0], target_waveform[0]]):
+                    # print(f'name: {name}, waveform.shape: {waveform.shape}')
+                    self.writer.add_audio(name, waveform.detach().cpu(), sample_rate=48000)
 
             if batch_idx == self.len_epoch:
                 break
@@ -141,17 +148,69 @@ class Trainer(BaseTrainer):
             for batch_idx, (data, target) in enumerate(self.valid_data_loader):
                 data, target = data.to(self.device), target.to(self.device)
 
-                output = self.model(data)
-                loss = self.criterion(output, target)
+                # Initialize the chunk ouptut and losses
+                chunk_outputs = {"mag": [], "phase": []}
+                total_loss = 0
+                chunk_losses = []
+                # Iterate through the chunks and calculate the loss for each chunk
+                for chunk_idx in range(data.size(2)):
+                    # Get current chunk data (and unsqueeze the chunk dimension)
+                    chunk_data = data[:, :, chunk_idx, :, :].unsqueeze(2)
+                    # Get current chunk target (and unsqueeze the chunk dimension)
+                    chunk_target = target[:, :, chunk_idx, :, :].unsqueeze(2)
+                    # Forward pass
+                    chunk_mag, chunk_phase = self.model(chunk_data)
+                    # Calculate the chunk loss
+                    chunk_mag_loss = self.criterion(chunk_mag, chunk_target[:, 0, ...].unsqueeze(1))
+                    chunk_phase_loss = self.criterion(chunk_phase, chunk_target[:, 1, ...].unsqueeze(1))
+                    # Accumulate the chunk loss
+                    chunk_losses.append(chunk_mag_loss + chunk_phase_loss)
+                    # Store the chunk output
+                    chunk_outputs["mag"].append(chunk_mag)
+                    chunk_outputs["phase"].append(chunk_phase)
+                    
+                # Concatenate the outputs along the chunk dimension
+                chunk_outputs["mag"] = torch.cat(chunk_outputs["mag"], dim=2)
+                chunk_outputs["phase"] = torch.cat(chunk_outputs["phase"], dim=2)
+                # Reconstruct the waveform from the concatenated output and target
+                output_waveform = postprocessing.reconstruct_from_stft_chunks(
+                    mag=chunk_outputs["mag"], phase=chunk_outputs["phase"], batch_input=True, crop=True)
+                target_waveform = postprocessing.reconstruct_from_stft_chunks(
+                    mag=target[:, 0, ...].unsqueeze(1), phase=target[:, 1, ...].unsqueeze(1), batch_input=True, crop=True)
+                # Compute the STFT of the output and target waveforms
+                output_mag, output_phase = preprocessing.get_mag_phase(
+                    output_waveform, chunk_wave=False, batch_input=True)
+                target_mag, target_phase = preprocessing.get_mag_phase(
+                    target_waveform, chunk_wave=False, batch_input=True)
+                
+                # Calculate the mag and phase loss
+                mag_loss = self.criterion(output_mag, target_mag)
+                phase_loss = self.criterion(output_phase, target_phase)
+                # Calculate total loss
+                total_loss = torch.stack(chunk_losses).mean() + mag_loss + phase_loss
 
+                # Update the valid metrics
                 self.writer.set_step(
                     (epoch - 1) * len(self.valid_data_loader) + batch_idx, 'valid')
-                self.valid_metrics.update('loss', loss.item())
+                self.valid_metrics.update('loss', total_loss.item())
+                self.valid_metrics.update('mag_loss', mag_loss.item())
+                self.valid_metrics.update('phase_loss', phase_loss.item())
                 for met in self.metric_ftns:
                     self.valid_metrics.update(
-                        met.__name__, met(output, target))
-                self.writer.add_image('input', make_grid(
-                    data.cpu(), nrow=8, normalize=True))
+                        met.__name__, met(output_mag, target_mag))
+                    
+                # Get the input waveform and stft of the output and target waveforms
+                # print(f'data shape: {data.shape}, data[0, ...].shape: {data[0, ...].shape}, data[0, 0, ...].shape: {data[0, 0, ...].shape}')
+                input_waveform = postprocessing.reconstruct_from_stft_chunks(
+                    mag=data[0, 0, ...].unsqueeze(0), phase=data[0, 1, ...].unsqueeze(0), batch_input=False, crop=True)
+                # Name the audio files
+                name_list = ['input', 'output', 'target']
+                # Add the waveforms to the tensorboard
+                # # print(f'output_waveform.shape: {output_waveform.shape}, target_waveform.shape: {target_waveform.shape}')
+                # print(f'output_waveform[0].shape: {output_waveform[0].shape}, target_waveform[0].shape: {target_waveform[0].shape}')
+                for name, waveform in zip(name_list, [input_waveform, output_waveform[0], target_waveform[0]]):
+                    # print(f'name: {name}, waveform.shape: {waveform.shape}')
+                    self.writer.add_audio(name, waveform.detach().cpu().numpy(), sample_rate=48000)
 
         # add histogram of model parameters to the tensorboard
         for name, p in self.model.named_parameters():

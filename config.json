@@ -2,7 +2,7 @@
     "name": "MambaASR",
     "n_gpu": 1,
     "arch": {
-        "type": "ToyUNet",
+        "type": "DualStreamModel",
         "args": {}
     },
     "flac2wav": {

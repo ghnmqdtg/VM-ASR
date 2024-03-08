@@ -15,23 +15,79 @@ except:
     from base.base_model import BaseModel
 
 
-class MambaUNet(BaseModel):
-    def __init__(self, num_classes=10):
+class DualStreamBlock(BaseModel):
+    """
+    Base class for the dual-stream model.
+    """
+
+    def __init__(self, in_channels, out_channels):
         super().__init__()
-        self.conv1 = nn.Conv2d(1, 10, kernel_size=5)
-        self.conv2 = nn.Conv2d(10, 20, kernel_size=5)
-        self.conv2_drop = nn.Dropout2d()
-        self.fc1 = nn.Linear(320, 50)
-        self.fc2 = nn.Linear(50, num_classes)
+        # Stream for magnitude
+        self.mag_conv = nn.Conv2d(
+            in_channels, out_channels, kernel_size=3, padding=1)
+        # Stream for phase
+        self.phase_conv = nn.Conv2d(
+            in_channels, out_channels, kernel_size=3, padding=1)
+        # Set activation function
+        self.activation = nn.ReLU()
+
+    def forward(self, mag, phase):
+        # Stream for magnitude
+        mag = self.activation(self.mag_conv(mag))
+        # Stream for phase
+        phase = self.activation(self.phase_conv(phase))
+
+        # Interaction between streams
+        combined_mag = mag + phase
+        combined_phase = phase + mag
+
+        return combined_mag, combined_phase
+
+
+class DualStreamModel(BaseModel):
+    """
+    Dual-Stream model for learning the magnitude and phase of the image.
+    """
+
+    def __init__(self, in_channels=1, out_channels=1, num_blocks=5):
+        super().__init__()
+        self.in_channels = in_channels
+        self.num_blocks = num_blocks
+        self.out_channels = out_channels
+
+        # Define the dual-stream blocks
+        self.blocks = nn.ModuleList()
+        for i in range(num_blocks):
+            block = DualStreamBlock(in_channels, out_channels)
+            self.blocks.append(block)
+        # Set activation function
+        self.activation = nn.ReLU()
 
     def forward(self, x):
-        x = F.relu(F.max_pool2d(self.conv1(x), 2))
-        x = F.relu(F.max_pool2d(self.conv2_drop(self.conv2(x)), 2))
-        x = x.view(-1, 320)
-        x = F.relu(self.fc1(x))
-        x = F.dropout(x, training=self.training)
-        x = self.fc2(x)
-        return F.log_softmax(x, dim=1)
+        # Clone the input for residual connection
+        residual = x.clone()
+        # Input dimension: (batch_size, mag_(0)or_phase(1), in_channels, H, W)
+        # Get the magnitude and phase
+        mag = x[:, 0, :, :, :]
+        phase = x[:, 1, :, :, :]
+        # Forward pass through the dual-stream blocks
+        for block in self.blocks:
+            mag, phase = block(mag, phase)
+        # Apply LayerNorm and activation function for the output
+        mag = self.activation(mag)
+        phase = self.activation(phase)
+        # Residual connection
+        mag = mag + residual[:, 0, :, :, :]
+        phase = phase + residual[:, 1, :, :, :]
+
+        return mag, phase
+
+
+class MambaUNet(BaseModel):
+    """
+    Dual-Stream model for learning the magnitude and phase of the image.
+    """
+    pass
 
 
 class ToyUNet(BaseModel):
@@ -65,7 +121,8 @@ class ToyUNet(BaseModel):
             nn.Conv2d(channels_down[-1], channels_down[-1],
                       kernel_size=(3, 3), stride=2, padding=1),
             nn.ReLU(inplace=True),
-            nn.Conv2d(channels_up[0], channels_up[0] * scale ** 2, kernel_size=(3, 3), stride=1, padding=1),
+            nn.Conv2d(channels_up[0], channels_up[0] * scale **
+                      2, kernel_size=(3, 3), stride=1, padding=1),
             nn.ReLU(inplace=True),
             nn.PixelShuffle(upscale_factor=scale)
         )
