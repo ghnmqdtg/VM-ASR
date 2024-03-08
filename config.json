@@ -36,7 +36,9 @@
         }
     },
     "loss": "mse_loss",
-    "metrics": [],
+    "metrics": [
+        "log_spectral_distance"
+    ],
     "lr_scheduler": {
         "type": "StepLR",
         "args": {

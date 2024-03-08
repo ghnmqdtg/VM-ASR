@@ -1,10 +1,27 @@
 import torch
+import torch.nn.functional as F
 
+def log_spectral_distance(output_mag, target_mag):
+    """
+    Compute the Log-Spectral Distance (LSD) between the predicted and target waveforms.
 
-def accuracy(output, target):
-    with torch.no_grad():
-        pred = torch.argmax(output, dim=1)
-        assert pred.shape[0] == len(target)
-        correct = 0
-        correct += torch.sum(pred == target).item()
-    return correct / len(target)
+    Args:
+        output_mag (torch.Tensor): The magnitude of the predicted waveform.
+        target_mag (torch.Tensor): The magnitude of the target waveform.
+
+    Returns:
+        torch.Tensor: The LSD value for each example in the batch.
+    """
+    # Add a small epsilon to avoid log of zero
+    epsilon = 1e-8
+    output_mag = torch.clamp(output_mag, min=epsilon)
+    target_mag = torch.clamp(target_mag, min=epsilon)
+
+    # Compute the log-spectral distance
+    log_diff = torch.log10(output_mag) - torch.log10(target_mag)
+    # Mean over frequency bins and then mean over time frames
+    lsd = torch.mean(torch.sqrt(torch.mean(log_diff**2, dim=-1)), dim=-1)
+    # Compute the mean LSD for the whole batch and convert to float
+    lsd = torch.mean(lsd).item()
+
+    return lsd
