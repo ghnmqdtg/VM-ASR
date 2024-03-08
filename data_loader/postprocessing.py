@@ -74,7 +74,8 @@ def reconstruct_from_stft_chunks(mag: torch.Tensor, phase: torch.Tensor, padding
     # Normally, input would be of shape (1 (mono), num_chunks, frequency_bins, frames)
     if not batch_input:
         # Combine magnitude and phase to get the complex STFT
-        complex_stft = mag * torch.exp(1j * phase)
+        # mag is log-magnitude, so we have to apply exp to get the magnitude
+        complex_stft = torch.exp2(mag) * torch.exp(1j * phase)
         # torch.Size([1, 9, 513, 101])
         # Swap the channel 1 and channel 0 and get torch.Size([9, 1, 513, 101])
         complex_stft = complex_stft.permute(1, 0, 2, 3)
@@ -119,7 +120,7 @@ def reconstruct_from_stft_chunks(mag: torch.Tensor, phase: torch.Tensor, padding
             # Print the shape of the chunk data and target
             # print(f'Chunk data shape: {_mag.shape}, Chunk target shape: {_phase.shape}')
             # Combine magnitude and phase to get the complex STFT
-            complex_stft = _mag * torch.exp(1j * _phase)
+            complex_stft = torch.exp2(_mag) * torch.exp(1j * _phase)
             # torch.Size([1, 9, 513, 101])
             # Swap the channel 1 and channel 0 and get torch.Size([9, 1, 513, 101])
             complex_stft = complex_stft.permute(1, 0, 2, 3)
@@ -171,7 +172,7 @@ def reconstruct_from_stft(mag: torch.Tensor, phase: torch.Tensor) -> torch.Tenso
     win_length = 956
     window = torch.hann_window(win_length)
     # Combine magnitude and phase to get the complex STFT
-    complex_stft = mag * torch.exp(1j * phase)
+    complex_stft = torch.exp2(mag) * torch.exp(1j * phase)
     # Apply iSTFT
     waveform = torch.istft(
         complex_stft,

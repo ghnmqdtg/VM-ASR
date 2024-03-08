@@ -8,10 +8,10 @@ from typing import Tuple
 import matplotlib.pyplot as plt
 from scipy.signal import cheby1
 from scipy.signal import sosfiltfilt
-from data_loader.postprocessing import concatenate_wave_chunks, reconstruct_from_stft, reconstruct_from_stft_chunks
 
 try:
     from utils import ensure_dir
+    from data_loader.postprocessing import concatenate_wave_chunks, reconstruct_from_stft, reconstruct_from_stft_chunks
 except:
     import os
     import sys
@@ -20,6 +20,8 @@ except:
     project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     sys.path.append(project_root)
     from utils import ensure_dir
+    from data_loader.postprocessing import concatenate_wave_chunks, reconstruct_from_stft, reconstruct_from_stft_chunks
+    
 
 
 def crop_or_pad_waveform(waveform: torch.Tensor) -> torch.Tensor:
