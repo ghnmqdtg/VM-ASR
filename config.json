@@ -2,7 +2,7 @@
     "name": "MambaASR",
     "n_gpu": 1,
     "arch": {
-        "type": "DualStreamUNet",
+        "type": "DualStreamInteractiveUNet",
         "args": {}
     },
     "flac2wav": {
@@ -14,7 +14,7 @@
         "type": "VCTKDataLoader",
         "args": {
             "data_dir": "data/",
-            "batch_size": 64,
+            "batch_size": 32,
             "shuffle": true,
             "validation_split": 0.1,
             "num_workers": 2,
