@@ -75,3 +75,176 @@ class MetricTracker:
 
     def result(self):
         return dict(self._data.average)
+
+
+def fig2np(fig):
+    """
+    Convert a Matplotlib figure to a numpy array with RGBA channels
+    """
+    data = np.fromstring(fig.canvas.tostring_rgb(), dtype=np.uint8, sep="")
+    data = data.reshape(fig.canvas.get_width_height()[::-1] + (3,))
+    return data
+
+
+def plot_waveform(names, waveforms, title="Waveform", xlim=None, ylim=None):
+    """
+    Plots the waveform using matplotlib
+
+    Args:
+        names (list): List of names for the waveforms
+        waveforms (Tensor): Waveforms to plot
+        sample_rate (int): Sample rate of audio signal
+        title (str): Title of the plot
+        xlim (list): Limits for the x-axis
+        ylim (list): Limits for the y-axis
+
+    Returns:
+        np.ndarray: Waveform plot
+    """
+    # Set the number of subplots
+    n_plots = len(waveforms)
+    # Create a subplots figure with n_plots rows
+    fig, axs = plt.subplots(n_plots, 1, figsize=(10, 8))
+    # Iterate over each waveform
+    for i, (name, waveform) in enumerate(zip(names, waveforms)):
+        waveform = waveform.t().detach().cpu().numpy()
+        # Set the title of the plot
+        axs[i].set_title(name)
+        # Plot the waveform
+        axs[i].plot(waveform)
+        # Set the x-axis label
+        axs[i].set_xlabel("Samples")
+        # Set the y-axis label
+        axs[i].set_ylabel("Amplitude")
+        # Set the x-axis limits
+        if xlim:
+            axs[i].set_xlim(xlim)
+        # Set the y-axis limits
+        if ylim:
+            axs[i].set_ylim(ylim)
+    # Set the title of the plot
+    plt.suptitle(title)
+    # Set layout to tight
+    plt.tight_layout()
+    # Convert fig to numpy array
+    fig.canvas.draw()
+    plot = fig2np(fig)
+    # Close the figure to free memory
+    plt.close()
+    # Return the plot
+    return plot
+
+
+def plot_spectrogram(names, waveforms, title="Spectrogram"):
+    """
+    Plots the spectrogram using matplotlib
+
+    Args:
+        names (list): List of names for the waveforms
+        waveforms (Tensor): Waveforms to plot
+        sample_rate (int): Sample rate of audio signal
+        title (str): Title of the plot
+
+    Returns:
+        np.ndarray: Spectrogram plot
+    """
+    # Set STFT parameters
+    n_fft = 1022
+    hop_length = 478
+    win_length = 956
+    window = torch.hann_window(win_length).to(waveforms[0].device)
+    # Set the number of subplots
+    n_plots = len(waveforms)
+    # Create a subplots figure with n_plots rows
+    fig, axs = plt.subplots(n_plots, 1, figsize=(10, 8))
+    # Iterate over each waveform
+    for i, (name, waveform) in enumerate(zip(names, waveforms)):
+        # Set the title of the plot
+        axs[i].set_title(name)
+        # Plot the waveform (STFT)
+        # axs[i].imshow(
+        #     torch.log2(
+        #         torch.abs(
+        #             torch.stft(
+        #                 waveform,
+        #                 n_fft=n_fft,
+        #                 hop_length=hop_length,
+        #                 win_length=win_length,
+        #                 window=window,
+        #                 return_complex=True,
+        #             )
+        #         )
+        #         + 1e-8
+        #     )
+        #     .squeeze(0)
+        #     .detach()
+        #     .cpu()
+        #     .numpy(),
+        #     aspect="auto",
+        #     origin="lower",
+        # )
+        # Plot the waveform (Spectrogram)
+        # TODO: Set sample rate in config
+        frequencies, times, spectrogram = signal.spectrogram(
+            waveform.squeeze().detach().cpu().numpy(), fs=48000
+        )
+        axs[i].pcolormesh(times, frequencies, 10 * np.log10(spectrogram))
+        # Set the x-axis label
+        axs[i].set_xlabel("Time")
+        # Set the y-axis label
+        axs[i].set_ylabel("Frequency")
+    # Set the title of the plot
+    plt.suptitle(title)
+    # Set layout to tight
+    plt.tight_layout()
+    # Convert fig to numpy array
+    fig.canvas.draw()
+    plot = fig2np(fig)
+    # Close the figure to free memory
+    plt.close()
+    # Return the plot
+    return plot
+
+
+# TODO: Set sample rate in config
+def log_audio(writer, name_list, waveforms, sample_rate=48000):
+    for name, waveform in zip(name_list, waveforms):
+        writer.add_audio(name, waveform, sample_rate=sample_rate)
+
+
+def log_waveform(writer, name_list, waveforms):
+    """
+    Plot and log waveforms to tensorboard in a figure
+
+    Args:
+        writer (TensorboardWriter): Tensorboard writer object
+        name_list (list): List of names for the waveforms
+        waveforms (list): List of waveforms to plot
+        sample_rate (int): Sample rate of audio signal
+
+    Returns:
+        None
+    """
+    # Call plot_waveform for each waveform
+    wave_plot = plot_waveform(names=name_list, waveforms=waveforms)
+    # Log the waveform plot
+    writer.add_image("Waveform", wave_plot, dataformats="HWC")
+
+
+def log_spectrogram(writer, name_list, specs):
+    """
+    Plot and log spectrograms to tensorboard in a figure
+
+    Args:
+        writer (TensorboardWriter): Tensorboard writer object
+        name_list (list): List of names for the waveforms
+        waveforms (list): List of waveforms to plot
+        sample_rate (int): Sample rate of audio signal
+
+    Returns:
+        None
+    """
+    # Call plot_spectrogram for each waveform
+    spec_plot = plot_spectrogram(names=name_list, waveforms=specs)
+    # Log the spectrogram plot
+    writer.add_image("Spectrogram", spec_plot, dataformats="HWC")

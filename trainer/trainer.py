@@ -1,7 +1,7 @@
 import numpy as np
 import torch
 from base import BaseTrainer
-from utils import inf_loop, MetricTracker
+from utils import inf_loop, MetricTracker, log_audio, log_waveform, log_spectrogram
 from tqdm import tqdm
 from data_loader import preprocessing, postprocessing
 
@@ -169,14 +169,14 @@ class Trainer(BaseTrainer):
                     )
                     # Name the audio files
                     name_list = ["input", "output", "target"]
+                    # Store the waveforms
+                    waveforms = [input_waveform, output_waveform[0], target_waveform[0]]
+                    # Add audio to the tensorboard
+                    log_audio(self.writer, name_list, waveforms, 48000)
                     # Add the waveforms to the tensorboard
-                    for name, waveform in zip(
-                        name_list,
-                        [input_waveform, output_waveform[0], target_waveform[0]],
-                    ):
-                        self.writer.add_audio(
-                            name, waveform.detach().cpu(), sample_rate=48000
-                        )
+                    log_waveform(self.writer, name_list, waveforms)
+                    # Add the spectrograms to the tensorboard
+                    log_spectrogram(self.writer, name_list, waveforms)
 
                 if batch_idx == self.len_epoch:
                     break
@@ -221,10 +221,10 @@ class Trainer(BaseTrainer):
                     # Forward pass
                     chunk_mag, chunk_phase = self.model(chunk_data)
                     # Calculate the chunk loss
-                    chunk_mag_loss = self.criterion(
-                        chunk_mag, chunk_target[:, 0, ...].unsqueeze(1))
+                    chunk_mag_loss = self.criterion(chunk_mag, chunk_target[:, 0, ...])
                     chunk_phase_loss = self.criterion(
-                        chunk_phase, chunk_target[:, 1, ...].unsqueeze(1))
+                        chunk_phase, chunk_target[:, 1, ...]
+                    )
                     # Accumulate the chunk loss
                     chunk_losses.append(chunk_mag_loss + chunk_phase_loss)
                     # Store the chunk output
@@ -232,58 +232,76 @@ class Trainer(BaseTrainer):
                     chunk_outputs["phase"].append(chunk_phase)
 
                 # Concatenate the outputs along the chunk dimension
-                chunk_outputs["mag"] = torch.cat(
-                    chunk_outputs["mag"], dim=1).unsqueeze(1)
+                chunk_outputs["mag"] = torch.cat(chunk_outputs["mag"], dim=1).unsqueeze(
+                    1
+                )
                 chunk_outputs["phase"] = torch.cat(
-                    chunk_outputs["phase"], dim=1).unsqueeze(1)
+                    chunk_outputs["phase"], dim=1
+                ).unsqueeze(1)
                 # Reconstruct the waveform from the concatenated output and target
                 output_waveform = postprocessing.reconstruct_from_stft_chunks(
-                    mag=chunk_outputs["mag"], phase=chunk_outputs["phase"], batch_input=True, crop=True)
+                    mag=chunk_outputs["mag"],
+                    phase=chunk_outputs["phase"],
+                    batch_input=True,
+                    crop=True,
+                )
                 target_waveform = postprocessing.reconstruct_from_stft_chunks(
-                    mag=target[:, 0, ...].unsqueeze(1), phase=target[:, 1, ...].unsqueeze(1), batch_input=True, crop=True)
+                    mag=target[:, 0, ...].unsqueeze(1),
+                    phase=target[:, 1, ...].unsqueeze(1),
+                    batch_input=True,
+                    crop=True,
+                )
                 # Compute the STFT of the output and target waveforms
                 output_mag, output_phase = preprocessing.get_mag_phase(
-                    output_waveform, chunk_wave=False, batch_input=True)
+                    output_waveform, chunk_wave=False, batch_input=True
+                )
                 target_mag, target_phase = preprocessing.get_mag_phase(
-                    target_waveform, chunk_wave=False, batch_input=True)
+                    target_waveform, chunk_wave=False, batch_input=True
+                )
 
                 # Calculate the mag and phase loss
                 mag_loss = self.criterion(output_mag, target_mag)
                 phase_loss = self.criterion(output_phase, target_phase)
                 # Calculate total loss
-                total_loss = torch.stack(
-                    chunk_losses).mean() + mag_loss + phase_loss
+                total_loss = torch.stack(chunk_losses).mean() + mag_loss + phase_loss
 
                 # Update step for the tensorboard
                 self.writer.set_step(
-                    (epoch - 1) * len(self.valid_data_loader) + batch_idx, 'valid')
+                    (epoch - 1) * len(self.valid_data_loader) + batch_idx, "valid"
+                )
                 # Update the valid metrics
-                self.valid_metrics.update('loss', total_loss.item())
-                self.valid_metrics.update('mag_loss', mag_loss.item())
-                self.valid_metrics.update('phase_loss', phase_loss.item())
+                self.valid_metrics.update("loss", total_loss.item())
+                self.valid_metrics.update("mag_loss", mag_loss.item())
+                self.valid_metrics.update("phase_loss", phase_loss.item())
                 for met in self.metric_ftns:
-                    self.valid_metrics.update(
-                        met.__name__, met(output_mag, target_mag))
+                    self.valid_metrics.update(met.__name__, met(output_mag, target_mag))
 
                 # Get the input waveform and stft of the output and target waveforms
-                # print(f'data shape: {data.shape}, data[0, ...].shape: {data[0, ...].shape}, data[0, 0, ...].shape: {data[0, 0, ...].shape}')
                 input_waveform = postprocessing.reconstruct_from_stft_chunks(
-                    mag=data[0, 0, ...].unsqueeze(0), phase=data[0, 1, ...].unsqueeze(0), batch_input=False, crop=True)
+                    mag=data[0, 0, ...].unsqueeze(0),
+                    phase=data[0, 1, ...].unsqueeze(0),
+                    batch_input=False,
+                    crop=True,
+                )
                 # Name the audio files
-                name_list = ['input', 'output', 'target']
+                name_list = ["input", "output", "target"]
+                # Store the waveforms
+                waveforms = [input_waveform, output_waveform[0], target_waveform[0]]
+                # Add audio to the tensorboard
+                log_audio(self.writer, name_list, waveforms, 48000)
                 # Add the waveforms to the tensorboard
-                for name, waveform in zip(name_list, [input_waveform, output_waveform[0], target_waveform[0]]):
-                    self.writer.add_audio(
-                        name, waveform.detach().cpu().numpy(), sample_rate=48000)
+                log_waveform(self.writer, name_list, waveforms)
+                # Add the spectrograms to the tensorboard
+                log_spectrogram(self.writer, name_list, waveforms)
 
         # add histogram of model parameters to the tensorboard
         for name, p in self.model.named_parameters():
-            self.writer.add_histogram(name, p, bins='auto')
+            self.writer.add_histogram(name, p, bins="auto")
         return self.valid_metrics.result()
 
     def _progress(self, batch_idx):
-        base = '[{}/{} ({:.0f}%)]'
-        if hasattr(self.data_loader, 'n_samples'):
+        base = "[{}/{} ({:.0f}%)]"
+        if hasattr(self.data_loader, "n_samples"):
             current = batch_idx * self.data_loader.batch_size
             total = self.data_loader.n_samples
         else:
