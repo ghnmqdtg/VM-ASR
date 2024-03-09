@@ -14,10 +14,10 @@
         "type": "VCTKDataLoader",
         "args": {
             "data_dir": "data/",
-            "batch_size": 32,
+            "batch_size": 24,
             "shuffle": true,
-            "validation_split": 0.1,
-            "num_workers": 2,
+            "validation_split": 0.2,
+            "num_workers": 6,
             "random_resample": [
                 8000,
                 12000,
@@ -37,17 +37,18 @@
     },
     "loss": "mse_loss",
     "metrics": [
-        "log_spectral_distance"
+        "log_spectral_distance",
+        "psnr"
     ],
     "lr_scheduler": {
         "type": "StepLR",
         "args": {
-            "step_size": 50,
+            "step_size": 25,
             "gamma": 0.1
         }
     },
     "trainer": {
-        "epochs": 5,
+        "epochs": 50,
         "save_dir": "saved/",
         "save_period": 1,
         "verbosity": 2,

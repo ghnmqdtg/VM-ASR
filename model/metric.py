@@ -2,6 +2,25 @@ import torch
 import torch.nn.functional as F
 
 
+def psnr(output, target, max_val=32767):
+    """
+    Compute the Peak Signal-to-Noise Ratio (PSNR) between the predicted and target waveforms.
+
+    Args:
+        output (torch.Tensor): The predicted waveform.
+        target (torch.Tensor): The target waveform.
+        max_val (float): The maximum value of the input waveforms (e.g., 32767 for 16-bit audio)
+
+    Returns:
+        torch.Tensor: The PSNR value for each example in the batch.
+    """
+    mse = F.mse_loss(output, target)
+    psnr = 20 * torch.log10(max_val / torch.sqrt(mse))
+    # Compute the mean PSNR for the whole batch and convert to float
+    psnr = psnr.item()
+    return psnr
+
+
 def log_spectral_distance(output_mag, target_mag):
     """
     Compute the Log-Spectral Distance (LSD) between the predicted and target waveforms.

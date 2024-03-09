@@ -148,7 +148,6 @@ class Trainer(BaseTrainer):
                 self.train_metrics.update("mag_loss", mag_loss.item())
                 self.train_metrics.update("phase_loss", phase_loss.item())
                 for met in self.metric_ftns:
-                    # Calculate the loss for the reconstructed mag
                     self.train_metrics.update(met.__name__, met(output_mag, target_mag))
 
                 # Update the progress bar
@@ -181,6 +180,7 @@ class Trainer(BaseTrainer):
                     log_spectrogram(self.writer, name_list, waveforms, stft=True)
 
                 if batch_idx == self.len_epoch:
+                    # Stop the epoch if the number of batches is reached
                     break
 
             # Add histogram of model parameters to the tensorboard
@@ -192,6 +192,10 @@ class Trainer(BaseTrainer):
             # Step the learning rate scheduler after each epoch
             if self.lr_scheduler is not None:
                 self.lr_scheduler.step()
+                # Log the learning rate to the tensorboard
+                self.writer.add_scalar(
+                    "learning_rate", self.lr_scheduler.get_last_lr()[0]
+                )
 
         # Return the log
         return log
