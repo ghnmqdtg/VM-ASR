@@ -2,7 +2,9 @@ import torch
 from data_loader import preprocessing
 
 
-def concatenate_wave_chunks(chunks: torch.Tensor, chunk_size: int, overlap: int, padding_length) -> torch.Tensor:
+def concatenate_wave_chunks(
+    chunks: torch.Tensor, chunk_size: int, overlap: int, padding_length
+) -> torch.Tensor:
     """
     Concatenate the chunks into a single waveform by averaging the overlap regions and removing the padding of the last chunk.
 
@@ -20,8 +22,9 @@ def concatenate_wave_chunks(chunks: torch.Tensor, chunk_size: int, overlap: int,
         return torch.tensor([])
     # Adjust total_length calculation
     if len(chunks) > 1:
-        total_length = chunk_size + \
-            (len(chunks) - 1) * (chunk_size - overlap) - padding_length
+        total_length = (
+            chunk_size + (len(chunks) - 1) * (chunk_size - overlap) - padding_length
+        )
     else:
         total_length = chunk_size - padding_length
 
@@ -33,9 +36,12 @@ def concatenate_wave_chunks(chunks: torch.Tensor, chunk_size: int, overlap: int,
         # Handle overlap by averaging
         if overlap > 0:
             averaged_overlap = (
-                concatenated[:, -overlap:] + curr_chunk[:, :overlap]) / 2
+                concatenated[:, -overlap:] + curr_chunk[:, :overlap]
+            ) / 2
             concatenated = torch.cat(
-                [concatenated[:, :-overlap], averaged_overlap, curr_chunk[:, overlap:]], dim=-1)
+                [concatenated[:, :-overlap], averaged_overlap, curr_chunk[:, overlap:]],
+                dim=-1,
+            )
         else:
             concatenated = torch.cat([concatenated, curr_chunk], dim=-1)
 
@@ -49,7 +55,13 @@ def concatenate_wave_chunks(chunks: torch.Tensor, chunk_size: int, overlap: int,
     return concatenated
 
 
-def reconstruct_from_stft_chunks(mag: torch.Tensor, phase: torch.Tensor, padding_length: int = 0, batch_input: bool = False, crop: bool = True) -> torch.Tensor:
+def reconstruct_from_stft_chunks(
+    mag: torch.Tensor,
+    phase: torch.Tensor,
+    padding_length: int = 0,
+    batch_input: bool = False,
+    crop: bool = True,
+) -> torch.Tensor:
     """
     Reconstruct the waveform from chunks of magnitude and phase spectrograms.
 
@@ -93,7 +105,7 @@ def reconstruct_from_stft_chunks(mag: torch.Tensor, phase: torch.Tensor, padding
                 n_fft=n_fft,
                 hop_length=hop_length,
                 win_length=win_length,
-                window=window
+                window=window,
             )
 
             # Append the waveform chunk to the list
@@ -101,8 +113,9 @@ def reconstruct_from_stft_chunks(mag: torch.Tensor, phase: torch.Tensor, padding
 
         # Concatenate chunks
         waveform = concatenate_wave_chunks(
-            waveform_chunks, chunk_size, overlap, padding_length)
-        
+            waveform_chunks, chunk_size, overlap, padding_length
+        )
+
         # Crop the waveform to the original length
         if crop:
             waveform = preprocessing.crop_or_pad_waveform(waveform)
@@ -138,7 +151,7 @@ def reconstruct_from_stft_chunks(mag: torch.Tensor, phase: torch.Tensor, padding
                     n_fft=n_fft,
                     hop_length=hop_length,
                     win_length=win_length,
-                    window=window
+                    window=window,
                 )
 
                 # Append the waveform chunk to the list
@@ -146,12 +159,13 @@ def reconstruct_from_stft_chunks(mag: torch.Tensor, phase: torch.Tensor, padding
 
             # Concatenate chunks
             waveform = concatenate_wave_chunks(
-                waveform_chunks, chunk_size, overlap, padding_length)
-            
+                waveform_chunks, chunk_size, overlap, padding_length
+            )
+
             # Crop the waveform to the original length
             if crop:
                 waveform = preprocessing.crop_or_pad_waveform(waveform)
-            
+
             # Append the waveform to the batch
             waveform_batch.append(waveform)
 
@@ -179,7 +193,7 @@ def reconstruct_from_stft(mag: torch.Tensor, phase: torch.Tensor) -> torch.Tenso
         n_fft=n_fft,
         hop_length=hop_length,
         win_length=win_length,
-        window=window
+        window=window,
     )
 
     return waveform

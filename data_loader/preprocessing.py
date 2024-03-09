@@ -11,42 +11,49 @@ from scipy.signal import sosfiltfilt
 
 try:
     from utils import ensure_dir
-    from data_loader.postprocessing import concatenate_wave_chunks, reconstruct_from_stft, reconstruct_from_stft_chunks
+    from data_loader.postprocessing import (
+        concatenate_wave_chunks,
+        reconstruct_from_stft,
+        reconstruct_from_stft_chunks,
+    )
 except:
     import os
     import sys
+
     # Used for debugging data_loader
     # Add the project root directory to the Python path
     project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     sys.path.append(project_root)
     from utils import ensure_dir
-    from data_loader.postprocessing import concatenate_wave_chunks, reconstruct_from_stft, reconstruct_from_stft_chunks
-    
+    from data_loader.postprocessing import (
+        concatenate_wave_chunks,
+        reconstruct_from_stft,
+        reconstruct_from_stft_chunks,
+    )
 
 
 def crop_or_pad_waveform(waveform: torch.Tensor) -> torch.Tensor:
-        # TODO: Set the length from the config file
-        length = 121890
-        # If the waveform is shorter than the required length, pad it
-        if waveform.shape[1] < length:
-            pad_length = length - waveform.shape[1]
-            # If the phase is training or validation, pad the waveform randomly
-            # If the phase is testing, pad the waveform from the beginning
-            r = random.randint(0, pad_length)
-            # Pad the waveform with zeros to the left and right
-            # Left: random length between 0 and pad_length, Right: pad_length - r
-            waveform = F.pad(waveform, (r, pad_length - r),
-                             mode='constant', value=0)
-            # print(f"Pad length: {pad_length}, Random length: {r}")
-        else:
-            # If the waveform is longer than the required length, crop it randomly from the beginning
-            start = random.randint(0, waveform.shape[1] - length)
-            # Crop the waveform from start to start + length (fixed length)
-            waveform = waveform[:, start:start + length]
-            # print(f"Crop to length: {length}, Start: {start}")
+    # TODO: Set the length from the config file
+    length = 121890
+    # If the waveform is shorter than the required length, pad it
+    if waveform.shape[1] < length:
+        pad_length = length - waveform.shape[1]
+        # If the phase is training or validation, pad the waveform randomly
+        # If the phase is testing, pad the waveform from the beginning
+        r = random.randint(0, pad_length)
+        # Pad the waveform with zeros to the left and right
+        # Left: random length between 0 and pad_length, Right: pad_length - r
+        waveform = F.pad(waveform, (r, pad_length - r), mode="constant", value=0)
+        # print(f"Pad length: {pad_length}, Random length: {r}")
+    else:
+        # If the waveform is longer than the required length, crop it randomly from the beginning
+        start = random.randint(0, waveform.shape[1] - length)
+        # Crop the waveform from start to start + length (fixed length)
+        waveform = waveform[:, start : start + length]
+        # print(f"Crop to length: {length}, Start: {start}")
 
-        # print(f'New shape of padded or cropped waveform: {waveform.shape}')
-        return waveform
+    # print(f'New shape of padded or cropped waveform: {waveform.shape}')
+    return waveform
 
 
 def low_pass_filter(waveform: torch.Tensor, sr_org: int, sr_new: int) -> torch.Tensor:
@@ -68,7 +75,7 @@ def low_pass_filter(waveform: torch.Tensor, sr_org: int, sr_new: int) -> torch.T
     hi = highcut / nyquist
     # TODO: Set filter funtion as a parameter
     # Setup the low pass filter: chebyshev type 1
-    sos = cheby1(8, 0.1, hi, btype='lowpass', output='sos')
+    sos = cheby1(8, 0.1, hi, btype="lowpass", output="sos")
     # Apply the filter
     waveform = sosfiltfilt(sos, waveform)
     # Convert the waveform to tensor
@@ -89,8 +96,7 @@ def resample_audio(waveform: torch.Tensor, sr_org: int, sr_new: int) -> torch.Te
     Returns:
         torch.Tensor: The downsampled waveform
     """
-    waveform_downsampled = T.Resample(
-        sr_org, sr_new)(waveform)
+    waveform_downsampled = T.Resample(sr_org, sr_new)(waveform)
     return waveform_downsampled
 
 
@@ -114,7 +120,12 @@ def low_sr_simulation(waveform: torch.Tensor, sr_org: int, sr_new: int) -> torch
     return waveform_lr
 
 
-def cut2chunks(waveform: torch.Tensor, chunk_size: int, overlap: int, return_padding_length: bool = False) -> torch.Tensor | tuple[torch.Tensor, int]:
+def cut2chunks(
+    waveform: torch.Tensor,
+    chunk_size: int,
+    overlap: int,
+    return_padding_length: bool = False,
+) -> torch.Tensor | tuple[torch.Tensor, int]:
     """
     Cut the waveform into chunks with the specified size and overlap.
 
@@ -139,7 +150,7 @@ def cut2chunks(waveform: torch.Tensor, chunk_size: int, overlap: int, return_pad
     padding_length = 0
     # Cut the waveform into chunks, finish when the last chunk is smaller than chunk_size
     while start + chunk_size <= length:
-        chunks.append(waveform[..., start:start + chunk_size])
+        chunks.append(waveform[..., start : start + chunk_size])
         start += step_size
 
     # Pad the last chunk with zeros
@@ -148,7 +159,8 @@ def cut2chunks(waveform: torch.Tensor, chunk_size: int, overlap: int, return_pad
         # If padding is required, pad the last chunk to the chunk_size
         padding_length = chunk_size - last_chunk.size(-1)
         last_chunk = torch.nn.functional.pad(
-            last_chunk, (0, padding_length), 'constant', 0)
+            last_chunk, (0, padding_length), "constant", 0
+        )
         chunks.append(last_chunk)
 
     # print(
@@ -160,7 +172,13 @@ def cut2chunks(waveform: torch.Tensor, chunk_size: int, overlap: int, return_pad
         return torch.stack(chunks)
 
 
-def low_sr_simulation_pipeline(waveform: torch.Tensor, sr_org: int, sr_new: int | list[int], chunk_size: int, overlap: int) -> list[torch.Tensor]:
+def low_sr_simulation_pipeline(
+    waveform: torch.Tensor,
+    sr_org: int,
+    sr_new: int | list[int],
+    chunk_size: int,
+    overlap: int,
+) -> list[torch.Tensor]:
     """
     Apply the low sample rate simulation pipeline to the waveform
 
@@ -208,16 +226,18 @@ def plot_all(waveform: torch.Tensor, sample_rate: int, filename: str) -> None:
     plt.plot(waveform.t().numpy())
     plt.title("Waveform")
     plt.subplot(1, 3, 2)
-    plt.imshow(mag.log2().numpy().squeeze(0), aspect='auto', origin='lower')
+    plt.imshow(mag.numpy().squeeze(0), aspect="auto", origin="lower")
     plt.title("Magnitude")
     plt.subplot(1, 3, 3)
-    plt.imshow(phase.numpy().squeeze(0), aspect='auto', origin='lower')
+    plt.imshow(phase.numpy().squeeze(0), aspect="auto", origin="lower")
     plt.title("Phase")
     plt.savefig(filename)
     plt.close()
 
 
-def get_mag_phase(waveform: torch.Tensor, chunk_wave: bool = True, batch_input: bool = False) -> Tuple[torch.Tensor, torch.Tensor]:
+def get_mag_phase(
+    waveform: torch.Tensor, chunk_wave: bool = True, batch_input: bool = False
+) -> Tuple[torch.Tensor, torch.Tensor]:
     """
     Apply short time Fourier transform to the waveform and return the magnitude and phase
 
@@ -244,8 +264,14 @@ def get_mag_phase(waveform: torch.Tensor, chunk_wave: bool = True, batch_input: 
 
     if not batch_input:
         # Apply short time Fourier transform to the waveform
-        spec = torch.stft(waveform, n_fft=n_fft, hop_length=hop_length,
-                        win_length=win_length, window=window, return_complex=True)
+        spec = torch.stft(
+            waveform,
+            n_fft=n_fft,
+            hop_length=hop_length,
+            win_length=win_length,
+            window=window,
+            return_complex=True,
+        )
         # Magnitude is calculated as the absolute value, and log2 is applied to compress the dynamic range
         mag = torch.log2(torch.abs(spec) + 1e-8)
         phase = torch.angle(spec)
@@ -258,8 +284,14 @@ def get_mag_phase(waveform: torch.Tensor, chunk_wave: bool = True, batch_input: 
         phases = []
         for i in range(waveform.size(0)):
             # Apply short time Fourier transform to the waveform
-            spec = torch.stft(waveform[i], n_fft=n_fft, hop_length=hop_length,
-                            win_length=win_length, window=window, return_complex=True)
+            spec = torch.stft(
+                waveform[i],
+                n_fft=n_fft,
+                hop_length=hop_length,
+                win_length=win_length,
+                window=window,
+                return_complex=True,
+            )
             # Magnitude is calculated as the absolute value, and log2 is applied to compress the dynamic range
             mag = torch.log2(torch.abs(spec) + 1e-8)
             phase = torch.angle(spec)
@@ -274,8 +306,7 @@ def get_mag_phase(waveform: torch.Tensor, chunk_wave: bool = True, batch_input: 
         return mags, phases
 
 
-
-if __name__ == '__main__':
+if __name__ == "__main__":
     # Test the toy_load function
     filepath = "./data/VCTK-Corpus-0.92/wav48_silence_trimmed_wav/p225/p225_001.wav"
     # Make sure the output folder exists
@@ -300,26 +331,32 @@ if __name__ == '__main__':
     waveform_upsampled = resample_audio(waveform_downsampled, sr_new, sr_org)
     # Cut the waveform into chunks
     chunks, padding_length = cut2chunks(
-        waveform_upsampled, chunk_size, overlap, return_padding_length=True)
+        waveform_upsampled, chunk_size, overlap, return_padding_length=True
+    )
     timestr = time.strftime("%Y%m%d-%H%M%S")
     # Plot the waveform, magnitude and phase
-    plot_all(waveform_upsampled, sr_new,
-             f"./output/dev/data_preprocessing/lr_simulation_{sr_new}_{timestr}.png")
+    plot_all(
+        waveform_upsampled,
+        sr_new,
+        f"./output/dev/data_preprocessing/lr_simulation_{sr_new}_{timestr}.png",
+    )
     # # Save the chunks to the output folder
     # for i, chunk in enumerate(chunks):
     #     torchaudio.save(
     #         f"./output/dev/data_preprocessing/chunk_{timestr}_{i}_{sr_new}.wav", chunk, sr_org)
-    print(
-        f"Processed {len(chunks)} chunks from {filepath} at {sr_new} Hz sample rate")
+    print(f"Processed {len(chunks)} chunks from {filepath} at {sr_new} Hz sample rate")
 
     # Reconstruct the waveform from the chunks
     waveform_reconstructed = concatenate_wave_chunks(
-        chunks, chunk_size, overlap, padding_length)
+        chunks, chunk_size, overlap, padding_length
+    )
 
     # Save the reconstructed waveform
     torchaudio.save(
-        f"./output/dev/data_preprocessing/reconstructed_wave_chunks_{timestr}_{sr_new}.wav", waveform_reconstructed, sr_org)
-
+        f"./output/dev/data_preprocessing/reconstructed_wave_chunks_{timestr}_{sr_new}.wav",
+        waveform_reconstructed,
+        sr_org,
+    )
 
     # Get the magnitude and phase of the full waveform
     mag, phase = get_mag_phase(waveform, chunk_wave=False)
@@ -329,8 +366,10 @@ if __name__ == '__main__':
     waveform_reconstructed_stft = reconstruct_from_stft(mag, phase)
     # Save the reconstructed waveform
     torchaudio.save(
-        f"./output/dev/data_preprocessing/reconstructed_stft_full_{timestr}_{sr_new}.wav", waveform_reconstructed_stft, sr_org)
-
+        f"./output/dev/data_preprocessing/reconstructed_stft_full_{timestr}_{sr_new}.wav",
+        waveform_reconstructed_stft,
+        sr_org,
+    )
 
     # FIX: Chunking -> STFT -> Concatenate -> iSTFT will cause high frequency peak artifacts
     # Get the magnitude and phase of the chunks
@@ -350,7 +389,11 @@ if __name__ == '__main__':
 
     # Reconstruct the waveform from the magnitude and phase
     waveform_reconstructed_stft = reconstruct_from_stft_chunks(
-        mag, phase, padding_length)
+        mag, phase, padding_length
+    )
     # Save the reconstructed waveform
     torchaudio.save(
-        f"./output/dev/data_preprocessing/reconstructed_stft_chunks_{timestr}_{sr_new}.wav", waveform_reconstructed_stft, sr_org)
+        f"./output/dev/data_preprocessing/reconstructed_stft_chunks_{timestr}_{sr_new}.wav",
+        waveform_reconstructed_stft,
+        sr_org,
+    )

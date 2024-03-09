@@ -1,6 +1,7 @@
 import torch
 import torch.nn.functional as F
 
+
 def log_spectral_distance(output_mag, target_mag):
     """
     Compute the Log-Spectral Distance (LSD) between the predicted and target waveforms.

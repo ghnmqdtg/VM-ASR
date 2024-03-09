@@ -27,19 +27,31 @@ class VCTKDataLoader(BaseDataLoader):
     VCTK_092 data loading
     """
 
-    def __init__(self, data_dir, batch_size, shuffle=True, validation_split=0.0, num_workers=1, training=True, random_resample=[8000], **kwargs):
+    def __init__(
+        self,
+        data_dir,
+        batch_size,
+        shuffle=True,
+        validation_split=0.0,
+        num_workers=1,
+        training=True,
+        random_resample=[8000],
+        **kwargs,
+    ):
         # Set up data directory
         self.data_dir = data_dir
         self.random_resample = random_resample
         # Download VCTK_092 dataset
         # The data returns a tuple of the form: waveform, sample rate, transcript, speaker id and utterance id
         self.dataset = CustomVCTK_092(
-            root=self.data_dir, random_resample=self.random_resample)
+            root=self.data_dir, random_resample=self.random_resample
+        )
         # Print the total number of samples
         print(f"Total number of samples: {len(self.dataset)}")
         # Set up the data loader
-        super().__init__(self.dataset, batch_size, shuffle,
-                         validation_split, num_workers)
+        super().__init__(
+            self.dataset, batch_size, shuffle, validation_split, num_workers
+        )
 
 
 class CustomVCTK_092(datasets.VCTK_092):
@@ -67,7 +79,8 @@ class CustomVCTK_092(datasets.VCTK_092):
         # Check if the trimmed wav files exist
         if not os.path.isdir(self._audio_dir):
             raise RuntimeError(
-                "Dataset not found. Please run data/trim_flac2wav.py to download and trim the silence first.")
+                "Dataset not found. Please run data/trim_flac2wav.py to download and trim the silence first."
+            )
 
         self.sample_ids_file = os.path.join(self._path, "sample_ids.json")
 
@@ -93,7 +106,9 @@ class CustomVCTK_092(datasets.VCTK_092):
         # Get _sample_ids
         for speaker_id in self._speaker_ids:
             utterance_dir = os.path.join(self._txt_dir, speaker_id)
-            for utterance_file in sorted(f for f in os.listdir(utterance_dir) if f.endswith(".txt")):
+            for utterance_file in sorted(
+                f for f in os.listdir(utterance_dir) if f.endswith(".txt")
+            ):
                 utterance_id = os.path.splitext(utterance_file)[0]
                 # Check if the audio file exists, the txt might not have the corresponding audio file
                 audio_path = os.path.join(
@@ -106,20 +121,24 @@ class CustomVCTK_092(datasets.VCTK_092):
                 self._sample_ids.append(utterance_id.split("_"))
 
         # Save the generated sample IDs
-        with open(self.sample_ids_file, 'w') as f:
+        with open(self.sample_ids_file, "w") as f:
             json.dump(self._sample_ids, f)
 
     def _load_sample_ids_from_file(self):
         """
         Load the sample IDs from the file if it exists.
         """
-        with open(self.sample_ids_file, 'r') as f:
+        with open(self.sample_ids_file, "r") as f:
             self._sample_ids = json.load(f)
+            # Only load the 1% of the dataset for debugging
+            # self._sample_ids = self._sample_ids[: int(len(self._sample_ids) * 0.01)]
 
     def _load_audio(self, file_path) -> Tuple[torch.Tensor | int]:
         return super()._load_audio(file_path)
 
-    def _load_sample(self, speaker_id: str, utterance_id: str) -> Tuple[torch.Tensor, torch.Tensor]:
+    def _load_sample(
+        self, speaker_id: str, utterance_id: str
+    ) -> Tuple[torch.Tensor, torch.Tensor]:
         """
         Load and preprocess the audio and transcript for a given speaker and utterance ID.
         """
@@ -182,7 +201,9 @@ class CustomVCTK_092(datasets.VCTK_092):
 
         return mag_phase_pair_x, mag_phase_pair_y
 
-    def _get_mag_phase(self, waveform: torch.Tensor, chunk_wave: bool=True) -> torch.Tensor:
+    def _get_mag_phase(
+        self, waveform: torch.Tensor, chunk_wave: bool = True
+    ) -> torch.Tensor:
         """
         Compute the magnitude and phase of the audio in the time-frequency domain.
 
@@ -201,12 +222,18 @@ class CustomVCTK_092(datasets.VCTK_092):
             # Chunk the audio into smaller fixed-length segments
             # chunks is torch.stack() with shape (num_chunks, chunk_size)
             chunks, padding_length = preprocessing.cut2chunks(
-                waveform=waveform, chunk_size=chunk_size, overlap=overlap, return_padding_length=True)
+                waveform=waveform,
+                chunk_size=chunk_size,
+                overlap=overlap,
+                return_padding_length=True,
+            )
             # Compute STFT for each segment and convert to magnitude and phase
             mag = []
             phase = []
             for chunk_y in chunks:
-                mag_chunk, phase_chunk = preprocessing.get_mag_phase(chunk_y, chunk_wave=True)
+                mag_chunk, phase_chunk = preprocessing.get_mag_phase(
+                    chunk_y, chunk_wave=True
+                )
                 mag.append(mag_chunk)
                 phase.append(phase_chunk)
 
@@ -249,13 +276,14 @@ class CustomVCTK_092(datasets.VCTK_092):
 
 
 # Debugging
-if __name__ == '__main__':
+if __name__ == "__main__":
     # Load packages that only used for debugging
     import time
     import torchaudio
+
     timestr = time.strftime("%Y%m%d-%H%M%S")
 
-    with open('./config.json') as f:
+    with open("./config.json") as f:
         config = json.load(f)
 
     # Ensure the output directory exists
@@ -266,13 +294,18 @@ if __name__ == '__main__':
 
     # Set up the data loader
     data_loader = VCTKDataLoader(
-        data_dir=config['data_loader']['args']['data_dir'], batch_size=128, num_workers=4, validation_split=0.1)
+        data_dir=config["data_loader"]["args"]["data_dir"],
+        batch_size=128,
+        num_workers=4,
+        validation_split=0.1,
+    )
 
     # Iterate over the data loader with tqdm
     for batch_idx, data in enumerate(tqdm(data_loader)):
         # Print the batch index and the data
         print(
-            f'batch_idx: {batch_idx}, len(data): {len(data)}, data[0].shape (x): {data[0].shape}, data[1].shape (y): {data[1].shape}')
+            f"batch_idx: {batch_idx}, len(data): {len(data)}, data[0].shape (x): {data[0].shape}, data[1].shape (y): {data[1].shape}"
+        )
         # Check the data
         # The shape of x is torch.Size([128 (batch_size), 2 (mag and phase), 15 (chunks), 513 (frequency bins), 101 (frames)])
         # The shape of chunked y is torch.Size([128 (batch_size), 2 (mag and phase), 15 (chunks), 513 (frequency bins), 101 (frames)])
@@ -282,14 +315,18 @@ if __name__ == '__main__':
         y_mag, y_phase = y[0]
         print(f"x_mag.shape: {x_mag.shape}, x_phase.shape: {x_phase.shape}")
         print(f"y_mag.shape: {y_mag.shape}, y_phase.shape: {y_phase.shape}")
-        
+
         # Post-processing
         # Reconstruct the chunked waveform of magnitude and phase spectrograms
         reconstructed_waveform_x = postprocessing.reconstruct_from_stft_chunks(
-            mag=x_mag.unsqueeze(0), phase=x_phase.unsqueeze(0), crop=True)
+            mag=x_mag.unsqueeze(0), phase=x_phase.unsqueeze(0), crop=True
+        )
         # Save the reconstructed waveform
         torchaudio.save(
-            f"{output_dir}/reconstructed_waveform_x_{timestr}.wav", reconstructed_waveform_x, 48000)
+            f"{output_dir}/reconstructed_waveform_x_{timestr}.wav",
+            reconstructed_waveform_x,
+            48000,
+        )
         # Print the reconstructed waveform shape
         print(f"Reconstructed waveform x shape: {reconstructed_waveform_x.shape}")
 
@@ -299,10 +336,14 @@ if __name__ == '__main__':
         #     mag=y_mag, phase=y_phase)
         # Test for chunked original waveform
         reconstructed_waveform_y = postprocessing.reconstruct_from_stft_chunks(
-            mag=y_mag.unsqueeze(0), phase=y_phase.unsqueeze(0), crop=True)
+            mag=y_mag.unsqueeze(0), phase=y_phase.unsqueeze(0), crop=True
+        )
         # Save the reconstructed waveform
         torchaudio.save(
-            f"{output_dir}/reconstructed_waveform_y_{timestr}.wav", reconstructed_waveform_y, 48000)
+            f"{output_dir}/reconstructed_waveform_y_{timestr}.wav",
+            reconstructed_waveform_y,
+            48000,
+        )
         # Print the reconstructed waveform shape
         print(f"Reconstructed waveform y shape: {reconstructed_waveform_y.shape}")
         break

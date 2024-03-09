@@ -180,13 +180,16 @@ class ToyUNet(BaseModel):
         x += y
 
         return x
-    
+
 
 class DualStreamUNet(BaseModel):
     """
     Dual-Stream model for learning the magnitude and phase of the image.
     """
-    def __init__(self, in_channels=1, out_channels=1, scale=2, dropout=0.0, batchnorm=False):
+
+    def __init__(
+        self, in_channels=1, out_channels=1, scale=2, dropout=0.0, batchnorm=False
+    ):
         super().__init__()
         # Define magnitude and phase networks
         self.mag_net = ToyUNet(in_channels, out_channels, scale, dropout, batchnorm)
@@ -207,7 +210,6 @@ class DualStreamUNet(BaseModel):
         phase = phase + residual[:, 1, :, :, :]
 
         return mag, phase
-
 
 
 class InteractingUNetBlock(nn.Module):
