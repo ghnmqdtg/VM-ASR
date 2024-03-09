@@ -142,7 +142,7 @@ def plot_waveform(names, waveforms, title="Waveform", xlim=None, ylim=None):
     return plot
 
 
-def plot_spectrogram(names, waveforms, title="Spectrogram"):
+def plot_spectrogram(names, waveforms, title="Spectrogram", stft=False):
     """
     Plots the spectrogram using matplotlib
 
@@ -168,34 +168,36 @@ def plot_spectrogram(names, waveforms, title="Spectrogram"):
     for i, (name, waveform) in enumerate(zip(names, waveforms)):
         # Set the title of the plot
         axs[i].set_title(name)
-        # Plot the waveform (STFT)
-        # axs[i].imshow(
-        #     torch.log2(
-        #         torch.abs(
-        #             torch.stft(
-        #                 waveform,
-        #                 n_fft=n_fft,
-        #                 hop_length=hop_length,
-        #                 win_length=win_length,
-        #                 window=window,
-        #                 return_complex=True,
-        #             )
-        #         )
-        #         + 1e-8
-        #     )
-        #     .squeeze(0)
-        #     .detach()
-        #     .cpu()
-        #     .numpy(),
-        #     aspect="auto",
-        #     origin="lower",
-        # )
-        # Plot the waveform (Spectrogram)
-        # TODO: Set sample rate in config
-        frequencies, times, spectrogram = signal.spectrogram(
-            waveform.squeeze().detach().cpu().numpy(), fs=48000
-        )
-        axs[i].pcolormesh(times, frequencies, 10 * np.log10(spectrogram))
+        if stft:
+            # Plot the waveform (STFT)
+            axs[i].imshow(
+                torch.log2(
+                    torch.abs(
+                        torch.stft(
+                            waveform,
+                            n_fft=n_fft,
+                            hop_length=hop_length,
+                            win_length=win_length,
+                            window=window,
+                            return_complex=True,
+                        )
+                    )
+                    + 1e-8
+                )
+                .squeeze(0)
+                .detach()
+                .cpu()
+                .numpy(),
+                aspect="auto",
+                origin="lower",
+            )
+        else:
+            # Plot the waveform (Spectrogram)
+            # TODO: Set sample rate in config
+            frequencies, times, spectrogram = signal.spectrogram(
+                waveform.squeeze().detach().cpu().numpy(), fs=48000
+            )
+            axs[i].pcolormesh(times, frequencies, 10 * np.log10(spectrogram + 1e-8))
         # Set the x-axis label
         axs[i].set_xlabel("Time")
         # Set the y-axis label
@@ -238,7 +240,7 @@ def log_waveform(writer, name_list, waveforms):
     writer.add_image("Waveform", wave_plot, dataformats="HWC")
 
 
-def log_spectrogram(writer, name_list, specs):
+def log_spectrogram(writer, name_list, specs, stft=False):
     """
     Plot and log spectrograms to tensorboard in a figure
 
@@ -252,6 +254,7 @@ def log_spectrogram(writer, name_list, specs):
         None
     """
     # Call plot_spectrogram for each waveform
-    spec_plot = plot_spectrogram(names=name_list, waveforms=specs)
+    spec_plot = plot_spectrogram(names=name_list, waveforms=specs, stft=stft)
+    filename = "Spectrogram (STFT)" if stft else "Spectrogram"
     # Log the spectrogram plot
-    writer.add_image("Spectrogram", spec_plot, dataformats="HWC")
+    writer.add_image(filename, spec_plot, dataformats="HWC")

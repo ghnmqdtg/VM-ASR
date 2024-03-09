@@ -176,7 +176,9 @@ class Trainer(BaseTrainer):
                     # Add the waveforms to the tensorboard
                     log_waveform(self.writer, name_list, waveforms)
                     # Add the spectrograms to the tensorboard
-                    log_spectrogram(self.writer, name_list, waveforms)
+                    log_spectrogram(self.writer, name_list, waveforms, stft=False)
+                    # Add the STFT spectrograms to the tensorboard
+                    log_spectrogram(self.writer, name_list, waveforms, stft=True)
 
                 if batch_idx == self.len_epoch:
                     break
@@ -292,7 +294,9 @@ class Trainer(BaseTrainer):
                 # Add the waveforms to the tensorboard
                 log_waveform(self.writer, name_list, waveforms)
                 # Add the spectrograms to the tensorboard
-                log_spectrogram(self.writer, name_list, waveforms)
+                log_spectrogram(self.writer, name_list, waveforms, stft=False)
+                # Add the STFT spectrograms to the tensorboard
+                log_spectrogram(self.writer, name_list, waveforms, stft=True)
 
         # add histogram of model parameters to the tensorboard
         for name, p in self.model.named_parameters():
