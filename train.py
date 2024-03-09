@@ -1,3 +1,4 @@
+import os
 import argparse
 import collections
 import torch
@@ -9,6 +10,7 @@ import model.model as module_arch
 from parse_config import ConfigParser
 from trainer import Trainer
 from utils import prepare_device
+import wandb
 
 
 # fix random seeds for reproducibility
@@ -20,6 +22,15 @@ np.random.seed(SEED)
 
 
 def main(config):
+    # Run name (config.log_dir is "saved/log/MambaASR/0309_200729", we want MambaASR-0309-200729)
+    run_name = "-".join(str(config.log_dir).split("/")[-2:]).replace("_", "-")
+    wandb.tensorboard.patch(
+        root_logdir=os.path.join("./", config.log_dir),
+        pytorch=True,
+        tensorboard_x=False,
+    )
+    wandb.init(project=config["name"], name=run_name, config=config)
+
     logger = config.get_logger("train")
 
     # Setup data_loader instances
@@ -58,6 +69,9 @@ def main(config):
     )
 
     trainer.train()
+
+    # Finish logging
+    wandb.finish()
 
 
 if __name__ == "__main__":
