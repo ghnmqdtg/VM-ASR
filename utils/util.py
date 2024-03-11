@@ -111,7 +111,7 @@ def plot_waveform(names, waveforms, title="Waveform", xlim=None, ylim=None):
     # Set the number of subplots
     n_plots = len(waveforms)
     # Create a subplots figure with n_plots rows
-    fig, axs = plt.subplots(n_plots, 1, figsize=(10, 8))
+    fig, axs = plt.subplots(n_plots, 1, figsize=(10, 14))
     # Iterate over each waveform
     for i, (name, waveform) in enumerate(zip(names, waveforms)):
         waveform = waveform.t().detach().cpu().numpy()
@@ -163,7 +163,7 @@ def plot_spectrogram(names, waveforms, title="Spectrogram", stft=False):
     # Set the number of subplots
     n_plots = len(waveforms)
     # Create a subplots figure with n_plots rows
-    fig, axs = plt.subplots(n_plots, 1, figsize=(10, 8))
+    fig, axs = plt.subplots(n_plots, 1, figsize=(10, 14))
     # Iterate over each waveform
     for i, (name, waveform) in enumerate(zip(names, waveforms)):
         # Set the title of the plot

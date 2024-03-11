@@ -38,7 +38,7 @@ class Trainer(BaseTrainer):
         self.valid_data_loader = valid_data_loader
         self.do_validation = self.valid_data_loader is not None
         self.lr_scheduler = lr_scheduler
-        self.log_step = int(np.sqrt(data_loader.batch_size))
+        self.log_step = self.len_epoch
 
         self.train_metrics = MetricTracker(
             "loss",
@@ -67,7 +67,16 @@ class Trainer(BaseTrainer):
         # Reset the train metrics
         self.train_metrics.reset()
         # Set the progress bar for the epoch
-        with tqdm(self.data_loader, desc=f"Epoch Init...", unit="batch") as tepoch:
+        with tqdm(
+            self.data_loader,
+            desc=f"Epoch {epoch} {self._progress(0)}",
+            unit="batch",
+        ) as tepoch:
+            # Save losses and metrics for this epoch
+            epoch_log = {
+                "losses": {"total_loss": [], "mag_loss": [], "phase_loss": []},
+                "metrics": {m.__name__: [] for m in self.metric_ftns},
+            }
             # Iterate through the batches
             for batch_idx, (data, target) in enumerate(tepoch):
                 # Set description for the progress bar
@@ -141,14 +150,14 @@ class Trainer(BaseTrainer):
                 # Update the weights
                 self.optimizer.step()
 
-                # Update step for the tensorboard
-                self.writer.set_step((epoch - 1) * self.len_epoch + batch_idx)
-                # Update the train metrics
-                self.train_metrics.update("loss", total_loss.item())
-                self.train_metrics.update("mag_loss", mag_loss.item())
-                self.train_metrics.update("phase_loss", phase_loss.item())
+                # Save losses and metrics for this batch
+                epoch_log["losses"]["total_loss"].append(total_loss.item())
+                epoch_log["losses"]["mag_loss"].append(mag_loss.item())
+                epoch_log["losses"]["phase_loss"].append(phase_loss.item())
                 for met in self.metric_ftns:
-                    self.train_metrics.update(met.__name__, met(output_mag, target_mag))
+                    epoch_log["metrics"][met.__name__].append(
+                        met(output_mag, target_mag)
+                    )
 
                 # Update the progress bar
                 tepoch.set_postfix(
@@ -157,8 +166,10 @@ class Trainer(BaseTrainer):
                     phase_loss=phase_loss.item(),
                 )
 
-                # Log the input, output and target waveforms to the tensorboard
-                if batch_idx % self.log_step == 0:
+                # Log mean losses and metrics of this epoch to the tensorboard
+                if batch_idx == (self.len_epoch - 1):
+                    # Update step for the tensorboard
+                    self.writer.set_step(epoch)
                     # Get the input waveform and stft of the output and target waveforms
                     input_waveform = postprocessing.reconstruct_from_stft_chunks(
                         mag=data[0, 0, ...].unsqueeze(0),
@@ -179,9 +190,20 @@ class Trainer(BaseTrainer):
                     # Add the STFT spectrograms to the tensorboard
                     log_spectrogram(self.writer, name_list, waveforms, stft=True)
 
-                if batch_idx == self.len_epoch:
-                    # Stop the epoch if the number of batches is reached
-                    break
+            # Update the epoch loss and metrics from epoch_log
+            self.train_metrics.update(
+                "loss", np.mean(epoch_log["losses"]["total_loss"])
+            )
+            self.train_metrics.update(
+                "mag_loss", np.mean(epoch_log["losses"]["mag_loss"])
+            )
+            self.train_metrics.update(
+                "phase_loss", np.mean(epoch_log["losses"]["phase_loss"])
+            )
+            for met in self.metric_ftns:
+                self.train_metrics.update(
+                    met.__name__, np.mean(epoch_log["metrics"][met.__name__])
+                )
 
             # Add histogram of model parameters to the tensorboard
             log = self.train_metrics.result()
@@ -209,6 +231,11 @@ class Trainer(BaseTrainer):
         """
         self.model.eval()
         self.valid_metrics.reset()
+        # Save valid losses and metrics for this epoch
+        epoch_log_valid = {
+            "losses": {"total_loss": [], "mag_loss": [], "phase_loss": []},
+            "metrics": {m.__name__: [] for m in self.metric_ftns},
+        }
         with torch.no_grad():
             for batch_idx, (data, target) in enumerate(self.valid_data_loader):
                 data, target = data.to(self.device), target.to(self.device)
@@ -264,43 +291,60 @@ class Trainer(BaseTrainer):
                 target_mag, target_phase = preprocessing.get_mag_phase(
                     target_waveform, chunk_wave=False, batch_input=True
                 )
-
                 # Calculate the mag and phase loss
                 mag_loss = self.criterion(output_mag, target_mag)
                 phase_loss = self.criterion(output_phase, target_phase)
                 # Calculate total loss
                 total_loss = torch.stack(chunk_losses).mean() + mag_loss + phase_loss
 
-                # Update step for the tensorboard
-                self.writer.set_step(
-                    (epoch - 1) * len(self.valid_data_loader) + batch_idx, "valid"
-                )
-                # Update the valid metrics
-                self.valid_metrics.update("loss", total_loss.item())
-                self.valid_metrics.update("mag_loss", mag_loss.item())
-                self.valid_metrics.update("phase_loss", phase_loss.item())
+                # Save valid losses and metrics for this batch
+                epoch_log_valid["losses"]["total_loss"].append(total_loss.item())
+                epoch_log_valid["losses"]["mag_loss"].append(mag_loss.item())
+                epoch_log_valid["losses"]["phase_loss"].append(phase_loss.item())
                 for met in self.metric_ftns:
-                    self.valid_metrics.update(met.__name__, met(output_mag, target_mag))
+                    epoch_log_valid["metrics"][met.__name__].append(
+                        met(output_mag, target_mag)
+                    )
 
-                # Get the input waveform and stft of the output and target waveforms
-                input_waveform = postprocessing.reconstruct_from_stft_chunks(
-                    mag=data[0, 0, ...].unsqueeze(0),
-                    phase=data[0, 1, ...].unsqueeze(0),
-                    batch_input=False,
-                    crop=True,
-                )
-                # Name the audio files
-                name_list = ["input", "output", "target"]
-                # Store the waveforms
-                waveforms = [input_waveform, output_waveform[0], target_waveform[0]]
-                # Add audio to the tensorboard
-                log_audio(self.writer, name_list, waveforms, 48000)
-                # Add the waveforms to the tensorboard
-                log_waveform(self.writer, name_list, waveforms)
-                # Add the spectrograms to the tensorboard
-                log_spectrogram(self.writer, name_list, waveforms, stft=False)
-                # Add the STFT spectrograms to the tensorboard
-                log_spectrogram(self.writer, name_list, waveforms, stft=True)
+                # Log mean losses and metrics of this epoch to the tensorboard
+                if batch_idx == (len(self.valid_data_loader) - 1):
+                    # Update step for the tensorboard
+                    self.writer.set_step(epoch, "valid")
+                    # Get the input waveform and stft of the output and target waveforms
+                    input_waveform = postprocessing.reconstruct_from_stft_chunks(
+                        mag=data[0, 0, ...].unsqueeze(0),
+                        phase=data[0, 1, ...].unsqueeze(0),
+                        batch_input=False,
+                        crop=True,
+                    )
+                    # Name the audio files
+                    name_list = ["input", "output", "target"]
+                    # Store the waveforms
+                    waveforms = [input_waveform, output_waveform[0], target_waveform[0]]
+                    # Add audio to the tensorboard
+                    log_audio(self.writer, name_list, waveforms, 48000)
+                    # Add the waveforms to the tensorboard
+                    log_waveform(self.writer, name_list, waveforms)
+                    # Add the spectrograms to the tensorboard
+                    log_spectrogram(self.writer, name_list, waveforms, stft=False)
+                    # Add the STFT spectrograms to the tensorboard
+                    log_spectrogram(self.writer, name_list, waveforms, stft=True)
+
+        # Update the mean valid loss and metrics from epoch_log
+        self.valid_metrics.update(
+            "loss", np.mean(epoch_log_valid["losses"]["total_loss"])
+        )
+        self.valid_metrics.update(
+            "mag_loss", np.mean(epoch_log_valid["losses"]["mag_loss"])
+        )
+        self.valid_metrics.update(
+            "phase_loss", np.mean(epoch_log_valid["losses"]["phase_loss"])
+        )
+        for met in self.metric_ftns:
+            self.valid_metrics.update(
+                met.__name__,
+                np.mean(epoch_log_valid["metrics"][met.__name__]),
+            )
 
         # add histogram of model parameters to the tensorboard
         for name, p in self.model.named_parameters():
