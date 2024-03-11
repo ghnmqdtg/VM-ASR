@@ -227,6 +227,7 @@ class InteractingUNetBlock(nn.Module):
         self.up_sample = (
             nn.PixelShuffle(upscale_factor=2) if not is_down else nn.Identity()
         )
+        self.batchnorm = nn.BatchNorm2d(out_channels)
 
     def forward(self, mag, phase):
         # Pass magnitude through the block
@@ -236,6 +237,10 @@ class InteractingUNetBlock(nn.Module):
         # Pass phase through the block
         phase = self.conv(phase)
         phase = self.activation(phase)
+
+        # Batchnorm
+        mag = self.batchnorm(mag)
+        phase = self.batchnorm(phase)
 
         # Upsample if this is an upsampling block
         mag = self.up_sample(mag)
@@ -255,8 +260,8 @@ class DualStreamInteractiveUNet(BaseModel):
     ):
         super().__init__()
         # Define down and up blocks
-        channels_down = [in_channels, 32, 64, 128, 128]
-        channels_up = [128, 128, 64, 32, out_channels]
+        channels_down = [in_channels, 64, 128, 256, 256]
+        channels_up = [256, 256, 128, 64, out_channels]
 
         # Activation function
         self.activation = nn.ReLU()
