@@ -199,6 +199,8 @@ class CustomVCTK_092(datasets.VCTK_092):
         waveform = preprocessing.resample_audio(waveform, sr_org, sr_new)
         # Upsample the audio to a higher sample rate
         waveform = preprocessing.resample_audio(waveform, sr_new, sr_org)
+        # Remove the artifacts from the resampling
+        waveform = preprocessing.low_pass_filter(waveform, sr_org, sr_new)
         # Get magnitude and phase of the preprocessed audio
         mag_phase_pair_x = self._get_mag_phase(waveform, chunk_wave=True)
 

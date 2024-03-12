@@ -106,7 +106,9 @@ def resample_audio(waveform: torch.Tensor, sr_org: int, sr_new: int) -> torch.Te
     Returns:
         torch.Tensor: The downsampled waveform
     """
-    waveform_downsampled = T.Resample(sr_org, sr_new)(waveform)
+    waveform_downsampled = T.Resample(
+        sr_org, sr_new, resampling_method="sinc_interp_kaiser", rolloff=0.85
+    )(waveform)
     return waveform_downsampled
 
 
@@ -342,12 +344,34 @@ if __name__ == "__main__":
     chunks, padding_length = cut2chunks(
         waveform_upsampled, chunk_size, overlap, return_padding_length=True
     )
+    # Normalize the waveform
+    waveform = waveform / waveform.abs().max() * 0.95 * 32768
     timestr = time.strftime("%Y%m%d-%H%M%S")
     # Plot the waveform, magnitude and phase
     plot_all(
-        waveform_upsampled,
+        waveform,
         sr_new,
-        f"./output/dev/data_preprocessing/lr_simulation_{sr_new}_{timestr}.png",
+        f"./output/dev/data_preprocessing/org_{sr_new}_{timestr}.png",
+    )
+    plot_all(
+        waveform_filtered,
+        sr_new,
+        f"./output/dev/data_preprocessing/filtered_{sr_new}_{timestr}.png",
+    )
+    plot_all(
+        waveform_downsampled,
+        sr_new,
+        f"./output/dev/data_preprocessing/filtered_down_{sr_new}_{timestr}.png",
+    )
+    plot_all(
+        resample_audio(waveform, sr_org, sr_new),
+        sr_new,
+        f"./output/dev/data_preprocessing/org_down{sr_new}_{timestr}.png",
+    )
+    plot_all(
+        low_pass_filter(waveform_upsampled, sr_org, sr_new),
+        sr_new,
+        f"./output/dev/data_preprocessing/filtered_down_up_{sr_new}_{timestr}.png",
     )
     # # Save the chunks to the output folder
     # for i, chunk in enumerate(chunks):
@@ -359,7 +383,12 @@ if __name__ == "__main__":
     waveform_reconstructed = concatenate_wave_chunks(
         chunks, chunk_size, overlap, padding_length
     )
-
+    # Plot the waveform, magnitude and phase
+    # plot_all(
+    #     waveform_reconstructed,
+    #     sr_new,
+    #     f"./output/dev/data_preprocessing/reconstructed_wave_chunks_{timestr}_{sr_new}.png",
+    # )
     # Save the reconstructed waveform
     torchaudio.save(
         f"./output/dev/data_preprocessing/reconstructed_wave_chunks_{timestr}_{sr_new}.wav",
@@ -373,6 +402,12 @@ if __name__ == "__main__":
     print(f"Shape of mag: {mag.shape}, Shape of phase: {phase.shape}")
     # Reconstruct the waveform from the magnitude and phase
     waveform_reconstructed_stft = reconstruct_from_stft(mag, phase)
+    # Plot the waveform, magnitude and phase
+    # plot_all(
+    #     waveform_reconstructed_stft,
+    #     sr_new,
+    #     f"./output/dev/data_preprocessing/reconstructed_stft_full_{timestr}_{sr_new}.png",
+    # )
     # Save the reconstructed waveform
     torchaudio.save(
         f"./output/dev/data_preprocessing/reconstructed_stft_full_{timestr}_{sr_new}.wav",
@@ -400,6 +435,12 @@ if __name__ == "__main__":
     waveform_reconstructed_stft = reconstruct_from_stft_chunks(
         mag, phase, padding_length
     )
+    # Plot the waveform, magnitude and phase
+    # plot_all(
+    #     waveform_reconstructed_stft,
+    #     sr_new,
+    #     f"./output/dev/data_preprocessing/reconstructed_stft_chunks_{timestr}_{sr_new}.png",
+    # )
     # Save the reconstructed waveform
     torchaudio.save(
         f"./output/dev/data_preprocessing/reconstructed_stft_chunks_{timestr}_{sr_new}.wav",
