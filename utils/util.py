@@ -8,6 +8,21 @@ from itertools import repeat
 import matplotlib.pyplot as plt
 from collections import OrderedDict
 
+try:
+    with open("./config.json") as f:
+        config = json.load(f)
+except:
+    import os
+    import sys
+
+    # Used for debugging data_loader
+    # Add the project root directory to the Python path
+    project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    sys.path.append(project_root)
+
+    with open("./config.json") as f:
+        config = json.load(f)
+
 
 def ensure_dir(dirname):
     dirname = Path(dirname)
@@ -193,9 +208,8 @@ def plot_spectrogram_from_wave(names, waveforms, title="Spectrogram", stft=False
             )
         else:
             # Plot the waveform (Spectrogram)
-            # TODO: Set sample rate in config
             frequencies, times, spectrogram = signal.spectrogram(
-                waveform.squeeze().detach().cpu().numpy(), fs=48000
+                waveform.squeeze().detach().cpu().numpy(), fs=config["source_sr"]
             )
             axs[i].pcolormesh(times, frequencies, 10 * np.log10(spectrogram + 1e-8))
         # Set the x-axis label
@@ -273,8 +287,7 @@ def plot_spectrogram_from_chunks(names, chunk_list, title="Spectrogram (Chunks)"
     return plot
 
 
-# TODO: Set sample rate in config
-def log_audio(writer, name_list, waveforms, sample_rate=48000):
+def log_audio(writer, name_list, waveforms, sample_rate=config["source_sr"]):
     for name, waveform in zip(name_list, waveforms):
         writer.add_audio(name, waveform, sample_rate=sample_rate)
 

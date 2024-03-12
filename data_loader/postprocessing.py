@@ -1,5 +1,25 @@
+import json
 import torch
 from data_loader import preprocessing
+
+try:
+    with open("./config.json") as f:
+        config = json.load(f)
+
+    dataloader_params = config["data_loader"]["args"]
+except:
+    import os
+    import sys
+
+    # Used for debugging data_loader
+    # Add the project root directory to the Python path
+    project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    sys.path.append(project_root)
+
+    with open("./config.json") as f:
+        config = json.load(f)
+
+    dataloader_params = config["data_loader"]["args"]
 
 
 def concatenate_wave_chunks(
@@ -73,14 +93,13 @@ def reconstruct_from_stft_chunks(
     Returns:
         torch.Tensor: The reconstructed waveform
     """
-    # TODO: Set the parameters from the config file
     # Size of each audio chunk
-    chunk_size = 10160
+    chunk_size = dataloader_params["chunking_params"]["chunk_size"]
     # Overlap size between chunks
-    overlap = 0
-    n_fft = 1022
-    hop_length = 80
-    win_length = 320
+    overlap = int(chunk_size * dataloader_params["chunking_params"]["overlap"])
+    n_fft = dataloader_params["stft_params"]["chunks"]["n_fft"]
+    hop_length = dataloader_params["stft_params"]["chunks"]["hop_length"]
+    win_length = dataloader_params["stft_params"]["chunks"]["win_length"]
     window = torch.hann_window(win_length).to(mag.device)
 
     # Normally, input would be of shape (1 (mono), num_chunks, frequency_bins, frames)
@@ -180,10 +199,9 @@ def reconstruct_from_stft(mag: torch.Tensor, phase: torch.Tensor) -> torch.Tenso
         mag (torch.Tensor): The magnitude spectrogram
         phase (torch.Tensor): The phase spectrogram
     """
-    # TODO: Set the parameters from the config file
-    n_fft = 1022
-    hop_length = 478
-    win_length = 956
+    n_fft = dataloader_params["stft_params"]["full"]["n_fft"]
+    hop_length = dataloader_params["stft_params"]["full"]["hop_length"]
+    win_length = dataloader_params["stft_params"]["full"]["win_length"]
     window = torch.hann_window(win_length)
     # Combine magnitude and phase to get the complex STFT
     complex_stft = torch.exp2(mag) * torch.exp(1j * phase)

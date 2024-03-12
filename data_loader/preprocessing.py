@@ -1,3 +1,4 @@
+import json
 import time
 import torch
 import torchaudio
@@ -16,6 +17,11 @@ try:
         reconstruct_from_stft,
         reconstruct_from_stft_chunks,
     )
+
+    with open("./config.json") as f:
+        config = json.load(f)
+
+    dataloader_params = config["data_loader"]["args"]
 except:
     import os
     import sys
@@ -31,10 +37,14 @@ except:
         reconstruct_from_stft_chunks,
     )
 
+    with open("./config.json") as f:
+        config = json.load(f)
+
+    dataloader_params = config["data_loader"]["args"]
+
 
 def crop_or_pad_waveform(waveform: torch.Tensor) -> torch.Tensor:
-    # TODO: Set the length from the config file
-    length = 121890
+    length = dataloader_params["length"]
     # If the waveform is shorter than the required length, pad it
     if waveform.shape[1] < length:
         pad_length = length - waveform.shape[1]
@@ -250,16 +260,15 @@ def get_mag_phase(
         torch.Tensor: The magnitude
         torch.Tensor: The phase
     """
-    # TODO: Set the parameters from the config file
     if chunk_wave:
-        n_fft = 1022
-        hop_length = 80
-        win_length = 320
+        n_fft = dataloader_params["stft_params"]["chunks"]["n_fft"]
+        hop_length = dataloader_params["stft_params"]["chunks"]["hop_length"]
+        win_length = dataloader_params["stft_params"]["chunks"]["win_length"]
         window = torch.hann_window(win_length).to(waveform.device)
     else:
-        n_fft = 1022
-        hop_length = 478
-        win_length = 956
+        n_fft = dataloader_params["stft_params"]["full"]["n_fft"]
+        hop_length = dataloader_params["stft_params"]["full"]["hop_length"]
+        win_length = dataloader_params["stft_params"]["full"]["win_length"]
         window = torch.hann_window(win_length).to(waveform.device)
 
     if not batch_input:
@@ -317,7 +326,7 @@ if __name__ == "__main__":
     # Size of each audio chunk
     chunk_size = 10160
     # Overlap size between chunks
-    overlap = 0
+    overlap = int(chunk_size * 0)
     # Apply the audio preprocessing pipeline
     sr_new = random.choice(target_sample_rates)
     print(f"Randomly selected new sample rate: {sr_new} Hz")

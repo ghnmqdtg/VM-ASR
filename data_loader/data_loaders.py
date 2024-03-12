@@ -44,7 +44,7 @@ class VCTKDataLoader(BaseDataLoader):
         # Download VCTK_092 dataset
         # The data returns a tuple of the form: waveform, sample rate, transcript, speaker id and utterance id
         self.dataset = CustomVCTK_092(
-            root=self.data_dir, random_resample=self.random_resample
+            root=self.data_dir, random_resample=self.random_resample, **kwargs
         )
         # Print the total number of samples
         print(f"Total number of samples: {len(self.dataset)}")
@@ -66,16 +66,20 @@ class CustomVCTK_092(datasets.VCTK_092):
 
     Args:
         root (str): Root directory of dataset where `VCTK-Corpus-0.92` folder exists.
+        audio_ext (str, optional): The extension of the audio files. Defaults to ".wav".
+        random_resample (list, optional): List of target sample rates to choose from. Defaults to [8000].
+        **kwargs: Additional arguments for the VCTK_092 class.
     """
 
     def __init__(self, root, audio_ext=".wav", random_resample=[8000], **kwargs):
-        super().__init__(root, **kwargs)
+        super().__init__(root)
         self._path = os.path.join(root, "VCTK-Corpus-0.92")
         self._txt_dir = os.path.join(self._path, "txt")
         self._audio_dir = os.path.join(self._path, "wav48_silence_trimmed_wav")
         self._audio_ext = audio_ext
         self._random_resample = random_resample
         self._sample_ids = []
+        self.chunking_params = kwargs.get("chunking_params", None)
         # Check if the trimmed wav files exist
         if not os.path.isdir(self._audio_dir):
             raise RuntimeError(
@@ -179,7 +183,6 @@ class CustomVCTK_092(datasets.VCTK_092):
         Returns:
             Tensor: The input-output pair of magnitude and phase
         """
-        # TODO: Set the parameters in the config file
         # List of target sample rates to choose from
         target_sample_rates = self._random_resample
         # Apply the audio preprocessing pipeline
@@ -216,9 +219,9 @@ class CustomVCTK_092(datasets.VCTK_092):
         """
         if chunk_wave:
             # Size of each audio chunk
-            chunk_size = 10160
+            chunk_size = self.chunking_params["chunk_size"]
             # Overlap size between chunks
-            overlap = 0
+            overlap = int(chunk_size * self.chunking_params["overlap"])
             # Chunk the audio into smaller fixed-length segments
             # chunks is torch.stack() with shape (num_chunks, chunk_size)
             chunks, padding_length = preprocessing.cut2chunks(
@@ -298,6 +301,7 @@ if __name__ == "__main__":
         batch_size=128,
         num_workers=4,
         validation_split=0.1,
+        chunking_params={"chunk_size": 10160, "overlap": 0.5},
     )
 
     # Iterate over the data loader with tqdm

@@ -10,6 +10,7 @@
         "dest_path": "VCTK-Corpus-0.92/wav48_silence_trimmed_wav",
         "timestamps": "vctk-silence-labels/vctk-silences.0.92.txt"
     },
+    "source_sr": 48000,
     "data_loader": {
         "type": "VCTKDataLoader",
         "args": {
@@ -24,7 +25,23 @@
                 16000,
                 24000
             ],
-            "length": 121890
+            "length": 121890,
+            "chunking_params": {
+                "chunk_size": 10160,
+                "overlap": 0
+            },
+            "stft_params": {
+                "chunks": {
+                    "n_fft": 1022,
+                    "hop_length": 80,
+                    "win_length": 320
+                },
+                "full": {
+                    "n_fft": 1022,
+                    "hop_length": 478,
+                    "win_length": 956
+                }
+            }
         }
     },
     "optimizer": {
