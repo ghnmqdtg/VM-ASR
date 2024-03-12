@@ -84,8 +84,13 @@ def low_pass_filter(waveform: torch.Tensor, sr_org: int, sr_new: int) -> torch.T
     highcut = sr_new // 2
     hi = highcut / nyquist
     # TODO: Set filter funtion as a parameter
+    # Ramdomly select the filter parameters
+    # order = random.randint(1, 11)
+    # ripple = random.choice([1e-9, 1e-6, 1e-3, 1, 5])
+    order = 10
+    ripple = 1e-3
     # Setup the low pass filter: chebyshev type 1
-    sos = cheby1(8, 0.1, hi, btype="lowpass", output="sos")
+    sos = cheby1(order, ripple, hi, btype="lowpass", output="sos")
     # Apply the filter
     waveform = sosfiltfilt(sos, waveform)
     # Convert the waveform to tensor
@@ -107,7 +112,7 @@ def resample_audio(waveform: torch.Tensor, sr_org: int, sr_new: int) -> torch.Te
         torch.Tensor: The downsampled waveform
     """
     waveform_downsampled = T.Resample(
-        sr_org, sr_new, resampling_method="sinc_interp_kaiser", rolloff=0.85
+        sr_org, sr_new, resampling_method="sinc_interp_kaiser", rolloff=0.8
     )(waveform)
     return waveform_downsampled
 
