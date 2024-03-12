@@ -181,7 +181,7 @@ class CustomVCTK_092(datasets.VCTK_092):
         """
         # TODO: Set the parameters in the config file
         # List of target sample rates to choose from
-        target_sample_rates = [8000, 16000, 24000]
+        target_sample_rates = self._random_resample
         # Apply the audio preprocessing pipeline
         sr_new = random.choice(target_sample_rates)
         # Crop or pad the waveform to a fixed length
