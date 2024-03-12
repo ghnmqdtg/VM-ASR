@@ -112,7 +112,7 @@ def resample_audio(waveform: torch.Tensor, sr_org: int, sr_new: int) -> torch.Te
         torch.Tensor: The downsampled waveform
     """
     waveform_downsampled = T.Resample(
-        sr_org, sr_new, resampling_method="sinc_interp_kaiser", rolloff=0.8
+        sr_org, sr_new, resampling_method="sinc_interp_kaiser"
     )(waveform)
     return waveform_downsampled
 
@@ -350,7 +350,7 @@ if __name__ == "__main__":
         waveform_upsampled, chunk_size, overlap, return_padding_length=True
     )
     # Normalize the waveform
-    waveform = waveform / waveform.abs().max() * 0.95 * 32768
+    # waveform = waveform / waveform.abs().max() * 0.95 * 32768
     timestr = time.strftime("%Y%m%d-%H%M%S")
     # Plot the waveform, magnitude and phase
     plot_all(

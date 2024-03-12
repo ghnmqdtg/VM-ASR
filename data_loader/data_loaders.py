@@ -136,7 +136,7 @@ class CustomVCTK_092(datasets.VCTK_092):
             self._sample_ids = json.load(f)
             # TODO: Set percentage of the dataset in the config file
             # Only load the 1% of the dataset for debugging
-            # self._sample_ids = self._sample_ids[: int(len(self._sample_ids) * 0.01)]
+            self._sample_ids = self._sample_ids[: int(len(self._sample_ids) * 0.01)]
 
     def _load_audio(self, file_path) -> Tuple[torch.Tensor | int]:
         return super()._load_audio(file_path)
@@ -170,7 +170,7 @@ class CustomVCTK_092(datasets.VCTK_092):
         Get the input-output pairs for the audio processing pipeline.
         1. Crop or pad the waveform to a fixed length (consistent shapes within batches for efficient computation)
         2. Get magnitude and phase of the original audio
-        3. Normalize the audio
+        3. Normalize the audio (Optional)
         4. Apply low pass filter to avoid aliasing
         5. Downsample the audio to a lower sample rate (simulating a low resolution audio)
         6. Upsample the audio to a higher sample rate (unifying the input shape)
@@ -188,6 +188,8 @@ class CustomVCTK_092(datasets.VCTK_092):
         """
         # List of target sample rates to choose from
         target_sample_rates = self._random_resample
+        # Normalize the audio
+        # waveform = waveform / waveform.abs().max() * 0.95 * 32768
         # Apply the audio preprocessing pipeline
         sr_new = random.choice(target_sample_rates)
         # Crop or pad the waveform to a fixed length
@@ -196,8 +198,6 @@ class CustomVCTK_092(datasets.VCTK_092):
         mag_phase_pair_y = self._get_mag_phase(waveform, chunk_wave=True)
 
         # Preprocess the audio
-        # Normalize the audio
-        waveform = waveform / waveform.abs().max() * 0.95 * 32768
         # Apply low pass filter to avoid aliasing
         waveform = preprocessing.low_pass_filter(waveform, sr_org, sr_new)
         # Downsample the audio to a lower sample rate
