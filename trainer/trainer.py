@@ -41,16 +41,22 @@ class Trainer(BaseTrainer):
         self.log_step = self.len_epoch
 
         self.train_metrics = MetricTracker(
-            "loss",
-            "mag_loss",
-            "phase_loss",
+            "total_loss",
+            "global_mag_loss",
+            "global_phase_loss",
+            "local_loss",
+            "local_mag_loss",
+            "local_phase_loss",
             *[m.__name__ for m in self.metric_ftns],
             writer=self.writer,
         )
         self.valid_metrics = MetricTracker(
-            "loss",
-            "mag_loss",
-            "phase_loss",
+            "total_loss",
+            "global_mag_loss",
+            "global_phase_loss",
+            "local_loss",
+            "local_mag_loss",
+            "local_phase_loss",
             *[m.__name__ for m in self.metric_ftns],
             writer=self.writer,
         )
@@ -74,7 +80,14 @@ class Trainer(BaseTrainer):
         ) as tepoch:
             # Save losses and metrics for this epoch
             epoch_log = {
-                "losses": {"total_loss": [], "mag_loss": [], "phase_loss": []},
+                "losses": {
+                    "total_loss": [],
+                    "global_mag_loss": [],
+                    "global_phase_loss": [],
+                    "local_loss": [],
+                    "local_mag_loss": [],
+                    "local_phase_loss": [],
+                },
                 "metrics": {m.__name__: [] for m in self.metric_ftns},
             }
             # Iterate through the batches
@@ -88,7 +101,7 @@ class Trainer(BaseTrainer):
                 # Initialize the chunk ouptut and losses
                 chunk_inputs = {"mag": [], "phase": []}
                 chunk_outputs = {"mag": [], "phase": []}
-                total_loss = 0
+                global_loss = 0
                 chunk_losses = {"mag": [], "phase": []}
 
                 # Iterate through the chunks and calculate the loss for each chunk
@@ -149,25 +162,29 @@ class Trainer(BaseTrainer):
                 )
 
                 # Calculate the mag and phase loss
-                mag_loss = self.criterion(output_mag, target_mag)
-                phase_loss = self.criterion(output_phase, target_phase)
+                local_mag_loss = torch.stack(chunk_losses["mag"]).mean()
+                local_phase_loss = torch.stack(chunk_losses["phase"]).mean()
+                global_mag_loss = self.criterion(output_mag, target_mag)
+                global_phase_loss = self.criterion(output_phase, target_phase)
                 # Get global loss and local loss
-                global_loss = 0.9 * mag_loss + 0.1 * phase_loss
-                local_loss = (
-                    0.9 * torch.stack(chunk_losses["mag"]).mean()
-                    + 0.1 * torch.stack(chunk_losses["phase"]).mean()
-                )
+                global_loss = 0.9 * global_mag_loss + 0.1 * global_phase_loss
+                local_loss = 0.9 * local_mag_loss + 0.1 * local_phase_loss
                 # Calculate total loss
-                total_loss = 0.3 * global_loss + 0.7 * local_loss
+                global_loss = 0.3 * global_loss + 0.7 * local_loss
                 # Backward pass
-                total_loss.backward()
+                global_loss.backward()
                 # Update the weights
                 self.optimizer.step()
 
                 # Save losses and metrics for this batch
-                epoch_log["losses"]["total_loss"].append(total_loss.item())
-                epoch_log["losses"]["mag_loss"].append(mag_loss.item())
-                epoch_log["losses"]["phase_loss"].append(phase_loss.item())
+                epoch_log["losses"]["total_loss"].append(global_loss.item())
+                epoch_log["losses"]["global_mag_loss"].append(global_mag_loss.item())
+                epoch_log["losses"]["global_phase_loss"].append(
+                    global_phase_loss.item()
+                )
+                epoch_log["losses"]["local_loss"].append(local_loss.item())
+                epoch_log["losses"]["local_mag_loss"].append(local_mag_loss.item())
+                epoch_log["losses"]["local_phase_loss"].append(local_phase_loss.item())
                 for met in self.metric_ftns:
                     epoch_log["metrics"][met.__name__].append(
                         met(output_mag, target_mag)
@@ -175,9 +192,9 @@ class Trainer(BaseTrainer):
 
                 # Update the progress bar
                 tepoch.set_postfix(
-                    loss=total_loss.item(),
-                    mag_loss=mag_loss.item(),
-                    phase_loss=phase_loss.item(),
+                    global_loss=global_loss.item(),
+                    global_mag_loss=global_mag_loss.item(),
+                    global_phase_loss=global_phase_loss.item(),
                 )
 
                 # Log mean losses and metrics of this epoch to the tensorboard
@@ -228,14 +245,24 @@ class Trainer(BaseTrainer):
 
             # Update the epoch loss and metrics from epoch_log
             self.train_metrics.update(
-                "loss", np.mean(epoch_log["losses"]["total_loss"])
+                "total_loss", np.mean(epoch_log["losses"]["total_loss"])
             )
             self.train_metrics.update(
-                "mag_loss", np.mean(epoch_log["losses"]["mag_loss"])
+                "global_mag_loss", np.mean(epoch_log["losses"]["global_mag_loss"])
             )
             self.train_metrics.update(
-                "phase_loss", np.mean(epoch_log["losses"]["phase_loss"])
+                "global_phase_loss", np.mean(epoch_log["losses"]["global_phase_loss"])
             )
+            self.train_metrics.update(
+                "local_loss", np.mean(epoch_log["losses"]["local_loss"])
+            )
+            self.train_metrics.update(
+                "local_mag_loss", np.mean(epoch_log["losses"]["local_mag_loss"])
+            )
+            self.train_metrics.update(
+                "local_phase_loss", np.mean(epoch_log["losses"]["local_phase_loss"])
+            )
+
             for met in self.metric_ftns:
                 self.train_metrics.update(
                     met.__name__, np.mean(epoch_log["metrics"][met.__name__])
@@ -268,7 +295,14 @@ class Trainer(BaseTrainer):
         self.valid_metrics.reset()
         # Save valid losses and metrics for this epoch
         epoch_log_valid = {
-            "losses": {"total_loss": [], "mag_loss": [], "phase_loss": []},
+            "losses": {
+                "total_loss": [],
+                "global_mag_loss": [],
+                "global_phase_loss": [],
+                "local_loss": [],
+                "local_mag_loss": [],
+                "local_phase_loss": [],
+            },
             "metrics": {m.__name__: [] for m in self.metric_ftns},
         }
         with torch.no_grad():
@@ -334,21 +368,33 @@ class Trainer(BaseTrainer):
                 target_mag, target_phase = preprocessing.get_mag_phase(
                     target_waveform, chunk_wave=False, batch_input=True
                 )
+
                 # Calculate the mag and phase loss
-                mag_loss = self.criterion(output_mag, target_mag)
-                phase_loss = self.criterion(output_phase, target_phase)
+                local_mag_loss = torch.stack(chunk_losses["mag"]).mean()
+                local_phase_loss = torch.stack(chunk_losses["phase"]).mean()
+                global_mag_loss = self.criterion(output_mag, target_mag)
+                global_phase_loss = self.criterion(output_phase, target_phase)
+                # Get global loss and local loss
+                global_loss = 0.9 * global_mag_loss + 0.1 * global_phase_loss
+                local_loss = 0.9 * local_mag_loss + 0.1 * local_phase_loss
                 # Calculate total loss
-                total_loss = (
-                    torch.stack(chunk_losses["mag"]).mean()
-                    + torch.stack(chunk_losses["phase"]).mean()
-                    + mag_loss
-                    + phase_loss
-                ) / 2
+                total_loss = 0.3 * global_loss + 0.7 * local_loss
 
                 # Save valid losses and metrics for this batch
                 epoch_log_valid["losses"]["total_loss"].append(total_loss.item())
-                epoch_log_valid["losses"]["mag_loss"].append(mag_loss.item())
-                epoch_log_valid["losses"]["phase_loss"].append(phase_loss.item())
+                epoch_log_valid["losses"]["global_mag_loss"].append(
+                    global_mag_loss.item()
+                )
+                epoch_log_valid["losses"]["global_phase_loss"].append(
+                    global_phase_loss.item()
+                )
+                epoch_log_valid["losses"]["local_loss"].append(local_loss.item())
+                epoch_log_valid["losses"]["local_mag_loss"].append(
+                    local_mag_loss.item()
+                )
+                epoch_log_valid["losses"]["local_phase_loss"].append(
+                    local_phase_loss.item()
+                )
                 for met in self.metric_ftns:
                     epoch_log_valid["metrics"][met.__name__].append(
                         met(output_mag, target_mag)
@@ -402,13 +448,22 @@ class Trainer(BaseTrainer):
 
         # Update the mean valid loss and metrics from epoch_log
         self.valid_metrics.update(
-            "loss", np.mean(epoch_log_valid["losses"]["total_loss"])
+            "total_loss", np.mean(epoch_log_valid["losses"]["total_loss"])
         )
         self.valid_metrics.update(
-            "mag_loss", np.mean(epoch_log_valid["losses"]["mag_loss"])
+            "global_mag_loss", np.mean(epoch_log_valid["losses"]["global_mag_loss"])
         )
         self.valid_metrics.update(
-            "phase_loss", np.mean(epoch_log_valid["losses"]["phase_loss"])
+            "global_phase_loss", np.mean(epoch_log_valid["losses"]["global_phase_loss"])
+        )
+        self.valid_metrics.update(
+            "local_loss", np.mean(epoch_log_valid["losses"]["local_loss"])
+        )
+        self.valid_metrics.update(
+            "local_mag_loss", np.mean(epoch_log_valid["losses"]["local_mag_loss"])
+        )
+        self.valid_metrics.update(
+            "local_phase_loss", np.mean(epoch_log_valid["losses"]["local_phase_loss"])
         )
         for met in self.metric_ftns:
             self.valid_metrics.update(
