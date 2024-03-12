@@ -86,6 +86,7 @@ class Trainer(BaseTrainer):
                 # Set the gradients to zero before starting to do backpropragation because PyTorch accumulates the gradients on subsequent backward passes
                 self.optimizer.zero_grad()
                 # Initialize the chunk ouptut and losses
+                chunk_inputs = {"mag": [], "phase": []}
                 chunk_outputs = {"mag": [], "phase": []}
                 total_loss = 0
                 chunk_losses = {"mag": [], "phase": []}
@@ -96,6 +97,12 @@ class Trainer(BaseTrainer):
                     chunk_data = data[:, :, chunk_idx, :, :].unsqueeze(2)
                     # Get current chunk target (and unsqueeze the chunk dimension)
                     chunk_target = target[:, :, chunk_idx, :, :].unsqueeze(2)
+
+                    # Save the chunk input if batch_idx == (self.len_epoch - 1) (the last batch of the epoch)
+                    if batch_idx == (self.len_epoch - 1):
+                        chunk_inputs["mag"].append(chunk_data[:, 0, ...])
+                        chunk_inputs["phase"].append(chunk_data[:, 1, ...])
+
                     # Forward pass
                     chunk_mag, chunk_phase = self.model(chunk_data)
                     # Calculate the chunk loss
@@ -184,6 +191,13 @@ class Trainer(BaseTrainer):
                         batch_input=False,
                         crop=True,
                     )
+                    # Concatenate the inputs along the chunk dimension
+                    chunk_inputs["mag"] = torch.cat(
+                        chunk_inputs["mag"], dim=1
+                    ).unsqueeze(1)
+                    chunk_inputs["phase"] = torch.cat(
+                        chunk_inputs["phase"], dim=1
+                    ).unsqueeze(1)
                     # Name the audio files
                     name_list = ["input", "output", "target"]
                     # Store the waveforms
@@ -196,6 +210,21 @@ class Trainer(BaseTrainer):
                     log_spectrogram(self.writer, name_list, waveforms, stft=False)
                     # Add the STFT spectrograms to the tensorboard
                     log_spectrogram(self.writer, name_list, waveforms, stft=True)
+                    # Add the STFT spectrograms of chunks to the tensorboard
+                    log_spectrogram(
+                        self.writer,
+                        name_list,
+                        [
+                            [chunk_inputs["mag"][0], chunk_inputs["phase"][0]],
+                            [chunk_outputs["mag"][0], chunk_outputs["phase"][0]],
+                            [
+                                target[:, 0, ...].unsqueeze(1)[0],
+                                target[:, 1, ...].unsqueeze(1)[0],
+                            ],
+                        ],
+                        stft=True,
+                        chunks=True,
+                    )
 
             # Update the epoch loss and metrics from epoch_log
             self.train_metrics.update(
@@ -247,6 +276,7 @@ class Trainer(BaseTrainer):
                 data, target = data.to(self.device), target.to(self.device)
 
                 # Initialize the chunk ouptut and losses
+                chunk_inputs = {"mag": [], "phase": []}
                 chunk_outputs = {"mag": [], "phase": []}
                 total_loss = 0
                 chunk_losses = {"mag": [], "phase": []}
@@ -257,6 +287,12 @@ class Trainer(BaseTrainer):
                     chunk_data = data[:, :, chunk_idx, :, :].unsqueeze(2)
                     # Get current chunk target (and unsqueeze the chunk dimension)
                     chunk_target = target[:, :, chunk_idx, :, :].unsqueeze(2)
+
+                    # Save the chunk input if batch_idx == (self.len_epoch - 1) (the last batch of the epoch)
+                    if batch_idx == (len(self.valid_data_loader) - 1):
+                        chunk_inputs["mag"].append(chunk_data[:, 0, ...])
+                        chunk_inputs["phase"].append(chunk_data[:, 1, ...])
+
                     # Forward pass
                     chunk_mag, chunk_phase = self.model(chunk_data)
                     # Calculate the chunk loss
@@ -329,6 +365,13 @@ class Trainer(BaseTrainer):
                         batch_input=False,
                         crop=True,
                     )
+                    # Concatenate the inputs along the chunk dimension
+                    chunk_inputs["mag"] = torch.cat(
+                        chunk_inputs["mag"], dim=1
+                    ).unsqueeze(1)
+                    chunk_inputs["phase"] = torch.cat(
+                        chunk_inputs["phase"], dim=1
+                    ).unsqueeze(1)
                     # Name the audio files
                     name_list = ["input", "output", "target"]
                     # Store the waveforms
@@ -341,6 +384,21 @@ class Trainer(BaseTrainer):
                     log_spectrogram(self.writer, name_list, waveforms, stft=False)
                     # Add the STFT spectrograms to the tensorboard
                     log_spectrogram(self.writer, name_list, waveforms, stft=True)
+                    # Add the STFT spectrograms of chunks to the tensorboard
+                    log_spectrogram(
+                        self.writer,
+                        name_list,
+                        [
+                            [chunk_inputs["mag"][0], chunk_inputs["phase"][0]],
+                            [chunk_outputs["mag"][0], chunk_outputs["phase"][0]],
+                            [
+                                target[:, 0, ...].unsqueeze(1)[0],
+                                target[:, 1, ...].unsqueeze(1)[0],
+                            ],
+                        ],
+                        stft=True,
+                        chunks=True,
+                    )
 
         # Update the mean valid loss and metrics from epoch_log
         self.valid_metrics.update(

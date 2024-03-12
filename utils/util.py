@@ -142,7 +142,7 @@ def plot_waveform(names, waveforms, title="Waveform", xlim=None, ylim=None):
     return plot
 
 
-def plot_spectrogram(names, waveforms, title="Spectrogram", stft=False):
+def plot_spectrogram_from_wave(names, waveforms, title="Spectrogram", stft=False):
     """
     Plots the spectrogram using matplotlib
 
@@ -215,6 +215,64 @@ def plot_spectrogram(names, waveforms, title="Spectrogram", stft=False):
     return plot
 
 
+def plot_spectrogram_from_chunks(names, chunk_list, title="Spectrogram (Chunks)"):
+    """
+    Plots the spectrogram of chunks using matplotlib.
+
+    The plot has three rows and the number of columns is equal to the number of chunks.
+
+    Args:
+        names (list): List of names for the waveforms
+        chunk_list (Tensor): List of chunks to plot
+        sample_rate (int): Sample rate of audio signal
+        title (str): Title of the plot
+
+    Returns:
+        np.ndarray: Spectrogram plot
+    """
+    # Initialize the figure (3 rows, number of chunks columns)
+    fig, axs = plt.subplots(
+        3, chunk_list[0].size(1), figsize=(21, 7), sharex=True, sharey=True
+    )
+    # Set the title of the plot
+    plt.suptitle(title)
+    # Remove axis labels
+    plt.tick_params(
+        labelcolor="none",
+        which="both",
+        top=False,
+        bottom=False,
+        left=False,
+        right=False,
+    )
+    # Add axis labels
+    plt.xlabel("Time")
+    plt.ylabel("Frequency")
+    # Iterate over each names (row)
+    for i, name in enumerate(names):
+        # Set the number of chunks to be the first dimension
+        chunks = chunk_list[i].permute(1, 0, 2, 3)
+        # Iterate over each chunk (column)
+        for j, chunk in enumerate(chunks):
+            # Set the title of the plot
+            axs[i, j].set_title(f"{j+1}")
+            # Plot the chunk
+            axs[i, j].imshow(
+                chunk.squeeze().detach().cpu().numpy(),
+                aspect="auto",
+                origin="lower",
+            )
+    # Set layout to tight
+    plt.tight_layout()
+    # Convert fig to numpy array
+    fig.canvas.draw()
+    plot = fig2np(fig)
+    # Close the figure to free memory
+    plt.close()
+    # Return the plot
+    return plot
+
+
 # TODO: Set sample rate in config
 def log_audio(writer, name_list, waveforms, sample_rate=48000):
     for name, waveform in zip(name_list, waveforms):
@@ -240,7 +298,7 @@ def log_waveform(writer, name_list, waveforms):
     writer.add_image("Waveform", wave_plot, dataformats="HWC")
 
 
-def log_spectrogram(writer, name_list, specs, stft=False):
+def log_spectrogram(writer, name_list, specs, stft=False, chunks=False):
     """
     Plot and log spectrograms to tensorboard in a figure
 
@@ -253,8 +311,21 @@ def log_spectrogram(writer, name_list, specs, stft=False):
     Returns:
         None
     """
-    # Call plot_spectrogram for each waveform
-    spec_plot = plot_spectrogram(names=name_list, waveforms=specs, stft=stft)
-    filename = "Spectrogram (STFT)" if stft else "Spectrogram"
-    # Log the spectrogram plot
-    writer.add_image(filename, spec_plot, dataformats="HWC")
+    if not chunks:
+        # Call plot_spectrogram_from_wave for each waveform
+        spec_plot = plot_spectrogram_from_wave(
+            names=name_list, waveforms=specs, stft=stft
+        )
+        filename = "Spectrogram (STFT)" if stft else "Spectrogram"
+        # Log the spectrogram plot
+        writer.add_image(filename, spec_plot, dataformats="HWC")
+    if chunks:
+        # chunks has magnitude and phase [[tensor_1, tensor_2], [tensor_1, tensor_2], [tensor_1, tensor_2]]
+        # We want to get [[tensor_1, tensor_1, tensor_1], [tensor_2, tensor_2, tensor_2]]
+        for i in range(2):
+            chunk_list = [chunk[i] for chunk in specs]
+            chunk_plot = plot_spectrogram_from_chunks(
+                names=name_list, chunk_list=chunk_list
+            )
+            filename = "Chunks (Magnitude)" if i == 0 else "Chunks (Phase)"
+            writer.add_image(filename, chunk_plot, dataformats="HWC")
