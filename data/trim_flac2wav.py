@@ -4,6 +4,7 @@ import pandas as pd
 import torchaudio
 import os
 import sys
+
 # Used for debugging data_loader
 # Add the project root directory to the Python path
 project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -14,30 +15,35 @@ from utils import ensure_dir
 
 # Load the `./config.json` as config
 import json
-with open('config.json') as f:
+
+with open("config.json") as f:
     config = json.load(f)
 
 
-
-if __name__ == '__main__':
+if __name__ == "__main__":
     # Download VCTK_092 dataset, default mic is "mic2"
-    dataset = torchaudio.datasets.VCTK_092(root=config['data_loader']['args']['data_dir'], download=True)
+    dataset = torchaudio.datasets.VCTK_092(
+        root=config["data_loader"]["args"]["data_dir"], download=True
+    )
     # Check the total number of samples, and print the first sample
     print(f"Total number of samples: {len(dataset)}")
     print(dataset[0])
 
     # Set the destination path
-    dest_path = os.path.join(config['data_loader']['args']['data_dir'], "VCTK-Corpus-0.92/wav48_silence_trimmed_wav")
+    dest_path = os.path.join(
+        config["data_loader"]["args"]["data_dir"],
+        "VCTK-Corpus-0.92/wav48_silence_trimmed_wav",
+    )
     # Make sure the output directory exists, if not, create it
     ensure_dir(dest_path)
-    
+
     # Read the timestamps txt as pandas dataframe
-    timestamps = pd.read_csv(config['flac2wav']['timestamps'], sep=" ", header=None)
+    timestamps = pd.read_csv(config["flac2wav"]["timestamps"], sep=" ", header=None)
     # Set the column names
     timestamps.columns = ["filename", "start", "end"]
     # Convert seconds to samples with the sample rate
-    timestamps["start"] = timestamps["start"] * config['flac2wav']['source_sr']
-    timestamps["end"] = timestamps["end"] * config['flac2wav']['source_sr']
+    timestamps["start"] = timestamps["start"] * config["flac2wav"]["source_sr"]
+    timestamps["end"] = timestamps["end"] * config["flac2wav"]["source_sr"]
     # Change the type to int
     timestamps["start"] = timestamps["start"].astype(int)
     timestamps["end"] = timestamps["end"].astype(int)
@@ -62,4 +68,6 @@ if __name__ == '__main__':
         # Make sure the output directory exists, if not, create it
         ensure_dir(dest_folder)
         # Save the trimmed waveform
-        torchaudio.save(os.path.join(dest_folder, f"{flac_name}.wav"), trimmed_waveform, sample_rate)
+        torchaudio.save(
+            os.path.join(dest_folder, f"{flac_name}.wav"), trimmed_waveform, sample_rate
+        )
