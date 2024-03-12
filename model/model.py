@@ -260,8 +260,8 @@ class DualStreamInteractiveUNet(BaseModel):
     ):
         super().__init__()
         # Define down and up blocks
-        channels_down = [in_channels, 64, 128, 256, 256]
-        channels_up = [256, 256, 128, 64, out_channels]
+        channels_down = [in_channels, 64, 128, 256]
+        channels_up = [256, 128, 64, out_channels]
 
         # Activation function
         self.activation = nn.ReLU()
@@ -283,7 +283,7 @@ class DualStreamInteractiveUNet(BaseModel):
                 stride=2,
                 padding=1,
             ),
-            nn.ReLU(inplace=True),
+            self.activation,
             nn.Conv2d(
                 channels_up[0],
                 channels_up[0] * scale**2,
@@ -291,7 +291,7 @@ class DualStreamInteractiveUNet(BaseModel):
                 stride=1,
                 padding=1,
             ),
-            nn.ReLU(inplace=True),
+            self.activation,
             nn.PixelShuffle(upscale_factor=scale),
         )
 

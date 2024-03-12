@@ -88,7 +88,7 @@ class Trainer(BaseTrainer):
                 # Initialize the chunk ouptut and losses
                 chunk_outputs = {"mag": [], "phase": []}
                 total_loss = 0
-                chunk_losses = []
+                chunk_losses = {"mag": [], "phase": []}
 
                 # Iterate through the chunks and calculate the loss for each chunk
                 for chunk_idx in range(data.size(2)):
@@ -105,7 +105,8 @@ class Trainer(BaseTrainer):
                     )
                     # print(f'chunk_mag.shape: {chunk_mag.shape}, chunk_target[:, 0, ...].shape: {chunk_target[:, 0, ...].shape}')
                     # Accumulate the chunk loss
-                    chunk_losses.append(chunk_mag_loss + chunk_phase_loss)
+                    chunk_losses["mag"].append(chunk_mag_loss)
+                    chunk_losses["phase"].append(chunk_phase_loss)
                     # Store the chunk output
                     chunk_outputs["mag"].append(chunk_mag)
                     chunk_outputs["phase"].append(chunk_phase)
@@ -143,8 +144,14 @@ class Trainer(BaseTrainer):
                 # Calculate the mag and phase loss
                 mag_loss = self.criterion(output_mag, target_mag)
                 phase_loss = self.criterion(output_phase, target_phase)
+                # Get global loss and local loss
+                global_loss = 0.9 * mag_loss + 0.1 * phase_loss
+                local_loss = (
+                    0.9 * torch.stack(chunk_losses["mag"]).mean()
+                    + 0.1 * torch.stack(chunk_losses["phase"]).mean()
+                )
                 # Calculate total loss
-                total_loss = torch.stack(chunk_losses).mean() + mag_loss + phase_loss
+                total_loss = 0.3 * global_loss + 0.7 * local_loss
                 # Backward pass
                 total_loss.backward()
                 # Update the weights
@@ -204,7 +211,6 @@ class Trainer(BaseTrainer):
                 self.train_metrics.update(
                     met.__name__, np.mean(epoch_log["metrics"][met.__name__])
                 )
-
             # Add histogram of model parameters to the tensorboard
             log = self.train_metrics.result()
             # Validate after each epoch
@@ -243,7 +249,7 @@ class Trainer(BaseTrainer):
                 # Initialize the chunk ouptut and losses
                 chunk_outputs = {"mag": [], "phase": []}
                 total_loss = 0
-                chunk_losses = []
+                chunk_losses = {"mag": [], "phase": []}
 
                 # Iterate through the chunks and calculate the loss for each chunk
                 for chunk_idx in range(data.size(2)):
@@ -259,7 +265,8 @@ class Trainer(BaseTrainer):
                         chunk_phase, chunk_target[:, 1, ...]
                     )
                     # Accumulate the chunk loss
-                    chunk_losses.append(chunk_mag_loss + chunk_phase_loss)
+                    chunk_losses["mag"].append(chunk_mag_loss)
+                    chunk_losses["phase"].append(chunk_phase_loss)
                     # Store the chunk output
                     chunk_outputs["mag"].append(chunk_mag)
                     chunk_outputs["phase"].append(chunk_phase)
@@ -295,7 +302,12 @@ class Trainer(BaseTrainer):
                 mag_loss = self.criterion(output_mag, target_mag)
                 phase_loss = self.criterion(output_phase, target_phase)
                 # Calculate total loss
-                total_loss = torch.stack(chunk_losses).mean() + mag_loss + phase_loss
+                total_loss = (
+                    torch.stack(chunk_losses["mag"]).mean()
+                    + torch.stack(chunk_losses["phase"]).mean()
+                    + mag_loss
+                    + phase_loss
+                ) / 2
 
                 # Save valid losses and metrics for this batch
                 epoch_log_valid["losses"]["total_loss"].append(total_loss.item())
