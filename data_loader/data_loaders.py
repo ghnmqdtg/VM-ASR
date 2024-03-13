@@ -135,8 +135,8 @@ class CustomVCTK_092(datasets.VCTK_092):
         with open(self.sample_ids_file, "r") as f:
             self._sample_ids = json.load(f)
             # TODO: Set percentage of the dataset in the config file
-            # Only load the 1% of the dataset for debugging
-            self._sample_ids = self._sample_ids[: int(len(self._sample_ids) * 0.01)]
+            # Only load the 10% of the dataset for debugging
+            self._sample_ids = self._sample_ids[: int(len(self._sample_ids) * 0.10)]
 
     def _load_audio(self, file_path) -> Tuple[torch.Tensor | int]:
         return super()._load_audio(file_path)

@@ -216,7 +216,14 @@ class InteractingUNetBlock(nn.Module):
     def __init__(self, in_channels, out_channels, is_down=True):
         super().__init__()
         # Basic convolutional block with option for downscaling or upscaling
-        self.conv = nn.Conv2d(
+        self.conv_mag = nn.Conv2d(
+            in_channels,
+            out_channels,
+            kernel_size=3,
+            padding=1,
+            stride=2 if is_down else 1,
+        )
+        self.conv_phase = nn.Conv2d(
             in_channels,
             out_channels,
             kernel_size=3,
@@ -224,18 +231,21 @@ class InteractingUNetBlock(nn.Module):
             stride=2 if is_down else 1,
         )
         self.activation = nn.ReLU()
-        self.up_sample = (
+        self.up_sample_mag = (
+            nn.PixelShuffle(upscale_factor=2) if not is_down else nn.Identity()
+        )
+        self.up_sample_phase = (
             nn.PixelShuffle(upscale_factor=2) if not is_down else nn.Identity()
         )
         self.batchnorm = nn.BatchNorm2d(out_channels)
 
     def forward(self, mag, phase):
         # Pass magnitude through the block
-        mag = self.conv(mag)
+        mag = self.conv_mag(mag)
         mag = self.activation(mag)
 
         # Pass phase through the block
-        phase = self.conv(phase)
+        phase = self.conv_phase(phase)
         phase = self.activation(phase)
 
         # Batchnorm
@@ -243,8 +253,8 @@ class InteractingUNetBlock(nn.Module):
         phase = self.batchnorm(phase)
 
         # Upsample if this is an upsampling block
-        mag = self.up_sample(mag)
-        phase = self.up_sample(phase)
+        mag = self.up_sample_mag(mag)
+        phase = self.up_sample_phase(phase)
 
         # Interact magnitude and phase by adding them
         return mag + phase, phase + mag
@@ -275,7 +285,27 @@ class DualStreamInteractiveUNet(BaseModel):
             self.down_unet_blocks.append(down_block)
 
         # Define the bottleneck
-        self.bottleneck = nn.Sequential(
+        self.bottleneck_mag = nn.Sequential(
+            nn.Conv2d(
+                channels_down[-1],
+                channels_down[-1],
+                kernel_size=(3, 3),
+                stride=2,
+                padding=1,
+            ),
+            self.activation,
+            nn.Conv2d(
+                channels_up[0],
+                channels_up[0] * scale**2,
+                kernel_size=(3, 3),
+                stride=1,
+                padding=1,
+            ),
+            self.activation,
+            nn.PixelShuffle(upscale_factor=scale),
+        )
+
+        self.bottleneck_phase = nn.Sequential(
             nn.Conv2d(
                 channels_down[-1],
                 channels_down[-1],
@@ -317,8 +347,8 @@ class DualStreamInteractiveUNet(BaseModel):
             mag, phase = block(mag, phase)
             skip_connections.append((mag, phase))
         # Bottleneck
-        mag = self.bottleneck(mag)
-        phase = self.bottleneck(phase)
+        mag = self.bottleneck_mag(mag)
+        phase = self.bottleneck_phase(phase)
         # Forward pass through the dual-stream blocks
         for block in self.up_unet_blocks:
             # Add the skip connection
