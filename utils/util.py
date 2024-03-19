@@ -178,38 +178,50 @@ def plot_spectrogram_from_wave(names, waveforms, title="Spectrogram", stft=False
     # Set the number of subplots
     n_plots = len(waveforms)
     # Create a subplots figure with n_plots rows
-    fig, axs = plt.subplots(n_plots, 1, figsize=(10, 14))
+    if stft:
+        fig, axs = plt.subplots(n_plots, 2, figsize=(16, 12))
+    else:
+        fig, axs = plt.subplots(n_plots, 1, figsize=(16, 12))
     # Iterate over each waveform
     for i, (name, waveform) in enumerate(zip(names, waveforms)):
-        # Set the title of the plot
-        axs[i].set_title(name)
         if stft:
-            # Plot the waveform (STFT)
-            img = axs[i].pcolormesh(
-                torch.log2(
-                    torch.abs(
-                        torch.stft(
-                            waveform,
-                            n_fft=n_fft,
-                            hop_length=hop_length,
-                            win_length=win_length,
-                            window=window,
-                            return_complex=True,
-                        )
-                    )
-                    + 1e-8
-                )
-                .squeeze(0)
-                .detach()
-                .cpu()
-                .numpy(),
+            # Compute the STFT
+            spec = torch.stft(
+                waveform,
+                n_fft=n_fft,
+                hop_length=hop_length,
+                win_length=win_length,
+                window=window,
+                return_complex=True,
+            )
+            # Plot the magnitude of the STFT
+            img = axs[i, 0].pcolormesh(
+                torch.log2(torch.abs(spec) + 1e-8).squeeze(0).detach().cpu().numpy(),
                 vmin=-15,
                 cmap="viridis",
                 shading="auto",
             )
             # Add colorbar
-            plt.colorbar(img, ax=axs[i])
+            plt.colorbar(img, ax=axs[i, 0])
+            # Plot the phase of the STFT
+            img = axs[i, 1].pcolormesh(
+                torch.angle(spec).squeeze(0).detach().cpu().numpy(),
+                cmap="viridis",
+                shading="auto",
+            )
+            # Add colorbar
+            plt.colorbar(img, ax=axs[i, 1])
+            # Set the title
+            axs[i, 0].set_title(name)
+            axs[i, 1].set_title(name)
+            # Set the x-axis label
+            axs[i, 0].set_xlabel("Time")
+            axs[i, 1].set_xlabel("Time")
+            # Set the y-axis label
+            axs[i, 0].set_ylabel("Frequency")
+            axs[i, 1].set_ylabel("Frequency")
         else:
+            # Set the title
             # Plot the waveform (Spectrogram)
             frequencies, times, spectrogram = signal.spectrogram(
                 waveform.squeeze().detach().cpu().numpy(), fs=config["source_sr"]
@@ -223,10 +235,11 @@ def plot_spectrogram_from_wave(names, waveforms, title="Spectrogram", stft=False
             )
             # Add colorbar
             plt.colorbar(img, ax=axs[i])
-        # Set the x-axis label
-        axs[i].set_xlabel("Time")
-        # Set the y-axis label
-        axs[i].set_ylabel("Frequency")
+            axs[i].set_title(name)
+            # Set the x-axis label
+            axs[i].set_xlabel("Time")
+            # Set the y-axis label
+            axs[i].set_ylabel("Frequency")
     # Set the title of the plot
     plt.suptitle(title)
     # Set layout to tight
