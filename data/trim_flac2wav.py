@@ -21,9 +21,9 @@ with open("config.json") as f:
 
 
 if __name__ == "__main__":
-    # Download VCTK_092 dataset, default mic is "mic2"
+    # Download VCTK_092 dataset, default mic is "mic1"
     dataset = torchaudio.datasets.VCTK_092(
-        root=config["data_loader"]["args"]["data_dir"], download=True
+        root=config["data_loader"]["args"]["data_dir"], mic_id="mic1", download=True
     )
     # Check the total number of samples, and print the first sample
     print(f"Total number of samples: {len(dataset)}")
