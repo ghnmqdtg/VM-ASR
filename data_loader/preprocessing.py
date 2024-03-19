@@ -279,10 +279,15 @@ def plot_all(waveform: torch.Tensor, sample_rate: int, filename: str) -> None:
     plt.plot(waveform.t().numpy())
     plt.title("Waveform")
     plt.subplot(1, 3, 2)
-    plt.imshow(mag.numpy().squeeze(0), aspect="auto", origin="lower")
+    plt.pcolormesh(mag.numpy().squeeze(0), vmin=-15, cmap="viridis", shading="auto")
     plt.title("Magnitude")
+    # Add color bar
+    plt.colorbar()
     plt.subplot(1, 3, 3)
     plt.imshow(phase.numpy().squeeze(0), aspect="auto", origin="lower")
+    plt.colorbar()
+    # Add space between subplots
+    plt.tight_layout()
     plt.title("Phase")
     plt.savefig(filename)
     plt.close()
