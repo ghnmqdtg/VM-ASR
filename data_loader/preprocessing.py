@@ -7,7 +7,7 @@ import torchaudio.transforms as T
 import random
 from typing import Tuple
 import matplotlib.pyplot as plt
-from scipy.signal import cheby1
+from scipy.signal import cheby1, butter
 from scipy.signal import sosfiltfilt
 
 try:
@@ -66,6 +66,41 @@ def crop_or_pad_waveform(waveform: torch.Tensor) -> torch.Tensor:
     return waveform
 
 
+def butter_lowpass_filter(
+    normalized_cutoff: float, waveform: torch.Tensor
+) -> torch.Tensor:
+    """
+    Apply low pass filter to the waveform to remove the high frequency components.
+    """
+    order = 6
+    # Create the filter coefficients
+    sos = butter(order, normalized_cutoff, btype="low", output="sos")
+    # Apply the filter
+    waveform = sosfiltfilt(sos, waveform)
+    # Convert the waveform to tensor
+    waveform_tensor = torch.tensor(waveform.copy(), dtype=torch.float32)
+    # Return the waveform
+    return waveform_tensor
+
+
+def cheby1_lowpass_filter(
+    normalized_cutoff: float, waveform: torch.Tensor
+) -> torch.Tensor:
+    """
+    Apply low pass filter to the waveform to remove the high frequency components.
+    """
+    order = 6
+    ripple = 1e-3
+    # Create the filter coefficients
+    sos = cheby1(order, ripple, normalized_cutoff, btype="lowpass", output="sos")
+    # Apply the filter
+    waveform = sosfiltfilt(sos, waveform)
+    # Convert the waveform to tensor
+    waveform_tensor = torch.tensor(waveform.copy(), dtype=torch.float32)
+    # Return the waveform
+    return waveform_tensor
+
+
 def low_pass_filter(waveform: torch.Tensor, sr_org: int, sr_new: int) -> torch.Tensor:
     """
     Apply low pass filter to the waveform to remove the high frequency components.
@@ -82,21 +117,12 @@ def low_pass_filter(waveform: torch.Tensor, sr_org: int, sr_new: int) -> torch.T
     # Define the cutoff frequency and the ratio to the Nyquist frequency
     nyquist = sr_org / 2
     highcut = sr_new // 2
-    hi = highcut / nyquist
-    # TODO: Set filter funtion as a parameter
-    # Ramdomly select the filter parameters
-    # order = random.randint(1, 11)
-    # ripple = random.choice([1e-9, 1e-6, 1e-3, 1, 5])
-    order = 10
-    ripple = 1e-3
-    # Setup the low pass filter: chebyshev type 1
-    sos = cheby1(order, ripple, hi, btype="lowpass", output="sos")
-    # Apply the filter
-    waveform = sosfiltfilt(sos, waveform)
-    # Convert the waveform to tensor
-    waveform_tensor = torch.tensor(waveform.copy(), dtype=torch.float32)
+    normalized_cutoff = highcut / nyquist
+    # Apply the low pass filter
+    waveform = cheby1_lowpass_filter(normalized_cutoff, waveform)
+
     # Return the waveform
-    return waveform_tensor
+    return waveform
 
 
 def resample_audio(waveform: torch.Tensor, sr_org: int, sr_new: int) -> torch.Tensor:
