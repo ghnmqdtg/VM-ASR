@@ -185,7 +185,7 @@ def plot_spectrogram_from_wave(names, waveforms, title="Spectrogram", stft=False
         axs[i].set_title(name)
         if stft:
             # Plot the waveform (STFT)
-            axs[i].imshow(
+            img = axs[i].pcolormesh(
                 torch.log2(
                     torch.abs(
                         torch.stft(
@@ -203,15 +203,26 @@ def plot_spectrogram_from_wave(names, waveforms, title="Spectrogram", stft=False
                 .detach()
                 .cpu()
                 .numpy(),
-                aspect="auto",
-                origin="lower",
+                vmin=-15,
+                cmap="viridis",
+                shading="auto",
             )
+            # Add colorbar
+            plt.colorbar(img, ax=axs[i])
         else:
             # Plot the waveform (Spectrogram)
             frequencies, times, spectrogram = signal.spectrogram(
                 waveform.squeeze().detach().cpu().numpy(), fs=config["source_sr"]
             )
-            axs[i].pcolormesh(times, frequencies, 10 * np.log10(spectrogram + 1e-8))
+            img = axs[i].pcolormesh(
+                times,
+                frequencies,
+                10 * np.log10(spectrogram + 1e-8),
+                cmap="viridis",
+                shading="auto",
+            )
+            # Add colorbar
+            plt.colorbar(img, ax=axs[i])
         # Set the x-axis label
         axs[i].set_xlabel("Time")
         # Set the y-axis label
