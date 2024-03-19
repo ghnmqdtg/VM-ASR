@@ -355,7 +355,7 @@ if __name__ == "__main__":
     ensure_dir("./output/dev/data_preprocessing")
     # Set the parameters
     # List of target sample rates to choose from
-    target_sample_rates = [8000, 16000, 24000]
+    target_sample_rates = [8000]
     # Size of each audio chunk
     chunk_size = 10160
     # Overlap size between chunks
@@ -382,28 +382,32 @@ if __name__ == "__main__":
     plot_all(
         waveform,
         sr_new,
-        f"./output/dev/data_preprocessing/org_{sr_new}_{timestr}.png",
+        # f"./output/dev/data_preprocessing/{timestr}_step_0_{sr_new}.png",
+        f"./output/dev/data_preprocessing/step_0_{sr_new}.png",
     )
     plot_all(
         waveform_filtered,
         sr_new,
-        f"./output/dev/data_preprocessing/filtered_{sr_new}_{timestr}.png",
+        # f"./output/dev/data_preprocessing/{timestr}_step_1_{sr_new}.png",
+        f"./output/dev/data_preprocessing/step_1_{sr_new}.png",
     )
     plot_all(
         waveform_downsampled,
         sr_new,
-        f"./output/dev/data_preprocessing/filtered_down_{sr_new}_{timestr}.png",
-    )
-    plot_all(
-        resample_audio(waveform, sr_org, sr_new),
-        sr_new,
-        f"./output/dev/data_preprocessing/org_down{sr_new}_{timestr}.png",
+        # f"./output/dev/data_preprocessing/{timestr}_step_2_{sr_new}.png",
+        f"./output/dev/data_preprocessing/step_2_{sr_new}.png",
     )
     plot_all(
         low_pass_filter(waveform_upsampled, sr_org, sr_new),
         sr_new,
-        f"./output/dev/data_preprocessing/filtered_down_up_{sr_new}_{timestr}.png",
+        # f"./output/dev/data_preprocessing/{timestr}_step_3_{sr_new}.png",
+        f"./output/dev/data_preprocessing/step_3_{sr_new}.png",
     )
+    # plot_all(
+    #     resample_audio(waveform, sr_org, sr_new),
+    #     sr_new,
+    #     f"./output/dev/data_preprocessing/{timestr}_step_4_{sr_new}.png",
+    # )
     # # Save the chunks to the output folder
     # for i, chunk in enumerate(chunks):
     #     torchaudio.save(
