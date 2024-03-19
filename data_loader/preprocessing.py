@@ -46,7 +46,7 @@ except:
 def crop_or_pad_waveform(waveform: torch.Tensor) -> torch.Tensor:
     device = waveform.device
     length = dataloader_params["length"]
-    white_noise = dataloader_params["pad_white_noise"]
+    white_noise = dataloader_params["white_noise"]
     # If the waveform is shorter than the required length, pad it
     if waveform.shape[1] < length:
         pad_length = length - waveform.shape[1]
@@ -64,6 +64,10 @@ def crop_or_pad_waveform(waveform: torch.Tensor) -> torch.Tensor:
                 torch.randn(pad_length - r).to(device) * white_noise
             ).unsqueeze(0)
             waveform = torch.cat((noise_front, waveform, noise_back), dim=-1)
+            # Apply fade in and fade out to the padded waveform
+            waveform = T.Fade(
+                fade_in_len=r, fade_out_len=pad_length - r, fade_shape="exponential"
+            )(waveform)
         # print(f"Pad length: {pad_length}, Random length: {r}")
     else:
         # If the waveform is longer than the required length, crop it randomly from the beginning
