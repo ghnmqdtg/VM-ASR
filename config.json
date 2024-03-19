@@ -26,6 +26,7 @@
                 24000
             ],
             "length": 121890,
+            "pad_white_noise": 0.0001,
             "chunking_params": {
                 "chunk_size": 10160,
                 "overlap": 0
