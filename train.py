@@ -50,9 +50,8 @@ def main(config):
         model = torch.nn.DataParallel(model, device_ids=device_ids)
 
     # Get function handles of loss and metrics
-    criterion = getattr(module_loss, config["loss"])
+    criterion = {crit: getattr(module_loss, crit) for crit in config["loss"]}
     metrics = [getattr(module_metric, met) for met in config["metrics"]]
-
     # Build optimizer, learning rate scheduler. Delete every lines containing lr_scheduler for disabling scheduler
     trainable_params = filter(lambda p: p.requires_grad, model.parameters())
     optimizer = config.init_obj("optimizer", torch.optim, trainable_params)

@@ -119,8 +119,10 @@ class Trainer(BaseTrainer):
                     # Forward pass
                     chunk_mag, chunk_phase = self.model(chunk_data)
                     # Calculate the chunk loss
-                    chunk_mag_loss = self.criterion(chunk_mag, chunk_target[:, 0, ...])
-                    chunk_phase_loss = self.criterion(
+                    chunk_mag_loss = self.criterion["mse_loss"](
+                        chunk_mag, chunk_target[:, 0, ...]
+                    )
+                    chunk_phase_loss = self.criterion["mse_loss"](
                         chunk_phase, chunk_target[:, 1, ...]
                     )
                     # print(f'chunk_mag.shape: {chunk_mag.shape}, chunk_target[:, 0, ...].shape: {chunk_target[:, 0, ...].shape}')
@@ -164,8 +166,10 @@ class Trainer(BaseTrainer):
                 # Calculate the mag and phase loss
                 local_mag_loss = torch.stack(chunk_losses["mag"]).mean()
                 local_phase_loss = torch.stack(chunk_losses["phase"]).mean()
-                global_mag_loss = self.criterion(output_mag, target_mag)
-                global_phase_loss = self.criterion(output_phase, target_phase)
+                global_mag_loss = self.criterion["mse_loss"](output_mag, target_mag)
+                global_phase_loss = self.criterion["mse_loss"](
+                    output_phase, target_phase
+                )
                 # Get global loss and local loss
                 global_loss = 0.9 * global_mag_loss + 0.1 * global_phase_loss
                 local_loss = 0.9 * local_mag_loss + 0.1 * local_phase_loss
@@ -330,8 +334,10 @@ class Trainer(BaseTrainer):
                     # Forward pass
                     chunk_mag, chunk_phase = self.model(chunk_data)
                     # Calculate the chunk loss
-                    chunk_mag_loss = self.criterion(chunk_mag, chunk_target[:, 0, ...])
-                    chunk_phase_loss = self.criterion(
+                    chunk_mag_loss = self.criterion["mse_loss"](
+                        chunk_mag, chunk_target[:, 0, ...]
+                    )
+                    chunk_phase_loss = self.criterion["mse_loss"](
                         chunk_phase, chunk_target[:, 1, ...]
                     )
                     # Accumulate the chunk loss
@@ -372,8 +378,10 @@ class Trainer(BaseTrainer):
                 # Calculate the mag and phase loss
                 local_mag_loss = torch.stack(chunk_losses["mag"]).mean()
                 local_phase_loss = torch.stack(chunk_losses["phase"]).mean()
-                global_mag_loss = self.criterion(output_mag, target_mag)
-                global_phase_loss = self.criterion(output_phase, target_phase)
+                global_mag_loss = self.criterion["mse_loss"](output_mag, target_mag)
+                global_phase_loss = self.criterion["mse_loss"](
+                    output_phase, target_phase
+                )
                 # Get global loss and local loss
                 global_loss = 0.9 * global_mag_loss + 0.1 * global_phase_loss
                 local_loss = 0.9 * local_mag_loss + 0.1 * local_phase_loss

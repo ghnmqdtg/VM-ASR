@@ -53,7 +53,9 @@
             "amsgrad": true
         }
     },
-    "loss": "mse_loss",
+    "loss": [
+        "mse_loss"
+    ],
     "metrics": [
         "log_spectral_distance",
         "psnr"
