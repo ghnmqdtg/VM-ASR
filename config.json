@@ -17,6 +17,7 @@
             "data_dir": "data/",
             "batch_size": 24,
             "shuffle": true,
+            "percentage": 0.1,
             "validation_split": 0.2,
             "num_workers": 6,
             "random_resample": [
