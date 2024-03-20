@@ -15,7 +15,7 @@
         "type": "VCTKDataLoader",
         "args": {
             "data_dir": "data/",
-            "batch_size": 16,
+            "batch_size": 24,
             "shuffle": true,
             "validation_split": 0.2,
             "num_workers": 6,

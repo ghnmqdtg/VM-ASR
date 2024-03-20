@@ -213,21 +213,22 @@ class DualStreamUNet(BaseModel):
 
 
 class InteractingUNetBlock(nn.Module):
-    def __init__(self, in_channels, out_channels, is_down=True):
+    def __init__(self, in_channels, out_channels, kernel_size, is_down):
         super().__init__()
+        padding_dict = {3: 1}
         # Basic convolutional block with option for downscaling or upscaling
         self.conv_mag = nn.Conv2d(
             in_channels,
             out_channels,
-            kernel_size=3,
-            padding=1,
+            kernel_size=kernel_size,
+            padding=padding_dict[kernel_size],
             stride=2 if is_down else 1,
         )
         self.conv_phase = nn.Conv2d(
             in_channels,
             out_channels,
-            kernel_size=3,
-            padding=1,
+            kernel_size=kernel_size,
+            padding=padding_dict[kernel_size],
             stride=2 if is_down else 1,
         )
         self.activation = nn.ReLU()
@@ -270,9 +271,11 @@ class DualStreamInteractiveUNet(BaseModel):
     ):
         super().__init__()
         # Define down and up blocks
-        channels_down = [in_channels, 64, 128, 256]
-        channels_up = [256, 128, 64, out_channels]
-
+        channels_down = [in_channels, 32, 64, 128, 256, 256]
+        channels_up = [256, 256, 128, 64, 32, out_channels]
+        kernels_down = [3, 3, 3, 3, 3]
+        # The reverse of the downscaling kernels
+        kernels_up = kernels_down[::-1]
         # Activation function
         self.activation = nn.ReLU()
 
@@ -280,7 +283,7 @@ class DualStreamInteractiveUNet(BaseModel):
         self.down_unet_blocks = nn.ModuleList()
         for i in range(len(channels_down) - 1):
             down_block = InteractingUNetBlock(
-                channels_down[i], channels_down[i + 1], is_down=True
+                channels_down[i], channels_down[i + 1], kernels_down[i], is_down=True
             )
             self.down_unet_blocks.append(down_block)
 
@@ -329,7 +332,10 @@ class DualStreamInteractiveUNet(BaseModel):
         self.up_unet_blocks = nn.ModuleList()
         for i in range(len(channels_up) - 1):
             up_block = InteractingUNetBlock(
-                channels_up[i] * scale, channels_up[i + 1] * scale**2, is_down=False
+                channels_up[i] * scale,
+                channels_up[i + 1] * scale**2,
+                kernels_up[i],
+                is_down=False,
             )
             self.up_unet_blocks.append(up_block)
 
