@@ -38,11 +38,11 @@ class BaseTrainer:
 
         self.start_epoch = 1
 
-        self.checkpoint_dir = config.save_dir
+        self.log_dir = config.log_dir
 
         # setup visualization writer instance
         self.writer = TensorboardWriter(
-            config.log_dir, self.logger, cfg_trainer["tensorboard"]
+            self.log_dir, self.logger, cfg_trainer["tensorboard"]
         )
 
         if config.resume is not None:
@@ -127,11 +127,11 @@ class BaseTrainer:
             "monitor_best": self.mnt_best,
             "config": self.config,
         }
-        filename = str(self.checkpoint_dir / "checkpoint-epoch{}.pth".format(epoch))
+        filename = str(self.log_dir / "checkpoint-epoch{}.pth".format(epoch))
         torch.save(state, filename)
         self.logger.info("Saving checkpoint: {} ...".format(filename))
         if save_best:
-            best_path = str(self.checkpoint_dir / "model_best.pth")
+            best_path = str(self.log_dir / "model_best.pth")
             torch.save(state, best_path)
             self.logger.info("Saving current best: model_best.pth ...")
 

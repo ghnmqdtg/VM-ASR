@@ -22,10 +22,10 @@ np.random.seed(SEED)
 
 
 def main(config):
+    run_id = str(config.log_dir).split("/")[-1]
+    run_name = f'{config["arch"]["type"]}-{run_id}'
     # Check if wandb is enabled
     if config["trainer"]["sync_wandb"]:
-        # Run name (config.log_dir is "saved/log/MambaASR/0309_200729", we want MambaASR-0309-200729)
-        run_name = "-".join(str(config.log_dir).split("/")[-2:]).replace("_", "-")
         wandb.tensorboard.patch(
             root_logdir=os.path.join("./", config.log_dir),
             pytorch=True,
