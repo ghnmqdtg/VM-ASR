@@ -1,6 +1,7 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from .vmamba import VSSBlock
 
 try:
     from base import BaseModel
@@ -371,12 +372,93 @@ class DualStreamInteractiveUNet(BaseModel):
         return mag, phase
 
 
-class MambaUNet(BaseModel):
+class InteractingVSSBlock(nn.Module):
+
+    def __init__(self, hidden_dim=1, *args, **kwargs) -> None:
+        super().__init__(*args, **kwargs)
+        self.vss_layers_mag = VSSBlock(
+            hidden_dim=hidden_dim,
+            drop_path=0.0,
+            norm_layer=nn.LayerNorm,
+            ssm_d_state=1,
+            ssm_ratio=2,
+            ssm_dt_rank="auto",
+            ssm_act_layer=nn.SiLU,
+            ssm_conv=3,
+            ssm_conv_bias=False,
+            ssm_drop_rate=0.0,
+            ssm_init="v0",
+            forward_type="v2",
+            mlp_ratio=4,
+            mlp_act_layer=nn.GELU,
+            mlp_drop_rate=0.0,
+            use_checkpoint=False,
+        )
+        self.vss_layers_phase = VSSBlock(
+            hidden_dim=hidden_dim,
+            drop_path=0.0,
+            norm_layer=nn.LayerNorm,
+            ssm_d_state=1,
+            ssm_ratio=2,
+            ssm_dt_rank="auto",
+            ssm_act_layer=nn.SiLU,
+            ssm_conv=3,
+            ssm_conv_bias=False,
+            ssm_drop_rate=0.0,
+            ssm_init="v0",
+            forward_type="v2",
+            mlp_ratio=4,
+            mlp_act_layer=nn.GELU,
+            mlp_drop_rate=0.0,
+            use_checkpoint=False,
+        )
+
+    def forward(self, mag, phase):
+        # Pass magnitude through the block
+        mag = self.vss_layers_mag(mag)
+        # Pass phase through the block
+        phase = self.vss_layers_phase(phase)
+        return mag + phase, phase + mag
+
+
+class DualStreamInteractiveVSS(BaseModel):
     """
-    Dual-Stream model for learning the magnitude and phase of the image.
+    Integrating VSSBlock
     """
 
-    pass
+    def __init__(self, *args, **kwargs) -> None:
+        super().__init__(*args, **kwargs)
+        self.stem_mag = nn.Conv2d(1, 3, kernel_size=3, stride=1, padding=1)
+        self.stem_phase = nn.Conv2d(1, 3, kernel_size=3, stride=1, padding=1)
+        self.vss_layers = nn.ModuleList()
+        for i in range(3):
+            self.vss_layers.append(InteractingVSSBlock(hidden_dim=3))
+        self.tail_mag = nn.Conv2d(3, 1, kernel_size=3, stride=1, padding=1)
+        self.tail_phase = nn.Conv2d(3, 1, kernel_size=3, stride=1, padding=1)
+
+    def forward(self, x):
+        # Clone the input for residual connection
+        residual = x.clone()
+        # Input dimension: (batch_size, mag_(0)or_phase(1), in_channels, H, W)
+        # Get the magnitude and phase
+        mag = x[:, 0, :, :, :]
+        phase = x[:, 1, :, :, :]
+
+        # Forward pass through the dual-stream blocks
+        mag = self.stem_mag(mag).permute(0, 2, 3, 1)
+        phase = self.stem_phase(phase).permute(0, 2, 3, 1)
+
+        for block in self.vss_layers:
+            mag, phase = block(mag, phase)
+
+        mag = self.tail_mag(mag.permute(0, 3, 1, 2))
+        phase = self.tail_phase(phase.permute(0, 3, 1, 2))
+
+        # Residual connection
+        mag = mag + residual[:, 0, :, :, :]
+        phase = phase + residual[:, 1, :, :, :]
+
+        return mag, phase
 
 
 if __name__ == "__main__":
