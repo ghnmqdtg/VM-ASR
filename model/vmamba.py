@@ -1893,6 +1893,7 @@ class VSSM(nn.Module):
             sigmoid=nn.Sigmoid,
         )
 
+        # norm_layer originally is a string, we use it to get the layer as a class
         norm_layer: nn.Module = _NORMLAYERS.get(norm_layer.lower(), None)
         ssm_act_layer: nn.Module = _ACTLAYERS.get(ssm_act_layer.lower(), None)
         mlp_act_layer: nn.Module = _ACTLAYERS.get(mlp_act_layer.lower(), None)
@@ -1901,6 +1902,10 @@ class VSSM(nn.Module):
             v1=self._make_patch_embed,
             v2=self._make_patch_embed_v2,
         ).get(patchembed_version, None)
+
+        print(f"patchembed_version: {patchembed_version} -> {_make_patch_embed}")
+
+        # Pass parameters to chosen patch embed
         self.patch_embed = _make_patch_embed(
             in_chans,
             dims[0],
@@ -1910,6 +1915,7 @@ class VSSM(nn.Module):
             channel_first=self.channel_first,
         )
 
+        # Get the downsample version
         _make_downsample = dict(
             v1=PatchMerging2D,
             v2=self._make_downsample,
@@ -1918,6 +1924,8 @@ class VSSM(nn.Module):
         ).get(downsample_version, None)
 
         self.layers = nn.ModuleList()
+        # self.num_layers is "stage" in the paper
+        # Here we have 4 stages, each stage has a different number of input and ouptut dimensions
         for i_layer in range(self.num_layers):
             downsample = (
                 _make_downsample(
@@ -1927,6 +1935,7 @@ class VSSM(nn.Module):
                     channel_first=self.channel_first,
                 )
                 if (i_layer < self.num_layers - 1)
+                # The last layer does not need downsample
                 else nn.Identity()
             )
 
@@ -2127,9 +2136,12 @@ class VSSM(nn.Module):
         )
 
     def forward(self, x: torch.Tensor):
+        print(f"Input shape: {x.shape}")
         x = self.patch_embed(x)
-        for layer in self.layers:
+        print(f"Patch embedding shape: {x.shape}")
+        for i, layer in enumerate(self.layers):
             x = layer(x)
+            print(f"Layer {i} shape: {x.shape}")
         x = self.classifier(x)
         return x
 
