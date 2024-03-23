@@ -3,6 +3,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from collections import OrderedDict
 from einops import rearrange
+from timm.models.layers import trunc_normal_
 
 try:
     from base import BaseModel
@@ -659,8 +660,6 @@ class MambaUNet(BaseModel):
         # Here we have 4 stages, each stage has a different number of input and ouptut dimensions
         # Encoders
         for i_layer in range(self.num_layers):
-            print(f"Downsample layer {i_layer}")
-            print(self.dims[i_layer])
             downsample = (
                 _make_downsample(
                     self.dims[i_layer],
@@ -727,7 +726,6 @@ class MambaUNet(BaseModel):
         )
         # Decoders
         for i_layer in range(self.num_layers - 1, -1, -1):
-            print(f"Upsample layer {i_layer}")
             print(
                 self.dims[i_layer + 1]
                 if i_layer < self.num_layers - 1
@@ -780,6 +778,8 @@ class MambaUNet(BaseModel):
             norm_layer,
             channel_first=self.channel_first,
         )
+
+        self.apply(self._init_weights)
 
     def forward(self, x):
         mag = x[:, 0, :, :, :]
@@ -978,6 +978,15 @@ class MambaUNet(BaseModel):
                 sampler=sampler,
             )
         )
+
+    def _init_weights(self, m: nn.Module):
+        if isinstance(m, nn.Linear):
+            trunc_normal_(m.weight, std=0.02)
+            if isinstance(m, nn.Linear) and m.bias is not None:
+                nn.init.constant_(m.bias, 0)
+        elif isinstance(m, nn.LayerNorm):
+            nn.init.constant_(m.bias, 0)
+            nn.init.constant_(m.weight, 1.0)
 
 
 if __name__ == "__main__":
