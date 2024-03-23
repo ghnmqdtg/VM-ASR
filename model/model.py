@@ -493,6 +493,12 @@ class Permute(nn.Module):
 
 
 class PatchMerging2D(nn.Module):
+    """
+    Patch merging module.
+
+    input: (B, H, W, C) -> output: (B, H/2, W/2, 4*C)
+    """
+
     def __init__(self, dim, out_dim=-1, norm_layer=nn.LayerNorm, **kwargs):
         super().__init__()
         self.dim = dim
@@ -525,6 +531,8 @@ class PatchExpand(nn.Module):
     """
     Patch expansion module.
 
+    input: (B, H, W, C) -> output: (B, 2H, 2W, C/4)
+
     SRC: Mamba-UNet
     """
 
@@ -534,7 +542,10 @@ class PatchExpand(nn.Module):
         self.expand = (
             nn.Linear(dim, 2 * dim, bias=False) if dim_scale == 2 else nn.Identity()
         )
-        self.norm = norm_layer(dim // dim_scale)
+        if norm_layer is not None:
+            self.norm = norm_layer(dim // dim_scale)
+        else:
+            self.norm = nn.Identity()
 
     def forward(self, x):
         x = self.expand(x)
@@ -575,8 +586,8 @@ class MambaUNet(BaseModel):
         drop_path_rate=0.1,
         patch_norm=True,
         norm_layer="LN",  # "BN", "LN2D"
-        patchembed_version: str = "ch1",  # "v1", "v2"
-        patchembed_reverse_version: str = "v1",  # "v1"
+        patchembed_version: str = "v2",  # "v1", "v2"
+        output_version: str = "v2",  # "v1", "v2"
         downsample_version: str = "v1",  # "v1", "v2", "v3"
         upsample_version: str = "v1",  # "v1"
         use_checkpoint=False,
@@ -618,13 +629,12 @@ class MambaUNet(BaseModel):
         # Select the patch embedding module
         _make_patch_embed = dict(
             v1=self._make_patch_embed,
-            # v2=self._make_patch_embed_v2,
-            ch1=self._make_patch_embed_ch1,
+            v2=self._make_patch_embed_v2,
         ).get(patchembed_version, None)
 
-        _make_patch_embed_reverse = dict(
-            v1=self._male_patch_embed_reverse_ch1,
-        ).get(patchembed_reverse_version, None)
+        _make_output_layer = dict(
+            v1=self._make_output_layer_v1
+        ).get(output_version, None)
 
         # Pass parameters to chosen patch embed
         self.patch_embed = _make_patch_embed(
@@ -770,39 +780,114 @@ class MambaUNet(BaseModel):
                 )
             )
 
-        self.patch_embed_reverse = _make_patch_embed_reverse(
-            in_chans,
-            dims[0],
-            patch_size,
-            patch_norm,
-            norm_layer,
-            channel_first=self.channel_first,
+        # self.output_layer = _make_output_layer(
+        #     in_chans,
+        #     dims[0],
+        #     patch_size,
+        #     patch_norm,
+        #     norm_layer,
+        #     channel_first=self.channel_first,
+        # )
+
+        self.output_layer = nn.Sequential(
+            self.VSSLayer(
+                dim=self.dims[0],
+                drop_path=dpr[
+                    sum(depths[: self.num_layers - 1]) : sum(depths[: self.num_layers])
+                ],
+                use_checkpoint=use_checkpoint,
+                norm_layer=norm_layer,
+                sampler=_make_upsample(
+                    self.dims[0],
+                    dim_scale=2,
+                    norm_layer=None,
+                ),
+                channel_first=self.channel_first,
+                # =================
+                ssm_d_state=ssm_d_state,
+                ssm_ratio=ssm_ratio,
+                ssm_dt_rank=ssm_dt_rank,
+                ssm_act_layer=ssm_act_layer,
+                ssm_conv=ssm_conv,
+                ssm_conv_bias=ssm_conv_bias,
+                ssm_drop_rate=ssm_drop_rate,
+                ssm_init=ssm_init,
+                forward_type=forward_type,
+                # =================
+                mlp_ratio=mlp_ratio,
+                mlp_act_layer=mlp_act_layer,
+                mlp_drop_rate=mlp_drop_rate,
+                gmlp=gmlp,
+            ),
+            self.VSSLayer(
+                dim=self.dims[0] // 2,
+                drop_path=dpr[
+                    sum(depths[: self.num_layers - 1]) : sum(depths[: self.num_layers])
+                ],
+                use_checkpoint=use_checkpoint,
+                norm_layer=norm_layer,
+                sampler=_make_upsample(
+                    self.dims[0] // 2,
+                    dim_scale=2**2,
+                    norm_layer=None,
+                ),
+                channel_first=self.channel_first,
+                # =================
+                ssm_d_state=ssm_d_state,
+                ssm_ratio=ssm_ratio,
+                ssm_dt_rank=ssm_dt_rank,
+                ssm_act_layer=ssm_act_layer,
+                ssm_conv=ssm_conv,
+                ssm_conv_bias=ssm_conv_bias,
+                ssm_drop_rate=ssm_drop_rate,
+                ssm_init=ssm_init,
+                forward_type=forward_type,
+                # =================
+                mlp_ratio=mlp_ratio,
+                mlp_act_layer=mlp_act_layer,
+                mlp_drop_rate=mlp_drop_rate,
+                gmlp=gmlp,
+            ),
+            Permute(0, 3, 1, 2),
         )
 
         self.apply(self._init_weights)
 
     def forward(self, x):
+        verbose = False
         mag = x[:, 0, :, :, :]
         phase = x[:, 1, :, :, :]
         # Clone the input for residual connection
+        if verbose:
+            print(f"Input shape: {mag.shape}")
         mag_residual = mag.clone()
         # Patch embedding
         mag = self.patch_embed(mag)
+        if verbose:
+            print(f"Patch embedding shape: {mag.shape}")
         # Skip connections
         skip_connections = []
         # Encoder
         for i, layer in enumerate(self.layers_encoder):
             skip_connections.append(mag)
             mag = layer(mag)
+            if verbose:
+                print(f"Encoder layer {i} shape: {mag.shape}")
         # Latent layer
         for i, layer in enumerate(self.layers_latent):
             mag = layer(mag)
+            if verbose:
+                print(f"Latent layer {i} shape: {mag.shape}")
         # Decoder
         for i, layer in enumerate(self.layers_decoder):
             # Add the skip connection
             mag = mag + skip_connections.pop() if i != 0 else mag
             mag = layer(mag)
-        mag = self.patch_embed_reverse(mag)
+            if verbose:
+                print(f"Decoder layer {i} shape: {mag.shape}")
+        mag = self.output_layer(mag)
+        if verbose:
+            print(f"Patch output shape: {mag.shape}")
         return mag + mag_residual, phase
 
     @staticmethod
@@ -829,7 +914,7 @@ class MambaUNet(BaseModel):
 
     @staticmethod
     # Static method does not recieve the instance as the first argument (self)
-    def _make_patch_embed_ch1(
+    def _make_patch_embed_v2(
         in_chans=3,
         embed_dim=96,
         patch_size=4,
@@ -862,7 +947,7 @@ class MambaUNet(BaseModel):
         )
 
     @staticmethod
-    def _male_patch_embed_reverse_ch1(
+    def _make_output_layer_v1(
         in_chans=3,
         embed_dim=96,
         patch_size=4,
@@ -996,6 +1081,7 @@ if __name__ == "__main__":
     model = MambaUNet(
         depths=[2, 2, 2, 2],
         dims=[8, 16, 32, 64],
+        # dims=[96, 192, 384, 768],
         in_chans=x.shape[2],
     ).to("cuda")
     # model = VSSM(in_chans=1).to("cuda")

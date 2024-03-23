@@ -181,7 +181,7 @@ def plot_spectrogram_from_wave(names, waveforms, title="Spectrogram", stft=False
     if stft:
         fig, axs = plt.subplots(n_plots, 2, figsize=(16, 12))
     else:
-        fig, axs = plt.subplots(n_plots, 1, figsize=(16, 12))
+        fig, axs = plt.subplots(n_plots, 1, figsize=(5, 12))
     # Iterate over each waveform
     for i, (name, waveform) in enumerate(zip(names, waveforms)):
         if stft:
