@@ -2,8 +2,22 @@
     "name": "MambaASR",
     "n_gpu": 1,
     "arch": {
-        "type": "DualStreamInteractiveVSS",
-        "args": {}
+        "type": "MambaUNet",
+        "args": {
+            "in_chans": 1,
+            "depths": [
+                2,
+                2,
+                2,
+                2
+            ],
+            "dims": [
+                8,
+                16,
+                32,
+                64
+            ]
+        }
     },
     "flac2wav": {
         "source_sr": 48000,

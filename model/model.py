@@ -616,7 +616,7 @@ class MambaUNet(BaseModel):
 
         # Select the patch embedding module
         _make_patch_embed = dict(
-            # v1=self._make_patch_embed,
+            v1=self._make_patch_embed,
             # v2=self._make_patch_embed_v2,
             ch1=self._make_patch_embed_ch1,
         ).get(patchembed_version, None)
@@ -736,6 +736,7 @@ class MambaUNet(BaseModel):
             upsample = (
                 _make_upsample(
                     self.dims[i_layer + 1],
+                    dim_scale=2,
                     norm_layer=norm_layer,
                 )
                 if (i_layer < self.num_layers - 1)
@@ -781,35 +782,50 @@ class MambaUNet(BaseModel):
         )
 
     def forward(self, x):
-        x = x[:, 0, :, :, :]
-        print(f"Input shape: {x.shape}")
+        mag = x[:, 0, :, :, :]
+        phase = x[:, 1, :, :, :]
         # Clone the input for residual connection
-        residual = x.clone()
+        mag_residual = mag.clone()
         # Patch embedding
-        x = self.patch_embed(x)
+        mag = self.patch_embed(mag)
         # Skip connections
         skip_connections = []
-        print(f"Patch embedding shape: {x.shape}")
         # Encoder
         for i, layer in enumerate(self.layers_encoder):
-            x = layer(x)
-            print(f"Encoder({i}): {x.shape}")
-            # skip_connections.append(x)
+            skip_connections.append(mag)
+            mag = layer(mag)
         # Latent layer
         for i, layer in enumerate(self.layers_latent):
-            x = layer(x)
-        print(f"Latent({i}): {x.shape}")
-        # print(len(skip_connections))
+            mag = layer(mag)
         # Decoder
         for i, layer in enumerate(self.layers_decoder):
-            x = layer(x)
-            print(f"Decoder({i}): {x.shape}")
-            # Concatenate the skip connection
-            # x = torch.cat((x, skip_connections.pop()), dim=-1)
-        x = self.patch_embed_reverse(x)
-        print(f"Output shape: {x.shape}")
-        print(x + residual)
-        return x + residual, x
+            # Add the skip connection
+            mag = mag + skip_connections.pop() if i != 0 else mag
+            mag = layer(mag)
+        mag = self.patch_embed_reverse(mag)
+        return mag + mag_residual, phase
+
+    @staticmethod
+    def _make_patch_embed(
+        in_chans=3,
+        embed_dim=96,
+        patch_size=4,
+        patch_norm=True,
+        norm_layer=nn.LayerNorm,
+        channel_first=False,
+    ):
+        # if channel first, then Norm and Output are both channel_first
+        return nn.Sequential(
+            nn.Conv2d(
+                in_chans,
+                embed_dim,
+                kernel_size=patch_size,
+                stride=patch_size,
+                bias=True,
+            ),
+            (nn.Identity() if channel_first else Permute(0, 2, 3, 1)),
+            (norm_layer(embed_dim) if patch_norm else nn.Identity()),
+        )
 
     @staticmethod
     # Static method does not recieve the instance as the first argument (self)
@@ -832,7 +848,7 @@ class MambaUNet(BaseModel):
                 if (channel_first and (not patch_norm))
                 else Permute(0, 2, 3, 1)
             ),
-            norm_layer(embed_dim // 2) if patch_norm else nn.Identity(),
+            # norm_layer(embed_dim // 2) if patch_norm else nn.Identity(),
             (
                 nn.Identity()
                 if (channel_first and (not patch_norm))
@@ -842,7 +858,7 @@ class MambaUNet(BaseModel):
             nn.Conv2d(embed_dim // 2, embed_dim, kernel_size=3, stride=2, padding=1),
             # Permute the dimensions if channel_first is False and patch_norm is True
             (nn.Identity() if channel_first else Permute(0, 2, 3, 1)),
-            (norm_layer(embed_dim) if patch_norm else nn.Identity()),
+            # (norm_layer(embed_dim) if patch_norm else nn.Identity()),
         )
 
     @staticmethod
@@ -876,7 +892,7 @@ class MambaUNet(BaseModel):
                 if (channel_first and (not patch_norm))
                 else Permute(0, 2, 3, 1)
             ),
-            norm_layer(embed_dim // 2) if patch_norm else nn.Identity(),
+            # norm_layer(embed_dim // 2) if patch_norm else nn.Identity(),
             (
                 nn.Identity()
                 if (channel_first and (not patch_norm))
@@ -893,7 +909,7 @@ class MambaUNet(BaseModel):
             ),
             # Permute the dimensions if channel_first is False and patch_norm is True
             (nn.Identity() if channel_first else Permute(0, 2, 3, 1)),
-            (norm_layer(in_chans) if patch_norm else nn.Identity()),
+            # (norm_layer(in_chans) if patch_norm else nn.Identity()),
             # Permute the dimensions if channel_first is False and patch_norm is True
             (
                 nn.Identity()
@@ -965,13 +981,13 @@ class MambaUNet(BaseModel):
 
 
 if __name__ == "__main__":
-    x = torch.rand(8, 1, 512, 128).to("cuda")
+    x = torch.rand(8, 2, 1, 512, 128).to("cuda")
     # x = torch.rand(24, 3, 224, 224).to("cuda")
 
     model = MambaUNet(
         depths=[2, 2, 2, 2],
-        dims=[2, 8, 16, 32],
-        in_chans=x.shape[1],
+        dims=[8, 16, 32, 64],
+        in_chans=x.shape[2],
     ).to("cuda")
     # model = VSSM(in_chans=1).to("cuda")
     print(model)

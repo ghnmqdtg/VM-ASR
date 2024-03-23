@@ -383,8 +383,8 @@ class Trainer(BaseTrainer):
                     output_phase, target_phase
                 )
                 # Get global loss and local loss
-                global_loss = 0.9 * global_mag_loss + 0.1 * global_phase_loss
-                local_loss = 0.9 * local_mag_loss + 0.1 * local_phase_loss
+                global_loss = global_mag_loss + global_phase_loss
+                local_loss = local_mag_loss + local_phase_loss
                 # Calculate total loss
                 total_loss = 0.3 * global_loss + 0.7 * local_loss
 
