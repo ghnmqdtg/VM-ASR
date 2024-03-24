@@ -2,6 +2,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from collections import OrderedDict
+from copy import deepcopy
 from einops import rearrange
 from timm.models.layers import trunc_normal_
 
@@ -632,9 +633,9 @@ class MambaUNet(BaseModel):
             v2=self._make_patch_embed_v2,
         ).get(patchembed_version, None)
 
-        _make_output_layer = dict(
-            v1=self._make_output_layer_v1
-        ).get(output_version, None)
+        _make_output_layer = dict(v1=self._make_output_layer_v1).get(
+            output_version, None
+        )
 
         # Pass parameters to chosen patch embed
         self.patch_embed = _make_patch_embed(
@@ -860,7 +861,7 @@ class MambaUNet(BaseModel):
         # Clone the input for residual connection
         if verbose:
             print(f"Input shape: {mag.shape}")
-        mag_residual = mag.clone()
+        residual_mag = mag.clone()
         # Patch embedding
         mag = self.patch_embed(mag)
         if verbose:
@@ -888,7 +889,7 @@ class MambaUNet(BaseModel):
         mag = self.output_layer(mag)
         if verbose:
             print(f"Patch output shape: {mag.shape}")
-        return mag + mag_residual, phase
+        return mag + residual_mag, phase
 
     @staticmethod
     def _make_patch_embed(
@@ -1074,11 +1075,150 @@ class MambaUNet(BaseModel):
             nn.init.constant_(m.weight, 1.0)
 
 
+class DualStreamInteractiveMambaUNet(MambaUNet):
+    """
+    InteractiveVSSLayers
+    """
+
+    def __init__(
+        self,
+        patch_size=4,
+        in_chans=1,
+        depths=[2, 2, 9, 2],
+        dims=[96, 192, 384, 768],
+        # ==============================
+        ssm_d_state=16,
+        ssm_ratio=2.0,
+        ssm_dt_rank="auto",
+        ssm_act_layer="silu",
+        ssm_conv=3,
+        ssm_conv_bias=True,
+        ssm_drop_rate=0.0,
+        ssm_init="v0",
+        forward_type="v2",
+        # =========================
+        mlp_ratio=4.0,
+        mlp_act_layer="gelu",
+        mlp_drop_rate=0.0,
+        gmlp=False,
+        # =========================
+        drop_path_rate=0.1,
+        patch_norm=True,
+        norm_layer="LN",  # "BN", "LN2D"
+        patchembed_version: str = "v2",  # "v1", "v2"
+        output_version: str = "v2",  # "v1", "v2"
+        downsample_version: str = "v1",  # "v1", "v2", "v3"
+        upsample_version: str = "v1",  # "v1"
+        use_checkpoint=False,
+        **kwargs,
+    ):
+        # Initialize the MambaUNet
+        super().__init__(
+            patch_size,
+            in_chans,
+            depths,
+            dims,
+            ssm_d_state,
+            ssm_ratio,
+            ssm_dt_rank,
+            ssm_act_layer,
+            ssm_conv,
+            ssm_conv_bias,
+            ssm_drop_rate,
+            ssm_init,
+            forward_type,
+            mlp_ratio,
+            mlp_act_layer,
+            mlp_drop_rate,
+            gmlp,
+            drop_path_rate,
+            patch_norm,
+            norm_layer,
+            patchembed_version,
+            output_version,
+            downsample_version,
+            upsample_version,
+            use_checkpoint,
+            **kwargs,
+        )
+        # Deep copy patch embedding, encoder, latent, decoder and output in MambaUNet
+        # Create magnitude stream
+        self.patch_embed_mag = deepcopy(self.patch_embed)
+        self.layers_encoder_mag = deepcopy(self.layers_encoder)
+        self.layers_latent_mag = deepcopy(self.layers_latent)
+        self.layers_decoder_mag = deepcopy(self.layers_decoder)
+        self.output_layer_mag = deepcopy(self.output_layer)
+        # Create phase stream
+        self.patch_embed_phase = deepcopy(self.patch_embed)
+        self.layers_encoder_phase = deepcopy(self.layers_encoder)
+        self.layers_latent_phase = deepcopy(self.layers_latent)
+        self.layers_decoder_phase = deepcopy(self.layers_decoder)
+        self.output_layer_phase = deepcopy(self.output_layer)
+
+        # Delete layers in MambaUNet to save memory
+        del self.patch_embed
+        del self.layers_encoder
+        del self.layers_latent
+        del self.layers_decoder
+        del self.output_layer
+
+        self.apply(self._init_weights)
+
+    def forward(self, x):
+        # Loop through the magnitude and phase streams
+        mag = x[:, 0, :, :, :]
+        phase = x[:, 1, :, :, :]
+        # Clone the input for residual connection
+        residual_mag = mag.clone()
+        residual_phase = phase.clone()
+        # Patch embedding
+        mag = self.patch_embed_mag(mag)
+        phase = self.patch_embed_phase(phase)
+        # Skip connections
+        skip_connections = []
+        # Encoders (zip is used to iterate over two lists at the same time)
+        for i, (encoder_mag, encoder_phase) in enumerate(
+            zip(self.layers_encoder_mag, self.layers_encoder_phase)
+        ):
+            skip_connections.append((mag, phase))
+            mag = encoder_mag(mag)
+            phase = encoder_phase(phase)
+            # Interacting
+            mag = mag + phase
+            phase = phase + mag
+        # Latent layer
+        for i, (latent_mag, latent_phase) in enumerate(
+            zip(self.layers_latent_mag, self.layers_latent_phase)
+        ):
+            mag = latent_mag(mag)
+            phase = latent_phase(phase)
+        # Decoders
+        for i, (decoder_mag, decoder_phase) in enumerate(
+            zip(self.layers_decoder_mag, self.layers_decoder_phase)
+        ):
+            # Add the skip connection
+            mag_skip, phase_skip = skip_connections.pop() if i != 0 else (mag, phase)
+            mag = decoder_mag(mag + mag_skip)
+            phase = decoder_phase(phase + phase_skip)
+            # Interacting
+            mag = mag + phase
+            phase = phase + mag
+        # Output layer
+        mag = self.output_layer_mag(mag)
+        phase = self.output_layer_phase(phase)
+        # Residual connection
+        return mag + residual_mag, phase + residual_phase
+
+
 if __name__ == "__main__":
+    from tqdm import tqdm
+
     x = torch.rand(8, 2, 1, 512, 128).to("cuda")
+    # Print how many memory is used by the tensor
     # x = torch.rand(24, 3, 224, 224).to("cuda")
 
-    model = MambaUNet(
+    # model = MambaUNet(
+    model = DualStreamInteractiveMambaUNet(
         depths=[2, 2, 2, 2],
         dims=[8, 16, 32, 64],
         # dims=[96, 192, 384, 768],
@@ -1087,5 +1227,9 @@ if __name__ == "__main__":
     # model = VSSM(in_chans=1).to("cuda")
     print(model)
 
-    for i in range(1):
-        y = model(x)
+    p = torch.rand(1, 8, 2, 15, 512, 128).to("cuda")
+    print(f"Memory: {p.element_size() * p.nelement() / 1024 / 1024} MB")
+
+    for i in tqdm(range(100)):
+        for _ in range(15):
+            y = model(x)

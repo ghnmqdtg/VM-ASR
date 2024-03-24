@@ -2,7 +2,7 @@
     "name": "MambaASR",
     "n_gpu": 1,
     "arch": {
-        "type": "MambaUNet",
+        "type": "DualStreamInteractiveMambaUNet",
         "args": {
             "in_chans": 1,
             "depths": [
@@ -29,11 +29,11 @@
         "type": "VCTKDataLoader",
         "args": {
             "data_dir": "data/",
-            "batch_size": 16,
+            "batch_size": 4,
             "shuffle": true,
             "percentage": 0.1,
             "validation_split": 0.2,
-            "num_workers": 6,
+            "num_workers": 4,
             "random_resample": [
                 8000,
                 12000,
