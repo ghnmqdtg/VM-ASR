@@ -1,7 +1,10 @@
-matplotlib
+tqdm
+timm
+wandb
+scipy
 numpy
 pandas
-tqdm
-scipy
+einops
+fvcore
+matplotlib
 tensorboard>=1.14
-wandb
