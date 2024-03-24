@@ -1,8 +1,9 @@
-import numpy as np
 import torch
-from base import BaseTrainer
-from utils import inf_loop, MetricTracker, log_audio, log_waveform, log_spectrogram
+import numpy as np
 from tqdm import tqdm
+from base import BaseTrainer
+from utils import inf_loop, MetricTracker
+from utils.output_logger import log_audio, log_waveform, log_spectrogram
 from data_loader import preprocessing, postprocessing
 
 
@@ -26,6 +27,7 @@ class Trainer(BaseTrainer):
     ):
         super().__init__(model, criterion, metric_ftns, optimizer, config)
         self.config = config
+        self.config_dataloader = self.config["data_loader"]["args"]
         self.device = device
         self.data_loader = data_loader
         if len_epoch is None:
@@ -147,12 +149,14 @@ class Trainer(BaseTrainer):
                     phase=chunk_outputs["phase"],
                     batch_input=True,
                     crop=True,
+                    config_dataloader=self.config_dataloader,
                 )
                 target_waveform = postprocessing.reconstruct_from_stft_chunks(
                     mag=target[:, 0, ...].unsqueeze(1),
                     phase=target[:, 1, ...].unsqueeze(1),
                     batch_input=True,
                     crop=True,
+                    config_dataloader=self.config_dataloader,
                 )
                 # print(f'output_waveform.shape: {output_waveform.shape}, target_waveform.shape: {target_waveform.shape}')
                 # Compute the STFT of the output and target waveforms
@@ -211,6 +215,7 @@ class Trainer(BaseTrainer):
                         phase=data[0, 1, ...].unsqueeze(0),
                         batch_input=False,
                         crop=True,
+                        config_dataloader=self.config_dataloader,
                     )
                     # Concatenate the inputs along the chunk dimension
                     chunk_inputs["mag"] = torch.cat(
@@ -224,13 +229,25 @@ class Trainer(BaseTrainer):
                     # Store the waveforms
                     waveforms = [input_waveform, output_waveform[0], target_waveform[0]]
                     # Add audio to the tensorboard
-                    log_audio(self.writer, name_list, waveforms, 48000)
+                    log_audio(self.writer, name_list, waveforms, self.config["source_sr"])
                     # Add the waveforms to the tensorboard
                     log_waveform(self.writer, name_list, waveforms)
                     # Add the spectrograms to the tensorboard
-                    log_spectrogram(self.writer, name_list, waveforms, stft=False)
+                    log_spectrogram(
+                        self.writer,
+                        name_list,
+                        waveforms,
+                        stft=False,
+                        sample_rate=self.config["source_sr"],
+                    )
                     # Add the STFT spectrograms to the tensorboard
-                    log_spectrogram(self.writer, name_list, waveforms, stft=True)
+                    log_spectrogram(
+                        self.writer,
+                        name_list,
+                        waveforms,
+                        stft=True,
+                        sample_rate=self.config["source_sr"],
+                    )
                     # Add the STFT spectrograms of chunks to the tensorboard
                     log_spectrogram(
                         self.writer,
@@ -360,12 +377,14 @@ class Trainer(BaseTrainer):
                     phase=chunk_outputs["phase"],
                     batch_input=True,
                     crop=True,
+                    config_dataloader=self.config_dataloader,
                 )
                 target_waveform = postprocessing.reconstruct_from_stft_chunks(
                     mag=target[:, 0, ...].unsqueeze(1),
                     phase=target[:, 1, ...].unsqueeze(1),
                     batch_input=True,
                     crop=True,
+                    config_dataloader=self.config_dataloader,
                 )
                 # Compute the STFT of the output and target waveforms
                 output_mag, output_phase = preprocessing.get_mag_phase(
@@ -418,6 +437,7 @@ class Trainer(BaseTrainer):
                         phase=data[0, 1, ...].unsqueeze(0),
                         batch_input=False,
                         crop=True,
+                        config_dataloader=self.config_dataloader,
                     )
                     # Concatenate the inputs along the chunk dimension
                     chunk_inputs["mag"] = torch.cat(
@@ -431,13 +451,25 @@ class Trainer(BaseTrainer):
                     # Store the waveforms
                     waveforms = [input_waveform, output_waveform[0], target_waveform[0]]
                     # Add audio to the tensorboard
-                    log_audio(self.writer, name_list, waveforms, 48000)
+                    log_audio(self.writer, name_list, waveforms, self.config["source_sr"])
                     # Add the waveforms to the tensorboard
                     log_waveform(self.writer, name_list, waveforms)
                     # Add the spectrograms to the tensorboard
-                    log_spectrogram(self.writer, name_list, waveforms, stft=False)
+                    log_spectrogram(
+                        self.writer,
+                        name_list,
+                        waveforms,
+                        stft=False,
+                        sample_rate=self.config["source_sr"],
+                    )
                     # Add the STFT spectrograms to the tensorboard
-                    log_spectrogram(self.writer, name_list, waveforms, stft=True)
+                    log_spectrogram(
+                        self.writer,
+                        name_list,
+                        waveforms,
+                        stft=True,
+                        sample_rate=self.config["source_sr"],
+                    )
                     # Add the STFT spectrograms of chunks to the tensorboard
                     log_spectrogram(
                         self.writer,

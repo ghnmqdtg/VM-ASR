@@ -318,7 +318,7 @@ if __name__ == "__main__":
 
     timestr = time.strftime("%Y%m%d-%H%M%S")
 
-    with open("./config.json") as f:
+    with open("./config/config.json") as f:
         config = json.load(f)
 
     # Ensure the output directory exists

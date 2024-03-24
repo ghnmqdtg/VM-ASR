@@ -1,25 +1,13 @@
-import json
 import torch
-from data_loader import preprocessing
 
 try:
-    with open("./config.json") as f:
-        config = json.load(f)
-
-    dataloader_params = config["data_loader"]["args"]
+    from data_loader import preprocessing
 except:
-    import os
     import sys
+    import os
 
-    # Used for debugging data_loader
-    # Add the project root directory to the Python path
-    project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    sys.path.append(project_root)
-
-    with open("./config.json") as f:
-        config = json.load(f)
-
-    dataloader_params = config["data_loader"]["args"]
+    sys.path.append(os.path.join(os.path.dirname(__file__), ".."))
+    from data_loader import preprocessing
 
 
 def concatenate_wave_chunks(
@@ -81,6 +69,12 @@ def reconstruct_from_stft_chunks(
     padding_length: int = 0,
     batch_input: bool = False,
     crop: bool = True,
+    config_dataloader: dict = {
+        "chunking_params": {"chunk_size": 10160, "overlap": 0},
+        "stft_params": {
+            "chunks": {"n_fft": 1022, "hop_length": 80, "win_length": 320},
+        },
+    },
 ) -> torch.Tensor:
     """
     Reconstruct the waveform from chunks of magnitude and phase spectrograms.
@@ -89,17 +83,19 @@ def reconstruct_from_stft_chunks(
         mag (torch.Tensor): The magnitude spectrogram
         phase (torch.Tensor): The phase spectrogram
         padding_length (int, optional): The length of the padding for the last chunk. Defaults to 0.
+        batch_input (bool, optional): Whether the input is a batch. Defaults to False.
+        crop (bool, optional): Whether to crop the waveform to the original length. Defaults to True.
 
     Returns:
         torch.Tensor: The reconstructed waveform
     """
     # Size of each audio chunk
-    chunk_size = dataloader_params["chunking_params"]["chunk_size"]
+    chunk_size = config_dataloader["chunking_params"]["chunk_size"]
     # Overlap size between chunks
-    overlap = int(chunk_size * dataloader_params["chunking_params"]["overlap"])
-    n_fft = dataloader_params["stft_params"]["chunks"]["n_fft"]
-    hop_length = dataloader_params["stft_params"]["chunks"]["hop_length"]
-    win_length = dataloader_params["stft_params"]["chunks"]["win_length"]
+    overlap = int(chunk_size * config_dataloader["chunking_params"]["overlap"])
+    n_fft = config_dataloader["stft_params"]["chunks"]["n_fft"]
+    hop_length = config_dataloader["stft_params"]["chunks"]["hop_length"]
+    win_length = config_dataloader["stft_params"]["chunks"]["win_length"]
     window = torch.hann_window(win_length).to(mag.device)
 
     # Normally, input would be of shape (1 (mono), num_chunks, frequency_bins, frames)
@@ -191,17 +187,27 @@ def reconstruct_from_stft_chunks(
         return torch.stack(waveform_batch)
 
 
-def reconstruct_from_stft(mag: torch.Tensor, phase: torch.Tensor) -> torch.Tensor:
+def reconstruct_from_stft(
+    mag: torch.Tensor,
+    phase: torch.Tensor,
+    config_dataloader: dict = {
+        "stft_params": {
+            "chunks": {"n_fft": 1022, "hop_length": 80, "win_length": 320},
+            "full": {"n_fft": 1022, "hop_length": 478, "win_length": 956},
+        },
+    },
+) -> torch.Tensor:
     """
     Reconstruct the waveform from magnitude and phase spectrograms (not chunks).
 
     Args:
         mag (torch.Tensor): The magnitude spectrogram
         phase (torch.Tensor): The phase spectrogram
+        config_dataloader (dict, optional): The dataloader parameters.
     """
-    n_fft = dataloader_params["stft_params"]["full"]["n_fft"]
-    hop_length = dataloader_params["stft_params"]["full"]["hop_length"]
-    win_length = dataloader_params["stft_params"]["full"]["win_length"]
+    n_fft = config_dataloader["stft_params"]["full"]["n_fft"]
+    hop_length = config_dataloader["stft_params"]["full"]["hop_length"]
+    win_length = config_dataloader["stft_params"]["full"]["win_length"]
     window = torch.hann_window(win_length)
     # Combine magnitude and phase to get the complex STFT
     complex_stft = torch.exp2(mag) * torch.exp(1j * phase)

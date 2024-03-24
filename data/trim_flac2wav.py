@@ -16,7 +16,7 @@ from utils import ensure_dir
 # Load the `./config.json` as config
 import json
 
-with open("config.json") as f:
+with open("./config/config.json") as f:
     config = json.load(f)
 
 

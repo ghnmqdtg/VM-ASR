@@ -17,11 +17,6 @@ try:
         reconstruct_from_stft,
         reconstruct_from_stft_chunks,
     )
-
-    with open("./config.json") as f:
-        config = json.load(f)
-
-    dataloader_params = config["data_loader"]["args"]
 except:
     import os
     import sys
@@ -37,16 +32,14 @@ except:
         reconstruct_from_stft_chunks,
     )
 
-    with open("./config.json") as f:
-        config = json.load(f)
 
-    dataloader_params = config["data_loader"]["args"]
-
-
-def crop_or_pad_waveform(waveform: torch.Tensor) -> torch.Tensor:
+def crop_or_pad_waveform(
+    waveform: torch.Tensor,
+    config_dataloader: dict = {"length": 121890, "white_noise": 1e-06},
+) -> torch.Tensor:
     device = waveform.device
-    length = dataloader_params["length"]
-    white_noise = dataloader_params["white_noise"]
+    length = config_dataloader["length"]
+    white_noise = config_dataloader["white_noise"]
     # If the waveform is shorter than the required length, pad it
     if waveform.shape[1] < length:
         pad_length = length - waveform.shape[1]
@@ -298,7 +291,13 @@ def plot_all(waveform: torch.Tensor, sample_rate: int, filename: str) -> None:
 
 
 def get_mag_phase(
-    waveform: torch.Tensor, chunk_wave: bool = True, batch_input: bool = False
+    waveform: torch.Tensor,
+    chunk_wave: bool = True,
+    batch_input: bool = False,
+    stft_params: dict = {
+        "chunks": {"n_fft": 1022, "hop_length": 80, "win_length": 320},
+        "full": {"n_fft": 1022, "hop_length": 478, "win_length": 956},
+    },
 ) -> Tuple[torch.Tensor, torch.Tensor]:
     """
     Apply short time Fourier transform to the waveform and return the magnitude and phase
@@ -313,14 +312,14 @@ def get_mag_phase(
         torch.Tensor: The phase
     """
     if chunk_wave:
-        n_fft = dataloader_params["stft_params"]["chunks"]["n_fft"]
-        hop_length = dataloader_params["stft_params"]["chunks"]["hop_length"]
-        win_length = dataloader_params["stft_params"]["chunks"]["win_length"]
+        n_fft = stft_params["chunks"]["n_fft"]
+        hop_length = stft_params["chunks"]["hop_length"]
+        win_length = stft_params["chunks"]["win_length"]
         window = torch.hann_window(win_length).to(waveform.device)
     else:
-        n_fft = dataloader_params["stft_params"]["full"]["n_fft"]
-        hop_length = dataloader_params["stft_params"]["full"]["hop_length"]
-        win_length = dataloader_params["stft_params"]["full"]["win_length"]
+        n_fft = stft_params["full"]["n_fft"]
+        hop_length = stft_params["full"]["hop_length"]
+        win_length = stft_params["full"]["win_length"]
         window = torch.hann_window(win_length).to(waveform.device)
 
     if not batch_input:
@@ -368,6 +367,11 @@ def get_mag_phase(
 
 
 if __name__ == "__main__":
+    # Load the configuration file
+    with open("./config/config.json") as f:
+        config = json.load(f)
+
+    config_dataloader = config["data_loader"]["args"]
     # Test the toy_load function
     filepath = "./data/VCTK-Corpus-0.92/wav48_silence_trimmed_wav/p225/p225_001.wav"
     # Make sure the output folder exists
@@ -385,7 +389,7 @@ if __name__ == "__main__":
     # Apply the audio preprocessing pipeline
     waveform, sr_org = torchaudio.load(filepath)
     # Crop or pad the waveform to the required length
-    waveform = crop_or_pad_waveform(waveform)
+    waveform = crop_or_pad_waveform(waveform, config_dataloader)
     waveform_filtered = low_pass_filter(waveform, sr_org, sr_new)
     waveform_downsampled = resample_audio(waveform_filtered, sr_org, sr_new)
     # Apply upsampling to get a unified sample rate as input
@@ -451,11 +455,16 @@ if __name__ == "__main__":
     )
 
     # Get the magnitude and phase of the full waveform
-    mag, phase = get_mag_phase(waveform, chunk_wave=False)
+    mag, phase = get_mag_phase(
+        waveform,
+        chunk_wave=False,
+    )
     # Print the shapes of the magnitude and phase
     print(f"Shape of mag: {mag.shape}, Shape of phase: {phase.shape}")
     # Reconstruct the waveform from the magnitude and phase
-    waveform_reconstructed_stft = reconstruct_from_stft(mag, phase)
+    waveform_reconstructed_stft = reconstruct_from_stft(
+        mag, phase, config_dataloader=config_dataloader
+    )
     # Plot the waveform, magnitude and phase
     # plot_all(
     #     waveform_reconstructed_stft,
@@ -474,7 +483,12 @@ if __name__ == "__main__":
     mag = []
     phase = []
     for chunk in chunks:
-        mag_chunk, phase_chunk = get_mag_phase(chunk, chunk_wave=True)
+        mag_chunk, phase_chunk = get_mag_phase(
+            chunk,
+            chunk_wave=True,
+            batch_input=False,
+            stft_params=config_dataloader["stft_params"],
+        )
         mag.append(mag_chunk)
         phase.append(phase_chunk)
 
@@ -487,7 +501,11 @@ if __name__ == "__main__":
 
     # Reconstruct the waveform from the magnitude and phase
     waveform_reconstructed_stft = reconstruct_from_stft_chunks(
-        mag, phase, padding_length
+        mag,
+        phase,
+        padding_length,
+        batch_input=False,
+        config_dataloader=config_dataloader,
     )
     # Plot the waveform, magnitude and phase
     # plot_all(

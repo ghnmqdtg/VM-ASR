@@ -1,1 +1,1 @@
-python train.py --config config.json
+python train.py --config config/config.json
