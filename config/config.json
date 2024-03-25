@@ -48,7 +48,8 @@
             "white_noise": 1e-32,
             "chunking_params": {
                 "chunk_size": 10160,
-                "overlap": 0
+                "overlap": 0,
+                "chunk_buffer": 240
             },
             "stft_params": {
                 "chunks": {

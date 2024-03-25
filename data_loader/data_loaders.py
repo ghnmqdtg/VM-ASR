@@ -240,7 +240,9 @@ class CustomVCTK_092(datasets.VCTK_092):
         # Crop or pad the waveform to a fixed length
         waveform = preprocessing.crop_or_pad_waveform(waveform)
         # Get magnitude and phase of the original audio
-        mag_phase_pair_y = self._get_mag_phase(waveform, chunk_wave=True)
+        mag_phase_pair_y = self._get_mag_phase(
+            waveform, chunk_wave=True, chunk_buffer=self.chunking_params["chunk_buffer"]
+        )
 
         # Preprocess the audio
         # Apply low pass filter to avoid aliasing
@@ -252,12 +254,14 @@ class CustomVCTK_092(datasets.VCTK_092):
         # Remove the artifacts from the resampling
         waveform = preprocessing.low_pass_filter(waveform, sr_org, sr_new)
         # Get magnitude and phase of the preprocessed audio
-        mag_phase_pair_x = self._get_mag_phase(waveform, chunk_wave=True)
+        mag_phase_pair_x = self._get_mag_phase(
+            waveform, chunk_wave=True, chunk_buffer=self.chunking_params["chunk_buffer"]
+        )
 
         return mag_phase_pair_x, mag_phase_pair_y
 
     def _get_mag_phase(
-        self, waveform: torch.Tensor, chunk_wave: bool = True
+        self, waveform: torch.Tensor, chunk_wave: bool = True, chunk_buffer: int = 0
     ) -> torch.Tensor:
         """
         Compute the magnitude and phase of the audio in the time-frequency domain.
@@ -280,6 +284,7 @@ class CustomVCTK_092(datasets.VCTK_092):
                 waveform=waveform,
                 chunk_size=chunk_size,
                 overlap=overlap,
+                chunk_buffer=chunk_buffer,
                 return_padding_length=True,
             )
             # Compute STFT for each segment and convert to magnitude and phase
@@ -287,7 +292,7 @@ class CustomVCTK_092(datasets.VCTK_092):
             phase = []
             for chunk_y in chunks:
                 mag_chunk, phase_chunk = preprocessing.get_mag_phase(
-                    chunk_y, chunk_wave=True
+                    chunk_y, chunk_wave=True, chunk_buffer=chunk_buffer
                 )
                 mag.append(mag_chunk)
                 phase.append(phase_chunk)

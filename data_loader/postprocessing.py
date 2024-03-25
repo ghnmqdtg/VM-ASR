@@ -103,8 +103,7 @@ def reconstruct_from_stft_chunks(
         # Combine magnitude and phase to get the complex STFT
         # mag is log-magnitude, so we have to apply exp to get the magnitude
         complex_stft = torch.exp2(mag) * torch.exp(1j * phase)
-        # torch.Size([1, 9, 513, 101])
-        # Swap the channel 1 and channel 0 and get torch.Size([9, 1, 513, 101])
+        # Swap the channel 1 and channel 0
         complex_stft = complex_stft.permute(1, 0, 2, 3)
 
         # Prepare an empty list to store each iSTFT chunk

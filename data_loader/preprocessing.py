@@ -172,6 +172,7 @@ def cut2chunks(
     waveform: torch.Tensor,
     chunk_size: int,
     overlap: int,
+    chunk_buffer: int = 0,
     return_padding_length: bool = False,
 ) -> torch.Tensor | tuple[torch.Tensor, int]:
     """
@@ -196,18 +197,30 @@ def cut2chunks(
 
     start = 0
     padding_length = 0
+
     # Cut the waveform into chunks, finish when the last chunk is smaller than chunk_size
+    # If chunk_buffer is specified, then the chunk size is chunk_buffer + chunk_size + chunk_buffer
+    # Which means we chunk the waveform with a buffer on each side (not the same idea as overlap)
+    if chunk_buffer:
+        # Chunk the first chunk, pad the beginning with zeros
+        first_chunk = waveform[..., start : start + chunk_size + chunk_buffer]
+        first_chunk = F.pad(first_chunk, (chunk_buffer, 0), "constant", 0)
+        chunks.append(first_chunk)
+        start += step_size
+
     while start + chunk_size <= length:
-        chunks.append(waveform[..., start : start + chunk_size])
+        chunks.append(
+            waveform[..., start - chunk_buffer : start + chunk_size + chunk_buffer]
+        )
         start += step_size
 
     # Pad the last chunk with zeros
     if start < length:
-        last_chunk = waveform[..., start:]
+        last_chunk = waveform[..., start - chunk_buffer :]
         # If padding is required, pad the last chunk to the chunk_size
-        padding_length = chunk_size - last_chunk.size(-1)
+        padding_length = (chunk_size + chunk_buffer) - last_chunk.size(-1)
         last_chunk = torch.nn.functional.pad(
-            last_chunk, (0, padding_length), "constant", 0
+            last_chunk, (0, padding_length + chunk_buffer), "constant", 0
         )
         chunks.append(last_chunk)
 
@@ -259,6 +272,7 @@ def plot_all(waveform: torch.Tensor, sample_rate: int, filename: str) -> None:
 def get_mag_phase(
     waveform: torch.Tensor,
     chunk_wave: bool = True,
+    chunk_buffer: int = 0,
     batch_input: bool = False,
     stft_params: dict = {
         "chunks": {"n_fft": 1022, "hop_length": 80, "win_length": 320},
@@ -282,6 +296,9 @@ def get_mag_phase(
         hop_length = stft_params["chunks"]["hop_length"]
         win_length = stft_params["chunks"]["win_length"]
         window = torch.hann_window(win_length).to(waveform.device)
+        if chunk_buffer:
+            # Calculate how much to crop on each side of the spectrogram
+            crop_side = chunk_buffer // hop_length
     else:
         n_fft = stft_params["full"]["n_fft"]
         hop_length = stft_params["full"]["hop_length"]
@@ -298,9 +315,13 @@ def get_mag_phase(
             window=window,
             return_complex=True,
         )
+        if chunk_buffer:
+            # Crop the spectrogram
+            spec = spec[..., crop_side:-crop_side]
         # Magnitude is calculated as the absolute value, and log2 is applied to compress the dynamic range
         mag = torch.log2(torch.abs(spec) + 1e-8)
         phase = torch.angle(spec)
+
         # Return the magnitude and phase
         return mag, phase
     else:
@@ -318,6 +339,9 @@ def get_mag_phase(
                 window=window,
                 return_complex=True,
             )
+            if chunk_buffer:
+                # Crop the spectrogram
+                spec = spec[..., crop_side:-crop_side]
             # Magnitude is calculated as the absolute value, and log2 is applied to compress the dynamic range
             mag = torch.log2(torch.abs(spec) + 1e-8)
             phase = torch.angle(spec)
@@ -364,14 +388,15 @@ if __name__ == "__main__":
     # Choose the test to run
     TEST_FILTER = False
     TEST_FULL_WAVEFORM = False
-    TEST_CHIUNKING = True
-    TEST_RECONSTRUCT_FROM_CHUNKS = False
+    TEST_CONCATENATE_CHUNKS = False
+    TEST_RECONSTRUCT_FROM_CHUNKS = True
 
     # Set the parameters
     # List of target sample rates to choose from
     target_sample_rates = [8000]
     # Size of each audio chunk
     chunk_size = config_dataloader["chunking_params"]["chunk_size"]
+    chunk_buffer = config_dataloader["chunking_params"]["chunk_buffer"]
     # Overlap size between chunks
     overlap = int(chunk_size * config_dataloader["chunking_params"]["overlap"])
     # Apply the audio preprocessing pipeline
@@ -387,8 +412,13 @@ if __name__ == "__main__":
     waveform_upsampled = resample_audio(waveform_downsampled, sr_new, sr_org)
     # Cut the waveform into chunks
     chunks, padding_length = cut2chunks(
-        waveform_upsampled, chunk_size, overlap, return_padding_length=True
+        waveform_upsampled,
+        chunk_size,
+        overlap,
+        chunk_buffer,
+        return_padding_length=True,
     )
+    print(f"chunk size: {chunk_size}, chunk_buffer: {chunk_buffer}, overlap: {overlap}")
 
     timestr = time.strftime("%Y%m%d-%H%M%S")
     # Test the low sample rate simulation pipeline
@@ -440,15 +470,25 @@ if __name__ == "__main__":
             sr_org,
         )
 
-    if TEST_CHIUNKING:
+    if TEST_CONCATENATE_CHUNKS:
         # Reconstruct the waveform from the chunks
         waveform_reconstructed = concatenate_wave_chunks(
             chunks, chunk_size, overlap, padding_length
         )
+
+        # Save the reconstructed waveform
+        torchaudio.save(
+            f"./output/dev/data_preprocessing/reconstructed_wave_chunks_{sr_new}.wav",
+            waveform_reconstructed,
+            sr_org,
+        )
+
+    if TEST_RECONSTRUCT_FROM_CHUNKS:
         # Get the magnitude and phase of the chunks
         mag_chunks, phase_chunks = get_mag_phase(
             chunks,
             chunk_wave=True,
+            chunk_buffer=chunk_buffer,
             batch_input=True,
             stft_params=config_dataloader["stft_params"],
         )
@@ -458,29 +498,7 @@ if __name__ == "__main__":
         # Plot the magnitude, phase and wave of chunks
         # The figure is in the shape of (3, chunk_num)
         # Drop the channel dimension
-        mag_chunks = mag_chunks.squeeze(1)
-        phase_chunks = phase_chunks.squeeze(1)
-        plot_chunks(sr_new, chunks, mag_chunks, phase_chunks)
-
-        # # Save the reconstructed waveform
-        # torchaudio.save(
-        #     f"./output/dev/data_preprocessing/{timestr}_reconstructed_wave_chunks_{sr_new}.wav",
-        #     waveform_reconstructed,
-        #     sr_org,
-        # )
-
-    if TEST_RECONSTRUCT_FROM_CHUNKS:
-        # FIX: Chunking -> STFT -> Concatenate -> iSTFT will cause high frequency peak artifacts
-        # Get the magnitude and phase of the chunks
-        mag_chunks, phase_chunks = get_mag_phase(
-            chunks,
-            chunk_wave=True,
-            batch_input=True,
-            stft_params=config_dataloader["stft_params"],
-        )
-        print(
-            f"Shape of mag_chunks: {mag_chunks.shape}, Shape of phase_chunks: {phase_chunks.shape}"
-        )
+        plot_chunks(sr_new, chunks, mag_chunks.squeeze(1), phase_chunks.squeeze(1))
 
         # Stack the magnitude and phase, shapes are [1, chunk_num, freq, time]
         mag_chunks = mag_chunks.permute(1, 0, 2, 3)
@@ -502,8 +520,8 @@ if __name__ == "__main__":
             f"./output/dev/data_preprocessing/{timestr}_reconstructed_stft_chunks_{sr_new}.png",
         )
         # # Save the reconstructed waveform
-        # torchaudio.save(
-        #     f"./output/dev/data_preprocessing/{timestr}_reconstructed_stft_chunks_{sr_new}.wav",
-        #     waveform_reconstructed_stft,
-        #     sr_org,
-        # )
+        torchaudio.save(
+            f"./output/dev/data_preprocessing/{timestr}_reconstructed_stft_chunks_{sr_new}.wav",
+            waveform_reconstructed_stft,
+            sr_org,
+        )

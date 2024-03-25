@@ -161,10 +161,16 @@ class Trainer(BaseTrainer):
                 # print(f'output_waveform.shape: {output_waveform.shape}, target_waveform.shape: {target_waveform.shape}')
                 # Compute the STFT of the output and target waveforms
                 output_mag, output_phase = preprocessing.get_mag_phase(
-                    output_waveform, chunk_wave=False, batch_input=True
+                    output_waveform,
+                    chunk_wave=False,
+                    batch_input=True,
+                    stft_params=self.config_dataloader["stft_params"],
                 )
                 target_mag, target_phase = preprocessing.get_mag_phase(
-                    target_waveform, chunk_wave=False, batch_input=True
+                    target_waveform,
+                    chunk_wave=False,
+                    batch_input=True,
+                    stft_params=self.config_dataloader["stft_params"],
                 )
 
                 # Calculate the mag and phase loss
@@ -229,7 +235,9 @@ class Trainer(BaseTrainer):
                     # Store the waveforms
                     waveforms = [input_waveform, output_waveform[0], target_waveform[0]]
                     # Add audio to the tensorboard
-                    log_audio(self.writer, name_list, waveforms, self.config["source_sr"])
+                    log_audio(
+                        self.writer, name_list, waveforms, self.config["source_sr"]
+                    )
                     # Add the waveforms to the tensorboard
                     log_waveform(self.writer, name_list, waveforms)
                     # Add the spectrograms to the tensorboard
@@ -388,10 +396,16 @@ class Trainer(BaseTrainer):
                 )
                 # Compute the STFT of the output and target waveforms
                 output_mag, output_phase = preprocessing.get_mag_phase(
-                    output_waveform, chunk_wave=False, batch_input=True
+                    output_waveform,
+                    chunk_wave=False,
+                    batch_input=True,
+                    stft_params=self.config_dataloader["stft_params"],
                 )
                 target_mag, target_phase = preprocessing.get_mag_phase(
-                    target_waveform, chunk_wave=False, batch_input=True
+                    target_waveform,
+                    chunk_wave=False,
+                    batch_input=True,
+                    stft_params=self.config_dataloader["stft_params"],
                 )
 
                 # Calculate the mag and phase loss
@@ -451,7 +465,9 @@ class Trainer(BaseTrainer):
                     # Store the waveforms
                     waveforms = [input_waveform, output_waveform[0], target_waveform[0]]
                     # Add audio to the tensorboard
-                    log_audio(self.writer, name_list, waveforms, self.config["source_sr"])
+                    log_audio(
+                        self.writer, name_list, waveforms, self.config["source_sr"]
+                    )
                     # Add the waveforms to the tensorboard
                     log_waveform(self.writer, name_list, waveforms)
                     # Add the spectrograms to the tensorboard
