@@ -31,7 +31,11 @@
             "data_dir": "data/",
             "batch_size": 4,
             "shuffle": true,
-            "percentage": 0.1,
+            "quantity": 0.1,
+            "training_test_split": [
+                100,
+                8
+            ],
             "validation_split": 0.2,
             "num_workers": 4,
             "random_resample": [

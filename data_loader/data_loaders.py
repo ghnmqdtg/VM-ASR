@@ -32,29 +32,28 @@ class VCTKDataLoader(BaseDataLoader):
         data_dir,
         batch_size,
         shuffle=True,
-        percentage=1.0,
+        training_test_split=[100, 8],
         validation_split=0.0,
+        quantity=1.0,
         num_workers=1,
         training=True,
         random_resample=[8000],
         **kwargs,
     ):
         # Set up data directory
-        self.data_dir = data_dir
-        self.random_resample = random_resample
-        self.percentage = (
-            percentage
-            if percentage > 0.0 and percentage <= 1.0
-            else sys.exit(
-                "Percentage of loading data should be in the range of (0, 1]."
-            )
+        quantity = (
+            quantity
+            if quantity > 0.0 and quantity <= 1.0
+            else sys.exit("quantity of loading data should be in the range of (0, 1].")
         )
         # Download VCTK_092 dataset
         # The data returns a tuple of the form: waveform, sample rate, transcript, speaker id and utterance id
         self.dataset = CustomVCTK_092(
-            root=self.data_dir,
-            random_resample=self.random_resample,
-            percentage=self.percentage,
+            root=data_dir,
+            random_resample=random_resample,
+            training_test_split=training_test_split,
+            training=training,
+            quantity=quantity,
             **kwargs,
         )
         # Print the total number of samples
@@ -83,7 +82,14 @@ class CustomVCTK_092(datasets.VCTK_092):
     """
 
     def __init__(
-        self, root, audio_ext=".wav", random_resample=[8000], percentage=1.0, **kwargs
+        self,
+        root,
+        audio_ext=".wav",
+        random_resample=[8000],
+        training_test_split=[100, 8],
+        training=True,
+        quantity=1.0,
+        **kwargs,
     ):
         super().__init__(root)
         self._path = os.path.join(root, "VCTK-Corpus-0.92")
@@ -91,7 +97,9 @@ class CustomVCTK_092(datasets.VCTK_092):
         self._audio_dir = os.path.join(self._path, "wav48_silence_trimmed_wav")
         self._audio_ext = audio_ext
         self._random_resample = random_resample
-        self.percentage = percentage
+        self.training_test_split = training_test_split
+        self.training = training
+        self.quantity = quantity
         self._sample_ids = []
         self.chunking_params = kwargs.get("chunking_params", None)
         # Check if the trimmed wav files exist
@@ -100,7 +108,9 @@ class CustomVCTK_092(datasets.VCTK_092):
                 "Dataset not found. Please run data/trim_flac2wav.py to download and trim the silence first."
             )
 
-        self.sample_ids_file = os.path.join(self._path, "sample_ids.json")
+        self.sample_ids_file = os.path.join(
+            self._path, f"sample_ids_{'train' if self.training else 'test'}.json"
+        )
         # Load the sample IDs
         self._load_sample_ids()
 
@@ -128,6 +138,13 @@ class CustomVCTK_092(datasets.VCTK_092):
         # Extracting speaker IDs from the folder structure
         # Note: Some of speakers has been removed by VCTK_092 class while running `trim_flac2wav.py`
         self._speaker_ids = sorted(os.listdir(self._audio_dir))
+        # Split the training and test speakers
+        if self.training:
+            self._speaker_ids = self._speaker_ids[: self.training_test_split[0]]
+            print(f"Number of speakers: {len(self._speaker_ids)}")
+        else:
+            self._speaker_ids = self._speaker_ids[self.training_test_split[0] :]
+            print(f"Number of speakers: {len(self._speaker_ids)}")
 
         # Get _sample_ids
         for speaker_id in self._speaker_ids:
@@ -157,10 +174,13 @@ class CustomVCTK_092(datasets.VCTK_092):
         with open(self.sample_ids_file, "r") as f:
             self._sample_ids = json.load(f)
             num_smaples = len(self._sample_ids)
-            loaded_samples = int(num_smaples * self.percentage)
+            loaded_samples = int(num_smaples * self.quantity)
             print(
-                f"Loading {self.percentage * 100}% of the sample IDs ({loaded_samples} of {num_smaples})..."
+                f"Loading {self.quantity * 100}% of the sample IDs ({loaded_samples} of {num_smaples})..."
             )
+            # Randomly shuffle the sample IDs
+            random.shuffle(self._sample_ids)
+            # Load the specified quantity of the sample IDs
             self._sample_ids = self._sample_ids[:loaded_samples]
 
     def _load_audio(self, file_path) -> Tuple[torch.Tensor | int]:
@@ -330,11 +350,11 @@ if __name__ == "__main__":
     # Set up the data loader
     data_loader = VCTKDataLoader(
         data_dir=config["data_loader"]["args"]["data_dir"],
-        percentage=0.1,
-        batch_size=128,
-        num_workers=4,
+        quantity=0.1,
+        batch_size=4,
+        num_workers=0,
         validation_split=0.1,
-        chunking_params={"chunk_size": 10160, "overlap": 0.5},
+        chunking_params={"chunk_size": 10160, "overlap": 0},
     )
 
     # Iterate over the data loader with tqdm
