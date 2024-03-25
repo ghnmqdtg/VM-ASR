@@ -332,23 +332,48 @@ def get_mag_phase(
         return mags, phases
 
 
-if __name__ == "__main__":
-    # Load the configuration file
-    with open("./config/config.json") as f:
-        config = json.load(f)
+def plot_chunks(sr_new, chunks, mag_chunks, phase_chunks):
+    fig, axs = plt.subplots(3, mag_chunks.size(0), figsize=(25, 7))
+    # Set the title of the plot
+    plt.suptitle(f"Chunks: Magnitude and Phase at {sr_new} Hz")
+    # Set the titles for each row at the left side of the figure
+    axs[0, 0].set_ylabel("Magnitude")
+    axs[1, 0].set_ylabel("Phase")
+    axs[2, 0].set_ylabel("Waveform")
+    # Set y limit for the waveform plot
+    axs[2, 0].set_ylim(-1, 1)
+    for i in range(mag_chunks.size(0)):
+        axs[0, i].imshow(mag_chunks[i].numpy(), aspect="auto", origin="lower")
+        axs[1, i].imshow(phase_chunks[i].numpy(), aspect="auto", origin="lower")
+        axs[2, i].plot(chunks[i].squeeze().numpy())
+    plt.tight_layout()
+    # plt.savefig(f"./output/dev/data_preprocessing/{timestr}_chunks_{sr_new}.png")
+    plt.savefig(f"./output/dev/data_preprocessing/chunks_{sr_new}.png")
 
-    config_dataloader = config["data_loader"]["args"]
-    # Test the toy_load function
+
+if __name__ == "__main__":
+    # Choose an audio file to test
     filepath = "./data/VCTK-Corpus-0.92/wav48_silence_trimmed_wav/p225/p225_001.wav"
     # Make sure the output folder exists
     ensure_dir("./output/dev/data_preprocessing")
+    # Load the configuration file
+    with open("./config/config.json") as f:
+        config = json.load(f)
+    config_dataloader = config["data_loader"]["args"]
+
+    # Choose the test to run
+    TEST_FILTER = False
+    TEST_FULL_WAVEFORM = False
+    TEST_CHIUNKING = True
+    TEST_RECONSTRUCT_FROM_CHUNKS = False
+
     # Set the parameters
     # List of target sample rates to choose from
     target_sample_rates = [8000]
     # Size of each audio chunk
-    chunk_size = 10160
+    chunk_size = config_dataloader["chunking_params"]["chunk_size"]
     # Overlap size between chunks
-    overlap = int(chunk_size * 0)
+    overlap = int(chunk_size * config_dataloader["chunking_params"]["overlap"])
     # Apply the audio preprocessing pipeline
     sr_new = random.choice(target_sample_rates)
     print(f"Randomly selected new sample rate: {sr_new} Hz")
@@ -364,124 +389,121 @@ if __name__ == "__main__":
     chunks, padding_length = cut2chunks(
         waveform_upsampled, chunk_size, overlap, return_padding_length=True
     )
-    # Normalize the waveform
-    # waveform = waveform / waveform.abs().max() * 0.95 * 32768
+
     timestr = time.strftime("%Y%m%d-%H%M%S")
-    # Plot the waveform, magnitude and phase
-    plot_all(
-        waveform,
-        sr_new,
-        # f"./output/dev/data_preprocessing/{timestr}_step_0_{sr_new}.png",
-        f"./output/dev/data_preprocessing/step_0_{sr_new}.png",
-    )
-    plot_all(
-        waveform_filtered,
-        sr_new,
-        # f"./output/dev/data_preprocessing/{timestr}_step_1_{sr_new}.png",
-        f"./output/dev/data_preprocessing/step_1_{sr_new}.png",
-    )
-    plot_all(
-        waveform_downsampled,
-        sr_new,
-        # f"./output/dev/data_preprocessing/{timestr}_step_2_{sr_new}.png",
-        f"./output/dev/data_preprocessing/step_2_{sr_new}.png",
-    )
-    plot_all(
-        low_pass_filter(waveform_upsampled, sr_org, sr_new),
-        sr_new,
-        # f"./output/dev/data_preprocessing/{timestr}_step_3_{sr_new}.png",
-        f"./output/dev/data_preprocessing/step_3_{sr_new}.png",
-    )
-    # plot_all(
-    #     resample_audio(waveform, sr_org, sr_new),
-    #     sr_new,
-    #     f"./output/dev/data_preprocessing/{timestr}_step_4_{sr_new}.png",
-    # )
-    # # Save the chunks to the output folder
-    # for i, chunk in enumerate(chunks):
-    #     torchaudio.save(
-    #         f"./output/dev/data_preprocessing/chunk_{timestr}_{i}_{sr_new}.wav", chunk, sr_org)
-    print(f"Processed {len(chunks)} chunks from {filepath} at {sr_new} Hz sample rate")
+    # Test the low sample rate simulation pipeline
+    if TEST_FILTER:
+        # Plot the waveform, magnitude and phase
+        plot_all(
+            waveform,
+            sr_new,
+            f"./output/dev/data_preprocessing/{timestr}_step_0_{sr_new}.png",
+        )
+        plot_all(
+            waveform_filtered,
+            sr_new,
+            f"./output/dev/data_preprocessing/{timestr}_step_1_{sr_new}.png",
+        )
+        plot_all(
+            waveform_downsampled,
+            sr_new,
+            f"./output/dev/data_preprocessing/{timestr}_step_2_{sr_new}.png",
+        )
+        plot_all(
+            low_pass_filter(waveform_upsampled, sr_org, sr_new),
+            sr_new,
+            f"./output/dev/data_preprocessing/{timestr}_step_3_{sr_new}.png",
+        )
 
-    # Reconstruct the waveform from the chunks
-    waveform_reconstructed = concatenate_wave_chunks(
-        chunks, chunk_size, overlap, padding_length
-    )
-    # Plot the waveform, magnitude and phase
-    # plot_all(
-    #     waveform_reconstructed,
-    #     sr_new,
-    #     f"./output/dev/data_preprocessing/reconstructed_wave_chunks_{timestr}_{sr_new}.png",
-    # )
-    # Save the reconstructed waveform
-    torchaudio.save(
-        f"./output/dev/data_preprocessing/reconstructed_wave_chunks_{timestr}_{sr_new}.wav",
-        waveform_reconstructed,
-        sr_org,
-    )
+    if TEST_FULL_WAVEFORM:
+        # Get the magnitude and phase of the full waveform
+        mag, phase = get_mag_phase(
+            waveform,
+            chunk_wave=False,
+        )
+        # Print the shapes of the magnitude and phase
+        print(f"Shape of mag: {mag.shape}, Shape of phase: {phase.shape}")
+        # Reconstruct the waveform from the magnitude and phase
+        waveform_reconstructed_stft = reconstruct_from_stft(
+            mag, phase, config_dataloader=config_dataloader
+        )
+        # Plot the waveform, magnitude and phase
+        plot_all(
+            waveform_reconstructed_stft,
+            sr_new,
+            f"./output/dev/data_preprocessing/{timestr}_reconstructed_stft_full_{sr_new}.png",
+        )
+        # Save the reconstructed waveform
+        torchaudio.save(
+            f"./output/dev/data_preprocessing/{timestr}_reconstructed_stft_full_{sr_new}.wav",
+            waveform_reconstructed_stft,
+            sr_org,
+        )
 
-    # Get the magnitude and phase of the full waveform
-    mag, phase = get_mag_phase(
-        waveform,
-        chunk_wave=False,
-    )
-    # Print the shapes of the magnitude and phase
-    print(f"Shape of mag: {mag.shape}, Shape of phase: {phase.shape}")
-    # Reconstruct the waveform from the magnitude and phase
-    waveform_reconstructed_stft = reconstruct_from_stft(
-        mag, phase, config_dataloader=config_dataloader
-    )
-    # Plot the waveform, magnitude and phase
-    # plot_all(
-    #     waveform_reconstructed_stft,
-    #     sr_new,
-    #     f"./output/dev/data_preprocessing/reconstructed_stft_full_{timestr}_{sr_new}.png",
-    # )
-    # Save the reconstructed waveform
-    torchaudio.save(
-        f"./output/dev/data_preprocessing/reconstructed_stft_full_{timestr}_{sr_new}.wav",
-        waveform_reconstructed_stft,
-        sr_org,
-    )
-
-    # FIX: Chunking -> STFT -> Concatenate -> iSTFT will cause high frequency peak artifacts
-    # Get the magnitude and phase of the chunks
-    mag = []
-    phase = []
-    for chunk in chunks:
-        mag_chunk, phase_chunk = get_mag_phase(
-            chunk,
+    if TEST_CHIUNKING:
+        # Reconstruct the waveform from the chunks
+        waveform_reconstructed = concatenate_wave_chunks(
+            chunks, chunk_size, overlap, padding_length
+        )
+        # Get the magnitude and phase of the chunks
+        mag_chunks, phase_chunks = get_mag_phase(
+            chunks,
             chunk_wave=True,
-            batch_input=False,
+            batch_input=True,
             stft_params=config_dataloader["stft_params"],
         )
-        mag.append(mag_chunk)
-        phase.append(phase_chunk)
+        print(
+            f"Shape of mag_chunks: {mag_chunks.shape}, Shape of phase_chunks: {phase_chunks.shape}"
+        )
+        # Plot the magnitude, phase and wave of chunks
+        # The figure is in the shape of (3, chunk_num)
+        # Drop the channel dimension
+        mag_chunks = mag_chunks.squeeze(1)
+        phase_chunks = phase_chunks.squeeze(1)
+        plot_chunks(sr_new, chunks, mag_chunks, phase_chunks)
 
-    # Shapes are [1, freq, time] for both mag and phase
-    print(f"Shape of mag: {mag[0].shape}, Shape of phase: {phase[0].shape}")
-    # Stack the magnitude and phase, shapes are [1, chunk_num, freq, time]
-    mag = torch.stack(mag, dim=1)
-    phase = torch.stack(phase, dim=1)
-    print(f"Shape of mag: {mag.shape}, Shape of phase: {phase.shape}")
+        # # Save the reconstructed waveform
+        # torchaudio.save(
+        #     f"./output/dev/data_preprocessing/{timestr}_reconstructed_wave_chunks_{sr_new}.wav",
+        #     waveform_reconstructed,
+        #     sr_org,
+        # )
 
-    # Reconstruct the waveform from the magnitude and phase
-    waveform_reconstructed_stft = reconstruct_from_stft_chunks(
-        mag,
-        phase,
-        padding_length,
-        batch_input=False,
-        config_dataloader=config_dataloader,
-    )
-    # Plot the waveform, magnitude and phase
-    # plot_all(
-    #     waveform_reconstructed_stft,
-    #     sr_new,
-    #     f"./output/dev/data_preprocessing/reconstructed_stft_chunks_{timestr}_{sr_new}.png",
-    # )
-    # Save the reconstructed waveform
-    torchaudio.save(
-        f"./output/dev/data_preprocessing/reconstructed_stft_chunks_{timestr}_{sr_new}.wav",
-        waveform_reconstructed_stft,
-        sr_org,
-    )
+    if TEST_RECONSTRUCT_FROM_CHUNKS:
+        # FIX: Chunking -> STFT -> Concatenate -> iSTFT will cause high frequency peak artifacts
+        # Get the magnitude and phase of the chunks
+        mag_chunks, phase_chunks = get_mag_phase(
+            chunks,
+            chunk_wave=True,
+            batch_input=True,
+            stft_params=config_dataloader["stft_params"],
+        )
+        print(
+            f"Shape of mag_chunks: {mag_chunks.shape}, Shape of phase_chunks: {phase_chunks.shape}"
+        )
+
+        # Stack the magnitude and phase, shapes are [1, chunk_num, freq, time]
+        mag_chunks = mag_chunks.permute(1, 0, 2, 3)
+        phase_chunks = phase_chunks.permute(1, 0, 2, 3)
+        print(f"Shape of mag: {mag_chunks.shape}, Shape of phase: {phase_chunks.shape}")
+
+        # Reconstruct the waveform from the magnitude and phase
+        waveform_reconstructed_stft = reconstruct_from_stft_chunks(
+            mag_chunks,
+            phase_chunks,
+            padding_length,
+            batch_input=False,
+            config_dataloader=config_dataloader,
+        )
+        # Plot the waveform, magnitude and phase
+        plot_all(
+            waveform_reconstructed_stft,
+            sr_new,
+            f"./output/dev/data_preprocessing/{timestr}_reconstructed_stft_chunks_{sr_new}.png",
+        )
+        # # Save the reconstructed waveform
+        # torchaudio.save(
+        #     f"./output/dev/data_preprocessing/{timestr}_reconstructed_stft_chunks_{sr_new}.wav",
+        #     waveform_reconstructed_stft,
+        #     sr_org,
+        # )
