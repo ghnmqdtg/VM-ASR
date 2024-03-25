@@ -43,23 +43,21 @@ def crop_or_pad_waveform(
     # If the waveform is shorter than the required length, pad it
     if waveform.shape[1] < length:
         pad_length = length - waveform.shape[1]
-        # If the phase is training or validation, pad the waveform randomly
-        # If the phase is testing, pad the waveform from the beginning
-        r = random.randint(0, pad_length)
+        # Randomly select the length to pad
+        pad_begin = random.randint(0, pad_length)
+        pad_end = pad_length - pad_begin
         if not white_noise:
             # Pad the waveform with zeros to the left and right
             # Left: random length between 0 and pad_length, Right: pad_length - r
-            waveform = F.pad(waveform, (r, pad_length - r), mode="constant", value=0)
+            waveform = F.pad(waveform, (pad_begin, pad_end), mode="constant", value=0)
         else:
             # Pad white noise to the waveform
-            noise_front = (torch.randn(r).to(device) * white_noise).unsqueeze(0)
-            noise_back = (
-                torch.randn(pad_length - r).to(device) * white_noise
-            ).unsqueeze(0)
+            noise_front = (torch.randn(pad_begin).to(device) * white_noise).unsqueeze(0)
+            noise_back = (torch.randn(pad_end).to(device) * white_noise).unsqueeze(0)
             waveform = torch.cat((noise_front, waveform, noise_back), dim=-1)
             # Apply fade in and fade out to the padded waveform
             waveform = T.Fade(
-                fade_in_len=r, fade_out_len=pad_length - r, fade_shape="exponential"
+                fade_in_len=pad_begin, fade_out_len=pad_end, fade_shape="exponential"
             )(waveform)
         # print(f"Pad length: {pad_length}, Random length: {r}")
     else:
@@ -220,38 +218,6 @@ def cut2chunks(
         return torch.stack(chunks), padding_length
     else:
         return torch.stack(chunks)
-
-
-def low_sr_simulation_pipeline(
-    waveform: torch.Tensor,
-    sr_org: int,
-    sr_new: int | list[int],
-    chunk_size: int,
-    overlap: int,
-) -> list[torch.Tensor]:
-    """
-    Apply the low sample rate simulation pipeline to the waveform
-
-    Args:
-        waveform (torch.Tensor): The input waveform
-        sr_org (int): The original sample rate
-        sr_new (int | list[int]): The new sample rate
-        chunk_size (int): The size of each chunk
-        overlap (int): The overlap between chunks
-
-    Returns:
-        List[torch.Tensor]: A list of chunks
-    """
-    # Check if sr_new is a list
-    if isinstance(sr_new, list):
-        # Randomly select a new sample rate
-        sr_new = random.choice(sr_new)
-    # Apply the low sample rate simulation
-    waveform_lr = low_sr_simulation(waveform, sr_org, sr_new)
-    # Cut the waveform into chunks
-    chunks = cut2chunks(waveform_lr, chunk_size, overlap)
-    # Return the list of chunks
-    return chunks
 
 
 def plot_all(waveform: torch.Tensor, sample_rate: int, filename: str) -> None:
