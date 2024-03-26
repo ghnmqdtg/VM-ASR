@@ -1245,6 +1245,36 @@ class DualStreamInteractiveMambaUNet(MambaUNet):
         # Residual connection
         return mag + residual_mag, phase + residual_phase
 
+    def flops(self, shape=(2, 1, 512, 128)):
+        # shape = self.__input_shape__[1:]
+        supported_ops = {
+            "aten::silu": None,  # as relu is in _IGNORED_OPS
+            "aten::neg": None,  # as relu is in _IGNORED_OPS
+            "aten::exp": None,  # as relu is in _IGNORED_OPS
+            "aten::flip": None,  # as permute is in _IGNORED_OPS
+            # "prim::PythonOp.CrossScan": None,
+            # "prim::PythonOp.CrossMerge": None,
+            "prim::PythonOp.SelectiveScanMamba": selective_scan_flop_jit,
+            "prim::PythonOp.SelectiveScanOflex": selective_scan_flop_jit,
+            "prim::PythonOp.SelectiveScanCore": selective_scan_flop_jit,
+            "prim::PythonOp.SelectiveScanNRow": selective_scan_flop_jit,
+        }
+
+        model = deepcopy(self)
+        model.cuda().eval()
+
+        input = torch.randn((1, *shape), device=next(model.parameters()).device)
+        params = parameter_count(model)[""]
+        Gflops, unsupported = flop_count(
+            model=model, inputs=(input,), supported_ops=supported_ops
+        )
+
+        del model, input
+        torch.cuda.empty_cache()
+
+        # Return the number of parameters and FLOPs
+        return f"params {params/1e6:.2f}M, GFLOPs {sum(Gflops.values()):.2f}"
+
 
 if __name__ == "__main__":
     from tqdm import tqdm

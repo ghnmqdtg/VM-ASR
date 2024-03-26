@@ -41,8 +41,9 @@ def main(config):
 
     # Build model architecture, then print to console
     model = config.init_obj("arch", module_arch)
+    # Show number of parameters and FLOPs
     logger.info(model)
-
+    logger.info(f"Number of FLOPs: {model.flops()}")
     # Prepare for (multi-device) GPU training
     device, device_ids = prepare_device(config["n_gpu"])
     model = model.to(device)
