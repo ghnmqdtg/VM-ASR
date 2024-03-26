@@ -178,6 +178,8 @@ class CustomVCTK_092(datasets.VCTK_092):
             print(
                 f"Loading {self.quantity * 100}% of the sample IDs ({loaded_samples} of {num_smaples})..."
             )
+            # Set the seed on data loading for reproducibility
+            random.seed(9527)
             # Randomly shuffle the sample IDs
             random.shuffle(self._sample_ids)
             # Load the specified quantity of the sample IDs
@@ -355,11 +357,11 @@ if __name__ == "__main__":
     # Set up the data loader
     data_loader = VCTKDataLoader(
         data_dir=config["data_loader"]["args"]["data_dir"],
-        quantity=0.1,
+        quantity=0.001,
         batch_size=4,
         num_workers=0,
         validation_split=0.1,
-        chunking_params={"chunk_size": 10160, "overlap": 0},
+        chunking_params={"chunk_size": 10160, "overlap": 0, "chunk_buffer": 240},
     )
 
     # Iterate over the data loader with tqdm
