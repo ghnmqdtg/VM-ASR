@@ -647,7 +647,7 @@ class MambaUNet(BaseModel):
             channel_first=self.channel_first,
         )
 
-        print(f"patchembed_version: {patchembed_version} -> {_make_patch_embed}")
+        # print(f"patchembed_version: {patchembed_version} -> {_make_patch_embed}")
 
         # Get the downsample version
         _make_downsample = dict(
@@ -657,7 +657,7 @@ class MambaUNet(BaseModel):
             none=(lambda *_, **_k: None),
         ).get(downsample_version, None)
 
-        print(f"downsample_version: {downsample_version} -> {_make_downsample}")
+        # print(f"downsample_version: {downsample_version} -> {_make_downsample}")
 
         # Get the upsample version
         _make_upsample = dict(
@@ -737,11 +737,11 @@ class MambaUNet(BaseModel):
         )
         # Decoders
         for i_layer in range(self.num_layers - 1, -1, -1):
-            print(
-                self.dims[i_layer + 1]
-                if i_layer < self.num_layers - 1
-                else self.dims[self.num_layers - 1]
-            )
+            # print(
+            #     self.dims[i_layer + 1]
+            #     if i_layer < self.num_layers - 1
+            #     else self.dims[self.num_layers - 1]
+            # )
             upsample = (
                 _make_upsample(
                     self.dims[i_layer + 1],
