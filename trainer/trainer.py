@@ -74,6 +74,8 @@ class Trainer(BaseTrainer):
         self.model.train()
         # Reset the train metrics
         self.train_metrics.reset()
+        # Grad scaler for mixed precision training
+        scaler = torch.cuda.amp.GradScaler()
         # Set the progress bar for the epoch
         with tqdm(
             self.data_loader,
@@ -94,46 +96,52 @@ class Trainer(BaseTrainer):
             }
             # Iterate through the batches
             for batch_idx, (data, target) in enumerate(tepoch):
+                # Reset the peak memory stats for the GPU
+                torch.cuda.reset_peak_memory_stats()
                 # Set description for the progress bar
                 tepoch.set_description(f"Epoch {epoch} {self._progress(batch_idx)}")
                 # Both data and target are in the shape of (batch_size, 2 (mag and phase), num_chunks, frequency_bins, frames)
-                data, target = data.to(self.device), target.to(self.device)
+                data, target = data.to(self.device, non_blocking=True), target.to(
+                    self.device, non_blocking=True
+                )
                 # Set the gradients to zero before starting to do backpropragation because PyTorch accumulates the gradients on subsequent backward passes
                 self.optimizer.zero_grad()
-                # Initialize the chunk ouptut and losses
-                chunk_inputs = {"mag": [], "phase": []}
-                chunk_outputs = {"mag": [], "phase": []}
-                global_loss = 0
-                chunk_losses = {"mag": [], "phase": []}
+                # Enables autocasting for the forward pass (model + loss)
+                with torch.autocast(device_type="cuda"):
+                    # Initialize the chunk ouptut and losses
+                    chunk_inputs = {"mag": [], "phase": []}
+                    chunk_outputs = {"mag": [], "phase": []}
+                    global_loss = 0
+                    chunk_losses = {"mag": [], "phase": []}
 
-                # Iterate through the chunks and calculate the loss for each chunk
-                for chunk_idx in range(data.size(2)):
-                    # Get current chunk data (and unsqueeze the chunk dimension)
-                    chunk_data = data[:, :, chunk_idx, :, :].unsqueeze(2)
-                    # Get current chunk target (and unsqueeze the chunk dimension)
-                    chunk_target = target[:, :, chunk_idx, :, :].unsqueeze(2)
+                    # Iterate through the chunks and calculate the loss for each chunk
+                    for chunk_idx in range(data.size(2)):
+                        # Get current chunk data (and unsqueeze the chunk dimension)
+                        chunk_data = data[:, :, chunk_idx, :, :].unsqueeze(2)
+                        # Get current chunk target (and unsqueeze the chunk dimension)
+                        chunk_target = target[:, :, chunk_idx, :, :].unsqueeze(2)
 
-                    # Save the chunk input if batch_idx == (self.len_epoch - 1) (the last batch of the epoch)
-                    if batch_idx == (self.len_epoch - 1):
-                        chunk_inputs["mag"].append(chunk_data[:, 0, ...])
-                        chunk_inputs["phase"].append(chunk_data[:, 1, ...])
+                        # Save the chunk input if batch_idx == (self.len_epoch - 1) (the last batch of the epoch)
+                        if batch_idx == (self.len_epoch - 1):
+                            chunk_inputs["mag"].append(chunk_data[:, 0, ...])
+                            chunk_inputs["phase"].append(chunk_data[:, 1, ...])
 
-                    # Forward pass
-                    chunk_mag, chunk_phase = self.model(chunk_data)
-                    # Calculate the chunk loss
-                    chunk_mag_loss = self.criterion["mse_loss"](
-                        chunk_mag, chunk_target[:, 0, ...]
-                    )
-                    chunk_phase_loss = self.criterion["mse_loss"](
-                        chunk_phase, chunk_target[:, 1, ...]
-                    )
-                    # print(f'chunk_mag.shape: {chunk_mag.shape}, chunk_target[:, 0, ...].shape: {chunk_target[:, 0, ...].shape}')
-                    # Accumulate the chunk loss
-                    chunk_losses["mag"].append(chunk_mag_loss)
-                    chunk_losses["phase"].append(chunk_phase_loss)
-                    # Store the chunk output
-                    chunk_outputs["mag"].append(chunk_mag)
-                    chunk_outputs["phase"].append(chunk_phase)
+                        # Forward pass
+                        chunk_mag, chunk_phase = self.model(chunk_data)
+                        # Calculate the chunk loss
+                        chunk_mag_loss = self.criterion["mse_loss"](
+                            chunk_mag, chunk_target[:, 0, ...]
+                        )
+                        chunk_phase_loss = self.criterion["mse_loss"](
+                            chunk_phase, chunk_target[:, 1, ...]
+                        )
+                        # print(f'chunk_mag.shape: {chunk_mag.shape}, chunk_target[:, 0, ...].shape: {chunk_target[:, 0, ...].shape}')
+                        # Accumulate the chunk loss
+                        chunk_losses["mag"].append(chunk_mag_loss)
+                        chunk_losses["phase"].append(chunk_phase_loss)
+                        # Store the chunk output
+                        chunk_outputs["mag"].append(chunk_mag)
+                        chunk_outputs["phase"].append(chunk_phase)
 
                 # Concatenate the outputs along the chunk dimension
                 chunk_outputs["mag"] = torch.cat(chunk_outputs["mag"], dim=1).unsqueeze(
@@ -185,10 +193,13 @@ class Trainer(BaseTrainer):
                 local_loss = 0.9 * local_mag_loss + 0.1 * local_phase_loss
                 # Calculate total loss
                 global_loss = 0.3 * global_loss + 0.7 * local_loss
+
                 # Backward pass
-                global_loss.backward()
+                scaler.scale(global_loss).backward()
                 # Update the weights
-                self.optimizer.step()
+                scaler.step(self.optimizer)
+                # Update the scaler for the next iteration
+                scaler.update()
 
                 # Save losses and metrics for this batch
                 epoch_log["losses"]["total_loss"].append(global_loss.item())
@@ -209,6 +220,7 @@ class Trainer(BaseTrainer):
                     global_loss=global_loss.item(),
                     global_mag_loss=global_mag_loss.item(),
                     global_phase_loss=global_phase_loss.item(),
+                    memory_used=torch.cuda.max_memory_allocated() / (1024.0 * 1024.0),
                 )
 
                 # Log mean losses and metrics of this epoch to the tensorboard
@@ -336,7 +348,9 @@ class Trainer(BaseTrainer):
         }
         with torch.no_grad():
             for batch_idx, (data, target) in enumerate(self.valid_data_loader):
-                data, target = data.to(self.device), target.to(self.device)
+                data, target = data.to(self.device, non_blocking=True), target.to(
+                    self.device, non_blocking=True
+                )
 
                 # Initialize the chunk ouptut and losses
                 chunk_inputs = {"mag": [], "phase": []}

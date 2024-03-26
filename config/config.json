@@ -35,7 +35,7 @@
         "type": "VCTKDataLoader",
         "args": {
             "data_dir": "data/",
-            "batch_size": 4,
+            "batch_size": 10,
             "shuffle": true,
             "quantity": 0.1,
             "training_test_split": [
@@ -43,7 +43,7 @@
                 8
             ],
             "validation_split": 0.2,
-            "num_workers": 14,
+            "num_workers": 16,
             "random_resample": [
                 8000,
                 12000,
