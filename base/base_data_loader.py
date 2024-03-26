@@ -17,6 +17,7 @@ class BaseDataLoader(DataLoader):
         validation_split,
         num_workers,
         collate_fn=default_collate,
+        pin_memory=True,
     ):
         self.validation_split = validation_split
         self.shuffle = shuffle
@@ -32,6 +33,7 @@ class BaseDataLoader(DataLoader):
             "shuffle": self.shuffle,
             "collate_fn": collate_fn,
             "num_workers": num_workers,
+            "pin_memory": pin_memory,
         }
         super().__init__(sampler=self.sampler, **self.init_kwargs)
 
