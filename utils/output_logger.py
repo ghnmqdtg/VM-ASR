@@ -65,10 +65,10 @@ def log_spectrogram(
         # We want to get [[tensor_1, tensor_1, tensor_1], [tensor_2, tensor_2, tensor_2]]
         for i in range(2):
             chunk_list = [chunk[i] for chunk in specs]
-            chunk_plot = plot_spectrogram_from_chunks(
-                names=name_list, chunk_list=chunk_list
-            )
             filename = "Chunks (Magnitude)" if i == 0 else "Chunks (Phase)"
+            chunk_plot = plot_spectrogram_from_chunks(
+                names=name_list, chunk_list=chunk_list, title=filename
+            )
             writer.add_image(filename, chunk_plot, dataformats="HWC")
 
 
@@ -220,7 +220,7 @@ def plot_spectrogram_from_wave(
     return plot
 
 
-def plot_spectrogram_from_chunks(names, chunk_list, title="Spectrogram (Chunks)"):
+def plot_spectrogram_from_chunks(names, chunk_list, title="Chunks (Magnitude)"):
     """
     Plots the spectrogram of chunks using matplotlib.
 
@@ -241,6 +241,10 @@ def plot_spectrogram_from_chunks(names, chunk_list, title="Spectrogram (Chunks)"
     )
     # Set the title of the plot
     plt.suptitle(title)
+    # Set the titles for each row at the left side of the figure
+    axs[0, 0].set_ylabel("Input")
+    axs[1, 0].set_ylabel("Output")
+    axs[2, 0].set_ylabel("Target")
     # Remove axis labels
     plt.tick_params(
         labelcolor="none",
@@ -262,10 +266,13 @@ def plot_spectrogram_from_chunks(names, chunk_list, title="Spectrogram (Chunks)"
             # Set the title of the plot
             axs[i, j].set_title(f"{j+1}")
             # Plot the chunk
-            axs[i, j].imshow(
+            img = axs[i, j].pcolormesh(
+                # Clip the values
                 chunk.squeeze().detach().cpu().numpy(),
-                aspect="auto",
-                origin="lower",
+                vmax=7 if title == "Chunks (Magnitude)" else None,
+                vmin=-15 if title == "Chunks (Magnitude)" else None,
+                cmap="viridis",
+                shading="auto",
             )
     # Set layout to tight
     plt.tight_layout()
