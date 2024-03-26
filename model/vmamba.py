@@ -839,6 +839,13 @@ class SS2D(nn.Module):
                 CrossScan=CrossScanTriton,
                 CrossMerge=CrossMergeTriton,
             ),
+            v5=partial(
+                self.forward_corev2,
+                force_fp32=(not self.disable_force32),
+                SelectiveScan=SelectiveScanCore,
+                CrossScan=CrossScanTriton,
+                CrossMerge=CrossMergeTriton,
+            ),
         )
         self.forward_core = FORWARD_TYPES.get(forward_type, None)
         k_group = 4
@@ -2170,8 +2177,8 @@ class VSSM(nn.Module):
         )
 
         del model, input
-        return sum(Gflops.values()) * 1e9
-        return f"params {params} GFLOPs {sum(Gflops.values())}"
+        # return sum(Gflops.values()) * 1e9
+        return f"params {params/1e6:.2f}M, GFLOPs {sum(Gflops.values()):.2f}"
 
     # used to load ckpt from previous training code
     def _load_from_state_dict(
@@ -2948,8 +2955,25 @@ if __name__ == "__main__":
     # print(VSSM(forward_type="v2").flops())
     # print(VSSM(forward_type="v2nozact").flops())
 
+    print(
+        VSSM(
+            depths=[2, 2, 4, 2],
+            dims=96,
+            # ===================
+            ssm_d_state=1,
+            ssm_ratio=2.0,
+            ssm_dt_rank="auto",
+            ssm_conv=3,
+            ssm_conv_bias=False,
+            forward_type="v2noz",
+            mlp_ratio=4.0,
+            downsample_version="v3",
+            patchembed_version="v2",
+        ).flops()
+    )
+
     # CHECKS.check_vssm1_ssoflex_equals_mambassm()
-    CHECKS.check_csm_triton()
+    # CHECKS.check_csm_triton()
     # CHECKS.check_einsum()
     CHECKS.check_profile()
 

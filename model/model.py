@@ -5,10 +5,16 @@ from collections import OrderedDict
 from copy import deepcopy
 from einops import rearrange
 from timm.models.layers import trunc_normal_
+from fvcore.nn import (
+    flop_count,
+    parameter_count,
+    FlopCountAnalysis,
+    parameter_count_table,
+)
 
 try:
     from base import BaseModel
-    from .vmamba import VSSM, VSSBlock
+    from .vmamba import VSSM, VSSBlock, selective_scan_flop_jit
 except:
     # Used for debugging data_loader
     # Add the project root directory to the Python path
@@ -20,7 +26,7 @@ except:
 
     # Now you can import BaseModel
     from base.base_model import BaseModel
-    from vmamba import VSSM, VSSBlock
+    from vmamba import VSSM, VSSBlock, selective_scan_flop_jit
 
 
 class DualStreamBlock(BaseModel):
@@ -1074,6 +1080,36 @@ class MambaUNet(BaseModel):
             nn.init.constant_(m.bias, 0)
             nn.init.constant_(m.weight, 1.0)
 
+    def flops(self, shape=(3, 224, 224)):
+        # shape = self.__input_shape__[1:]
+        supported_ops = {
+            "aten::silu": None,  # as relu is in _IGNORED_OPS
+            "aten::neg": None,  # as relu is in _IGNORED_OPS
+            "aten::exp": None,  # as relu is in _IGNORED_OPS
+            "aten::flip": None,  # as permute is in _IGNORED_OPS
+            # "prim::PythonOp.CrossScan": None,
+            # "prim::PythonOp.CrossMerge": None,
+            "prim::PythonOp.SelectiveScanMamba": selective_scan_flop_jit,
+            "prim::PythonOp.SelectiveScanOflex": selective_scan_flop_jit,
+            "prim::PythonOp.SelectiveScanCore": selective_scan_flop_jit,
+            "prim::PythonOp.SelectiveScanNRow": selective_scan_flop_jit,
+        }
+
+        model = deepcopy(self)
+        model.cuda().eval()
+
+        input = torch.randn((1, *shape), device=next(model.parameters()).device)
+        params = parameter_count(model)[""]
+        Gflops, unsupported = flop_count(
+            model=model, inputs=(input,), supported_ops=supported_ops
+        )
+
+        del model, input
+        torch.cuda.empty_cache()
+
+        # Return the number of parameters and FLOPs
+        return f"params {params/1e6:.2f}M, GFLOPs {sum(Gflops.values()):.2f}"
+
 
 class DualStreamInteractiveMambaUNet(MambaUNet):
     """
@@ -1212,24 +1248,65 @@ class DualStreamInteractiveMambaUNet(MambaUNet):
 
 if __name__ == "__main__":
     from tqdm import tqdm
+    import time
 
-    x = torch.rand(8, 2, 1, 512, 128).to("cuda")
-    # Print how many memory is used by the tensor
-    # x = torch.rand(24, 3, 224, 224).to("cuda")
-
-    # model = MambaUNet(
+    # TEST: Set all the chunks to shape[0]
+    torch.cuda.reset_peak_memory_stats()
+    x = torch.rand(15, 2, 1, 512, 128).to("cuda")
     model = DualStreamInteractiveMambaUNet(
+        in_chans=x.shape[2],
         depths=[2, 2, 2, 2],
         dims=[8, 16, 32, 64],
-        # dims=[96, 192, 384, 768],
-        in_chans=x.shape[2],
+        # ===================
+        ssm_d_state=1,
+        ssm_ratio=2.0,
+        ssm_dt_rank="auto",
+        ssm_conv=3,
+        ssm_conv_bias=False,
+        forward_type="v5",
+        mlp_ratio=4.0,
+        patchembed_version="v2",
+        output_version="v2",
+        downsample_version="v1",
+        upsample_version="v1",
     ).to("cuda")
-    # model = VSSM(in_chans=1).to("cuda")
     print(model)
-
-    p = torch.rand(1, 8, 2, 15, 512, 128).to("cuda")
-    print(f"Memory: {p.element_size() * p.nelement() / 1024 / 1024} MB")
-
-    for i in tqdm(range(100)):
-        for _ in range(15):
+    total_time = 0
+    for i in tqdm(range(12)):
+        for _ in range(x.shape[0]):
             y = model(x)
+        # print(f"Sample time: {time_sample:.4f}")
+    print(f"Total time: {total_time:.4f}, average time: {total_time/12:.4f}")
+    print(torch.cuda.max_memory_allocated() / (1024.0 * 1024.0))
+
+    # TEST: Set all the chunks to shape[3] as channel
+    del x, model
+    torch.cuda.reset_peak_memory_stats()
+    x = torch.rand(1, 2, 15, 512, 128).to("cuda")
+    model = DualStreamInteractiveMambaUNet(
+        in_chans=x.shape[2],
+        depths=[2, 2, 2, 2],
+        dims=[8, 16, 32, 64],
+        # ===================
+        ssm_d_state=1,
+        ssm_ratio=2.0,
+        ssm_dt_rank="auto",
+        ssm_conv=3,
+        ssm_conv_bias=False,
+        forward_type="v5",
+        mlp_ratio=4.0,
+        patchembed_version="v2",
+        output_version="v2",
+        downsample_version="v1",
+        upsample_version="v1",
+    ).to("cuda")
+    total_time = 0
+    for i in tqdm(range(12)):
+        for _ in range(x.shape[0]):
+            y = model(x)
+        # print(f"Sample time: {time_sample:.4f}")
+    print(f"Total time: {total_time:.4f}, average time: {total_time/12:.4f}")
+    print(torch.cuda.max_memory_allocated() / (1024.0 * 1024.0))
+
+    # Test the flops
+    # print(model.flops(shape=(2, 15, 512, 128)))
