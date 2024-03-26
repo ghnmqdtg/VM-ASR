@@ -143,7 +143,7 @@ def resample_audio(waveform: torch.Tensor, sr_org: int, sr_new: int) -> torch.Te
         torch.Tensor: The downsampled waveform
     """
     waveform_downsampled = T.Resample(
-        sr_org, sr_new, resampling_method="sinc_interp_kaiser"
+        sr_org, sr_new
     )(waveform)
     return waveform_downsampled
 
