@@ -35,7 +35,7 @@
         "type": "VCTKDataLoader",
         "args": {
             "data_dir": "data/",
-            "batch_size": 10,
+            "batch_size": 8,
             "shuffle": true,
             "quantity": 0.1,
             "training_test_split": [
@@ -80,7 +80,10 @@
         }
     },
     "loss": [
-        "mse_loss"
+        "mse_loss",
+        "generator_loss",
+        "discriminator_loss",
+        "feature_loss"
     ],
     "metrics": [
         "log_spectral_distance",

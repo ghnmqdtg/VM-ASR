@@ -1,6 +1,7 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from torch.nn.utils.parametrizations import weight_norm, spectral_norm
 from collections import OrderedDict
 from copy import deepcopy
 from einops import rearrange
@@ -1274,6 +1275,127 @@ class DualStreamInteractiveMambaUNet(MambaUNet):
 
         # Return the number of parameters and FLOPs
         return f"params {params/1e6:.2f}M, GFLOPs {sum(Gflops.values()):.2f}"
+
+
+class PeriodDiscriminator(torch.nn.Module):
+    """
+    A discriminator module that operates at a specific period.
+
+    Args:
+        period (int): The period at which the discriminator operates.
+        kernel_size (int): The size of the kernel for convolutional layers.
+        stride (int): The stride for convolutional layers.
+        use_spectral_norm (bool): Whether to use spectral normalization on the layers.
+    """
+
+    def __init__(self, period, kernel_size=5, stride=3, use_spectral_norm=False):
+        super(PeriodDiscriminator, self).__init__()
+        self.period = period
+        norm_f = weight_norm if use_spectral_norm == False else spectral_norm
+        # The discriminator is composed of a series of convolutions
+        # The number of channels increases as the audio signal moves through the layers
+        self.layers = nn.ModuleList(
+            [
+                norm_f(
+                    nn.Conv2d(
+                        1,
+                        32,
+                        (kernel_size, 1),
+                        (stride, 1),
+                        padding=(self.get_padding(5, 1), 0),
+                    )
+                ),
+                norm_f(
+                    nn.Conv2d(
+                        32,
+                        64,
+                        (kernel_size, 1),
+                        (stride, 1),
+                        padding=(self.get_padding(5, 1), 0),
+                    )
+                ),
+                norm_f(
+                    nn.Conv2d(
+                        64,
+                        128,
+                        (kernel_size, 1),
+                        (stride, 1),
+                        padding=(self.get_padding(5, 1), 0),
+                    )
+                ),
+                norm_f(
+                    nn.Conv2d(
+                        128,
+                        256,
+                        (kernel_size, 1),
+                        (stride, 1),
+                        padding=(self.get_padding(5, 1), 0),
+                    )
+                ),
+                norm_f(nn.Conv2d(256, 256, (kernel_size, 1), 1, padding=(2, 0))),
+            ]
+        )
+        self.conv_post = norm_f(nn.Conv2d(256, 1, (3, 1), 1, padding=(1, 0)))
+
+    def forward(self, x):
+        feature_map = []
+
+        # Convert 1D audio signal to 2D by segmenting with respect to the period
+        b, c, t = x.shape
+        if t % self.period != 0:  # pad first
+            n_pad = self.period - (t % self.period)
+            x = F.pad(x, (0, n_pad), "reflect")
+            t = t + n_pad
+        x = x.view(b, c, t // self.period, self.period)
+
+        for layer in self.layers:
+            x = layer(x)
+            x = nn.GELU()(x)
+            # Store the feature map after each layer
+            feature_map.append(x)
+
+        x = self.conv_post(x)
+
+        feature_map.append(x)
+
+        # Flatten the output for the final discriminator score
+        # Which means that the discriminator will output a single score for the input
+        x = torch.flatten(x, 1, -1)
+
+        return x, feature_map
+
+    def get_padding(self, kernel_size, dilation=1):
+        return int((kernel_size * dilation - dilation) / 2)
+
+
+class MultiPeriodDiscriminator(torch.nn.Module):
+    def __init__(self):
+        super(MultiPeriodDiscriminator, self).__init__()
+        self.discriminators = nn.ModuleList(
+            [
+                PeriodDiscriminator(2),
+                PeriodDiscriminator(3),
+                PeriodDiscriminator(5),
+                PeriodDiscriminator(7),
+                PeriodDiscriminator(11),
+            ]
+        )
+
+    def forward(self, y, y_hat):
+        # y: real audio, y_hat: generated audio
+        y_d_rs = []  # Discriminator outputs for real audio
+        y_d_gs = []  # Discriminator outputs for generated audio
+        fmap_rs = []  # Feature maps for real audio
+        fmap_gs = []  # Feature maps for generated audio
+        for i, d in enumerate(self.discriminators):
+            y_d_r, fmap_r = d(y)
+            y_d_g, fmap_g = d(y_hat)
+            y_d_rs.append(y_d_r)
+            fmap_rs.append(fmap_r)
+            y_d_gs.append(y_d_g)
+            fmap_gs.append(fmap_g)
+
+        return y_d_rs, y_d_gs, fmap_rs, fmap_gs
 
 
 if __name__ == "__main__":
