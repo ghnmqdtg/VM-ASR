@@ -142,9 +142,7 @@ def resample_audio(waveform: torch.Tensor, sr_org: int, sr_new: int) -> torch.Te
     Returns:
         torch.Tensor: The downsampled waveform
     """
-    waveform_downsampled = T.Resample(
-        sr_org, sr_new
-    )(waveform)
+    waveform_downsampled = T.Resample(sr_org, sr_new)(waveform)
     return waveform_downsampled
 
 
@@ -218,14 +216,14 @@ def cut2chunks(
     if start < length:
         last_chunk = waveform[..., start - chunk_buffer :]
         # If padding is required, pad the last chunk to the chunk_size
-        padding_length = (chunk_size + chunk_buffer) - last_chunk.size(-1)
-        last_chunk = torch.nn.functional.pad(
-            last_chunk, (0, padding_length + chunk_buffer), "constant", 0
-        )
+        padding_length = (chunk_size + 2 * chunk_buffer) - last_chunk.size(-1)
+        # Pad the last chunk with zeros from the right
+        last_chunk = F.pad(last_chunk, (0, padding_length), "constant", 0)
         chunks.append(last_chunk)
 
     # print(
-    #     f"Length: {length}, Chunk number: {len(chunks)}, Padding length: {padding_length}")
+    #     f"Length: {length}, Chunk number: {len(chunks)}, Padding length: {padding_length}"
+    # )
 
     if return_padding_length:
         return torch.stack(chunks), padding_length
@@ -389,7 +387,7 @@ if __name__ == "__main__":
     TEST_FILTER = False
     TEST_FULL_WAVEFORM = False
     TEST_CONCATENATE_CHUNKS = False
-    TEST_RECONSTRUCT_FROM_CHUNKS = True
+    TEST_RECONSTRUCT_FROM_CHUNKS = False
 
     # Set the parameters
     # List of target sample rates to choose from

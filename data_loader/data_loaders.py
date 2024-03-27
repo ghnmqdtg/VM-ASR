@@ -5,6 +5,7 @@ import random
 import json
 import os
 import sys
+import math
 from tqdm import tqdm
 
 try:
@@ -46,6 +47,9 @@ class VCTKDataLoader(BaseDataLoader):
             if quantity > 0.0 and quantity <= 1.0
             else sys.exit("quantity of loading data should be in the range of (0, 1].")
         )
+        self.length = kwargs.get("length", 121890)
+        self.white_noise = kwargs.get("white_noise", 0)
+        self.chunking_params = kwargs.get("chunking_params", None)
         # Download VCTK_092 dataset
         # The data returns a tuple of the form: waveform, sample rate, transcript, speaker id and utterance id
         self.dataset = CustomVCTK_092(
@@ -60,8 +64,55 @@ class VCTKDataLoader(BaseDataLoader):
         print(f"Total number of samples: {len(self.dataset)}")
         # Set up the data loader
         super().__init__(
-            self.dataset, batch_size, shuffle, validation_split, num_workers
+            self.dataset,
+            batch_size,
+            shuffle,
+            validation_split,
+            num_workers,
+            # collate_fn=self._collate_fn,
         )
+
+    def _collate_fn(self, batch):
+        """
+        Custom collate function to deal with the audio data with different lengths.
+
+        Args:
+            batch (list): List of tensors of in the shape of (batch_size, 2 (mag or phase), num_chunks, num_frequencies, num_frames)
+        """
+        # Get the batch size
+        batch_size = len(batch)
+        # Split the batches into x and y
+        batch_split = list(zip(*batch))
+        # Initialize tensor to store the new batches for x and y
+        new_batch_x = []
+        new_batch_y = []
+        # Get the max length of chunks
+        max_chunk_length = max([x.size(1) for x in batch_split[0]])
+        # Loop over the batch and pad the chunks
+        for i in range(batch_size):
+            # Get the shape of the chunk (x and y are the same shape)
+            data_shape = batch_split[0][i].shape
+
+            if data_shape[1] < max_chunk_length:
+                # Chunk of zeros for padding
+                padding_chunk = torch.zeros(
+                    2,
+                    max_chunk_length - data_shape[1],
+                    data_shape[2],
+                    data_shape[3],
+                )
+                # Concatenate the padding chunk to new batch for x and y
+                new_batch_x.append(torch.cat((batch_split[0][i], padding_chunk), dim=1))
+                new_batch_y.append(torch.cat((batch_split[1][i], padding_chunk), dim=1))
+            else:
+                new_batch_x.append(batch_split[0][i])
+                new_batch_y.append(batch_split[1][i])
+
+        # Stack the new batch for x and y
+        new_batch_x = torch.stack(new_batch_x)
+        new_batch_y = torch.stack(new_batch_y)
+
+        return new_batch_x, new_batch_y
 
 
 class CustomVCTK_092(datasets.VCTK_092):
@@ -101,6 +152,8 @@ class CustomVCTK_092(datasets.VCTK_092):
         self.training = training
         self.quantity = quantity
         self._sample_ids = []
+        self.length = kwargs.get("length", 121890)
+        self.white_noise = kwargs.get("white_noise", 0)
         self.chunking_params = kwargs.get("chunking_params", None)
         # Check if the trimmed wav files exist
         if not os.path.isdir(self._audio_dir):
@@ -240,7 +293,9 @@ class CustomVCTK_092(datasets.VCTK_092):
         # Apply the audio preprocessing pipeline
         sr_new = random.choice(target_sample_rates)
         # Crop or pad the waveform to a fixed length
-        waveform = preprocessing.crop_or_pad_waveform(waveform)
+        waveform = preprocessing.crop_or_pad_waveform(
+            waveform, {"length": self.length, "white_noise": self.white_noise}
+        )
         # Get magnitude and phase of the original audio
         mag_phase_pair_y = self._get_mag_phase(
             waveform, chunk_wave=True, chunk_buffer=self.chunking_params["chunk_buffer"]
