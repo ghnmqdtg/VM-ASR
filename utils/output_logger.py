@@ -188,7 +188,6 @@ def plot_spectrogram_from_wave(
             axs[i, 0].set_ylabel("Frequency")
             axs[i, 1].set_ylabel("Frequency")
         else:
-            # Set the title
             # Plot the waveform (Spectrogram)
             frequencies, times, spectrogram = signal.spectrogram(
                 waveform.squeeze().detach().cpu().numpy(), fs=sample_rate
@@ -196,17 +195,25 @@ def plot_spectrogram_from_wave(
             img = axs[i].pcolormesh(
                 times,
                 frequencies,
-                10 * np.log10(spectrogram + 1e-8),
+                10 * np.log10(spectrogram + 1e-18),
                 cmap="viridis",
                 shading="auto",
+                vmin=-150,
             )
             # Add colorbar
             plt.colorbar(img, ax=axs[i])
+            # Set the title
             axs[i].set_title(name)
             # Set the x-axis label
             axs[i].set_xlabel("Time")
             # Set the y-axis label
-            axs[i].set_ylabel("Frequency")
+            axs[i].set_ylabel("Frequency (kHz)")
+            # Set y-axis from Hz to kHz
+            axs[i].yaxis.set_major_locator(
+                plt.FixedLocator([0, 5000, 10000, 15000, 20000])
+            )
+            axs[i].set_yticklabels([f"{int(f/1000)}" for f in axs[i].get_yticks()])
+
     # Set the title of the plot
     plt.suptitle(title)
     # Set layout to tight
