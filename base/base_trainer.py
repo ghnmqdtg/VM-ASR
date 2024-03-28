@@ -2,6 +2,7 @@ import torch
 from abc import abstractmethod
 from numpy import inf
 from logger import TensorboardWriter
+from prettytable import PrettyTable
 
 
 class BaseTrainer:
@@ -62,6 +63,7 @@ class BaseTrainer:
         Full training logic
         """
         not_improved_count = 0
+        self.logger.info("Start training...")
         for epoch in range(self.start_epoch, self.epochs + 1):
             result = self._train_epoch(epoch)
 
@@ -70,8 +72,7 @@ class BaseTrainer:
             log.update(result)
 
             # print logged informations to the screen
-            for key, value in log.items():
-                self.logger.info("    {:15s}: {}".format(str(key), value))
+            self._log_epoch(log)
 
             # evaluate model performance according to configured metric, save best checkpoint as model_best
             best = False
@@ -170,3 +171,29 @@ class BaseTrainer:
         self.logger.info(
             "Checkpoint loaded. Resume training from epoch {}".format(self.start_epoch)
         )
+
+    def _log_epoch(self, logs):
+        """
+        Log the training results of an epoch
+        """
+        table = PrettyTable()
+        table.field_names = ["Metric", "Training", "Validation"]
+
+        for key, value in logs.items():
+            # If key is "epoch", set it to be title
+            if key == "epoch":
+                table.title = f"Epoch {value} / {self.epochs}"
+                continue
+            if key.startswith("val_"):
+                continue
+            val_key = f"val_{key}"
+            val_value = logs.get(val_key, "N/A")
+
+            # Format numbers to 2 decimal places
+            if isinstance(value, float):
+                value = f"{value:.4f}"
+            if isinstance(val_value, float):
+                val_value = f"{val_value:.4f}"
+            table.add_row([key, value, val_value])
+
+        self.logger.info(table)

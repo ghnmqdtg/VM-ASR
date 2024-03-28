@@ -7,4 +7,5 @@ pandas
 einops
 fvcore
 matplotlib
+prettytable
 tensorboard>=1.14
