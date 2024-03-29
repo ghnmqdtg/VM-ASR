@@ -13,8 +13,8 @@ from utils import prepare_device
 import wandb
 
 
-# fix random seeds for reproducibility
-SEED = 123
+# Fix random seeds for reproducibility
+SEED = 9527
 torch.manual_seed(SEED)
 torch.backends.cudnn.deterministic = True
 torch.backends.cudnn.benchmark = False
@@ -35,6 +35,8 @@ def main(config):
 
     logger = config.get_logger("train")
 
+    # Set seed for reproducibility
+
     # Setup data_loader instances
     data_loader = config.init_obj("data_loader", module_data)
     valid_data_loader = data_loader.split_validation()
@@ -43,7 +45,8 @@ def main(config):
     model = config.init_obj("arch", module_arch)
     # Show number of parameters and FLOPs
     logger.info(model)
-    logger.info(model.flops())
+    # Show model summary
+    logger.info(model.flops(shape=data_loader.data_shape))
     # Prepare for (multi-device) GPU training
     device, device_ids = prepare_device(config["n_gpu"])
     model = model.to(device)

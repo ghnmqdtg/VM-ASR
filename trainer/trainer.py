@@ -48,7 +48,7 @@ class Trainer(BaseTrainer):
         # Initialize the discriminator
         self.MPD = MultiPeriodDiscriminator().to(self.device)
         # Print the number of parameters and FLOPs of the MPD
-        self.logger.info(self.MPD.flops())
+        self.logger.info(self.MPD.flops(shape=(1, self.config_dataloader["length"])))
         # Get trainables parameters of MPD
         self.trainable_params_D = filter(
             lambda p: p.requires_grad, self.MPD.parameters()

@@ -12,6 +12,7 @@ from fvcore.nn import (
     FlopCountAnalysis,
     parameter_count_table,
 )
+from torchinfo import summary
 
 try:
     from base import BaseModel
@@ -1108,10 +1109,13 @@ class MambaUNet(BaseModel):
         )
 
         del model, input
+        statics = summary(model, input_size=input.shape, verbose=0)
         torch.cuda.empty_cache()
 
         # Return the number of parameters and FLOPs
-        return f"params {params/1e6:.2f}M, GFLOPs {sum(Gflops.values()):.2f}"
+        return (
+            f"{statics}\nparams {params/1e6:.2f}M, GFLOPs {sum(Gflops.values()):.2f}\n"
+        )
 
 
 class DualStreamInteractiveMambaUNet(MambaUNet):
@@ -1272,12 +1276,14 @@ class DualStreamInteractiveMambaUNet(MambaUNet):
         Gflops, unsupported = flop_count(
             model=model, inputs=(input,), supported_ops=supported_ops
         )
-
+        statics = summary(model, input_size=input.shape, verbose=0)
         del model, input
         torch.cuda.empty_cache()
 
         # Return the number of parameters and FLOPs
-        return f"params {params/1e6:.2f}M, GFLOPs {sum(Gflops.values()):.2f}"
+        return (
+            f"{statics}\nparams {params/1e6:.2f}M, GFLOPs {sum(Gflops.values()):.2f}\n"
+        )
 
 
 class PeriodDiscriminator(torch.nn.Module):
@@ -1414,11 +1420,14 @@ class MultiPeriodDiscriminator(torch.nn.Module):
             model=model, inputs=(input, input_hat), supported_ops=supported_ops
         )
 
+        statics = summary(model, input_data=[input, input_hat], verbose=0)
         del model, input, input_hat
         torch.cuda.empty_cache()
 
         # Return the number of parameters and FLOPs
-        return f"params {params/1e6:.2f}M, GFLOPs {sum(Gflops.values()):.2f}"
+        return (
+            f"{statics}\nparams {params/1e6:.2f}M, GFLOPs {sum(Gflops.values()):.2f}\n"
+        )
 
 
 if __name__ == "__main__":

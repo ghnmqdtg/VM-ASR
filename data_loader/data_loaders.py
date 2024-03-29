@@ -60,6 +60,14 @@ class VCTKDataLoader(BaseDataLoader):
             quantity=quantity,
             **kwargs,
         )
+
+        # Data shape is used for model summary
+        shape = [int(x) for x in self.dataset[0][0].shape]
+        # Get only one chunk
+        shape[1] = 1
+        # Set the data shape
+        self.data_shape = tuple(shape)
+
         # Print the total number of samples
         print(f"Total number of samples: {len(self.dataset)}")
         # Set up the data loader
