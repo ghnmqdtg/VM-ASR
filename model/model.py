@@ -1,11 +1,12 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from torch.nn.utils.parametrizations import weight_norm, spectral_norm
 from collections import OrderedDict
 from copy import deepcopy
 from einops import rearrange
 from timm.models.layers import trunc_normal_
+from torch.nn.utils import weight_norm
+from torch.nn.utils.parametrizations import spectral_norm
 from fvcore.nn import (
     flop_count,
     parameter_count,
@@ -1082,6 +1083,7 @@ class MambaUNet(BaseModel):
             nn.init.constant_(m.bias, 0)
             nn.init.constant_(m.weight, 1.0)
 
+    @torch.no_grad()
     def flops(self, shape=(3, 224, 224)):
         # shape = self.__input_shape__[1:]
         supported_ops = {
@@ -1252,6 +1254,7 @@ class DualStreamInteractiveMambaUNet(MambaUNet):
         # Residual connection
         return mag + residual_mag, phase + residual_phase
 
+    @torch.no_grad()
     def flops(self, shape=(2, 1, 512, 128)):
         # shape = self.__input_shape__[1:]
         supported_ops = {
@@ -1300,12 +1303,13 @@ class PeriodDiscriminator(torch.nn.Module):
     def __init__(self, period, kernel_size=5, stride=3, use_spectral_norm=False):
         super(PeriodDiscriminator, self).__init__()
         self.period = period
-        norm_f = weight_norm if use_spectral_norm == False else spectral_norm
+        self.norm_layer = weight_norm if use_spectral_norm else spectral_norm
+
         # The discriminator is composed of a series of convolutions
         # The number of channels increases as the audio signal moves through the layers
         self.layers = nn.ModuleList(
             [
-                norm_f(
+                self.norm_layer(
                     nn.Conv2d(
                         1,
                         32,
@@ -1314,37 +1318,39 @@ class PeriodDiscriminator(torch.nn.Module):
                         padding=(self.get_padding(5, 1), 0),
                     )
                 ),
-                norm_f(
+                self.norm_layer(
                     nn.Conv2d(
                         32,
-                        64,
-                        (kernel_size, 1),
-                        (stride, 1),
-                        padding=(self.get_padding(5, 1), 0),
-                    )
-                ),
-                norm_f(
-                    nn.Conv2d(
-                        64,
                         128,
                         (kernel_size, 1),
                         (stride, 1),
                         padding=(self.get_padding(5, 1), 0),
                     )
                 ),
-                norm_f(
+                self.norm_layer(
                     nn.Conv2d(
                         128,
-                        256,
+                        512,
                         (kernel_size, 1),
                         (stride, 1),
                         padding=(self.get_padding(5, 1), 0),
                     )
                 ),
-                norm_f(nn.Conv2d(256, 256, (kernel_size, 1), 1, padding=(2, 0))),
+                self.norm_layer(
+                    nn.Conv2d(
+                        512,
+                        1024,
+                        (kernel_size, 1),
+                        (stride, 1),
+                        padding=(self.get_padding(5, 1), 0),
+                    )
+                ),
+                self.norm_layer(
+                    nn.Conv2d(1024, 1024, (kernel_size, 1), 1, padding=(2, 0))
+                ),
             ]
         )
-        self.conv_post = norm_f(nn.Conv2d(256, 1, (3, 1), 1, padding=(1, 0)))
+        self.conv_post = self.norm_layer(nn.Conv2d(1024, 1, (3, 1), 1, padding=(1, 0)))
 
     def forward(self, x):
         feature_map = []
@@ -1406,6 +1412,7 @@ class MultiPeriodDiscriminator(torch.nn.Module):
 
         return y_d_rs, y_d_gs, fmap_rs, fmap_gs
 
+    @torch.no_grad()
     def flops(self, shape=(1, 121890)):
         model = deepcopy(self)
         model.cuda().eval()

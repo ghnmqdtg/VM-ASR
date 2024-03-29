@@ -268,9 +268,9 @@ class Trainer(BaseTrainer):
                 local_loss = local_mag_loss + local_phase_loss
                 # Calculate total loss
                 if self.gan:
-                    total_loss = global_loss + local_loss + loss_F + loss_G
+                    total_loss = 0.3 * global_loss + 0.7 * local_loss + loss_F + loss_G
                 else:
-                    total_loss = global_loss + local_loss
+                    total_loss = 0.3 * global_loss + 0.7 * local_loss
 
                 # Backward pass
                 scaler.scale(total_loss).backward()
@@ -446,10 +446,6 @@ class Trainer(BaseTrainer):
                 for batch_idx, (data, target) in enumerate(tepoch):
                     # Reset the peak memory stats for the GPU
                     torch.cuda.reset_peak_memory_stats()
-                    # Set description for the progress bar
-                    tepoch.set_description(
-                        f"Epoch {epoch} [VALID] {self._progress(batch_idx, training=False)}"
-                    )
                     data, target = data.to(self.device, non_blocking=True), target.to(
                         self.device, non_blocking=True
                     )
@@ -462,7 +458,6 @@ class Trainer(BaseTrainer):
 
                     # Enables autocasting for the forward pass (model + loss)
                     with torch.autocast(device_type="cuda", enabled=self.amp):
-
                         # Iterate through the chunks and calculate the loss for each chunk
                         for chunk_idx in range(data.size(2)):
                             # Get current chunk data (and unsqueeze the chunk dimension)
@@ -557,9 +552,11 @@ class Trainer(BaseTrainer):
                     local_loss = local_mag_loss + local_phase_loss
                     # Calculate total loss
                     if self.gan:
-                        total_loss = global_loss + local_loss + loss_F + loss_G
+                        total_loss = (
+                            0.3 * global_loss + 0.7 * local_loss + loss_F + loss_G
+                        )
                     else:
-                        total_loss = global_loss + local_loss
+                        total_loss = 0.3 * global_loss + 0.7 * local_loss
 
                     # Delete the variables to free memory
                     del chunk_data, chunk_target, chunk_mag, chunk_phase, chunk_losses

@@ -35,7 +35,7 @@
         "type": "VCTKDataLoader",
         "args": {
             "data_dir": "data/",
-            "batch_size": 20,
+            "batch_size": 14,
             "shuffle": true,
             "quantity": 0.1,
             "training_test_split": [
@@ -104,7 +104,7 @@
         "monitor": "min val_total_loss",
         "early_stop": 10,
         "amp": true,
-        "gan": false,
+        "gan": true,
         "tensorboard": true,
         "sync_wandb": true
     }
