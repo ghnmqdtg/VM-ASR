@@ -103,6 +103,7 @@
         "verbosity": 2,
         "monitor": "min val_total_loss",
         "early_stop": 10,
+        "amp": true,
         "tensorboard": true,
         "sync_wandb": false
     }

@@ -26,6 +26,7 @@ class Trainer(BaseTrainer):
         data_loader,
         valid_data_loader=None,
         lr_scheduler=None,
+        amp=False,
         len_epoch=None,
     ):
         super().__init__(model, criterion, metric_ftns, optimizer, config)
@@ -44,6 +45,7 @@ class Trainer(BaseTrainer):
         self.epoch_log = {}
         self.do_validation = self.valid_data_loader is not None
         self.lr_scheduler = lr_scheduler
+        self.amp = amp
         self.log_step = self.len_epoch
         # Initialize the discriminator
         self.MPD = MultiPeriodDiscriminator().to(self.device)
@@ -145,8 +147,7 @@ class Trainer(BaseTrainer):
                 chunk_losses = {"mag": [], "phase": []}
 
                 # Enables autocasting for the forward pass (model + loss)
-                with torch.autocast(device_type="cuda"):
-
+                with torch.autocast(device_type="cuda", enabled=self.amp):
                     # Iterate through the chunks and calculate the loss for each chunk
                     for chunk_idx in range(data.size(2)):
                         # Get current chunk data (and unsqueeze the chunk dimension)
@@ -235,7 +236,7 @@ class Trainer(BaseTrainer):
                 scaler_D.update()
 
                 self.optimizer.zero_grad()
-                with torch.autocast(device_type="cuda"):
+                with torch.autocast(device_type="cuda", enabled=self.amp):
                     # Get the discriminator output
                     y_real, y_gen, feature_map_real, feature_map_gen = self.MPD(
                         target_waveform, output_waveform
@@ -432,7 +433,7 @@ class Trainer(BaseTrainer):
                     chunk_losses = {"mag": [], "phase": []}
 
                     # Enables autocasting for the forward pass (model + loss)
-                    with torch.autocast(device_type="cuda"):
+                    with torch.autocast(device_type="cuda", enabled=self.amp):
 
                         # Iterate through the chunks and calculate the loss for each chunk
                         for chunk_idx in range(data.size(2)):
@@ -498,7 +499,7 @@ class Trainer(BaseTrainer):
                         stft_params=self.config_dataloader["stft_params"],
                     )
 
-                    with torch.autocast(device_type="cuda"):
+                    with torch.autocast(device_type="cuda", enabled=self.amp):
                         # Get the discriminator output
                         y_real, y_gen, feature_map_real, feature_map_gen = self.MPD(
                             target_waveform, output_waveform
