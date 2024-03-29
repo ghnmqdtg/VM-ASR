@@ -27,6 +27,12 @@ class BaseDataLoader(DataLoader):
 
         self.sampler, self.valid_sampler = self._split_sampler(self.validation_split)
 
+        # Get the number of samples in each split
+        self.split_sample_num = {
+            "train": len(self.sampler) if self.sampler is not None else 0,
+            "valid": len(self.valid_sampler) if self.valid_sampler is not None else 0,
+        }
+
         self.init_kwargs = {
             "dataset": dataset,
             "batch_size": batch_size,

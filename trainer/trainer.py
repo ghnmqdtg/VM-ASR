@@ -108,7 +108,7 @@ class Trainer(BaseTrainer):
         # Set the progress bar for the epoch
         with tqdm(
             self.data_loader,
-            desc=f"Epoch {epoch} [TRAIN] {self._progress(self.data_loader, 0)}",
+            desc=f"Epoch {epoch} [TRAIN] {self._progress(0, training=True)}",
             unit="batch",
             bar_format="{l_bar}{bar:10}{r_bar}{bar:-10b}",
         ) as tepoch:
@@ -129,7 +129,7 @@ class Trainer(BaseTrainer):
                 torch.cuda.reset_peak_memory_stats()
                 # Set description for the progress bar
                 tepoch.set_description(
-                    f"Epoch {epoch} [TRAIN] {self._progress(self.data_loader, batch_idx)}"
+                    f"Epoch {epoch} [TRAIN] {self._progress(batch_idx, training=True)}"
                 )
                 # Both data and target are in the shape of (batch_size, 2 (mag and phase), num_chunks, frequency_bins, frames)
                 data, target = data.to(self.device, non_blocking=True), target.to(
@@ -363,7 +363,7 @@ class Trainer(BaseTrainer):
 
                     # Set description for the progress bar after the last batch
                     tepoch.set_description(
-                        f"Epoch {epoch} [TRAIN] {self._progress(self.data_loader, -1)}"
+                        f"Epoch {epoch} [TRAIN] {self._progress(-1, training=True)}"
                     )
 
             # Save the log of the epoch into dict
@@ -395,7 +395,7 @@ class Trainer(BaseTrainer):
         # Set the progress bar for the epoch
         with tqdm(
             self.valid_data_loader,
-            desc=f"Epoch {epoch} [VALID] {self._progress(self.valid_data_loader, 0)}",
+            desc=f"Epoch {epoch} [VALID] {self._progress(0, training=False)}",
             unit="batch",
             bar_format="{l_bar}{bar:10}{r_bar}{bar:-10b}",
         ) as tepoch:
@@ -417,7 +417,7 @@ class Trainer(BaseTrainer):
                     torch.cuda.reset_peak_memory_stats()
                     # Set description for the progress bar
                     tepoch.set_description(
-                        f"Epoch {epoch} [VALID] {self._progress(self.valid_data_loader, batch_idx)}"
+                        f"Epoch {epoch} [VALID] {self._progress(batch_idx, training=False)}"
                     )
                     data, target = data.to(self.device, non_blocking=True), target.to(
                         self.device, non_blocking=True
@@ -628,7 +628,7 @@ class Trainer(BaseTrainer):
 
                         # Set description for the progress bar after the last batch
                         tepoch.set_description(
-                            f"Epoch {epoch} [VALID] {self._progress(self.valid_data_loader, -1)}"
+                            f"Epoch {epoch} [VALID] {self._progress(-1, training=False)}"
                         )
 
             # Add histogram of model parameters to the tensorboard
@@ -639,20 +639,20 @@ class Trainer(BaseTrainer):
 
             self.epoch_log.update(**{"val_" + k: v for k, v in val_log.items()})
 
-    def _progress(self, data_loader, batch_idx):
+    def _progress(self, batch_idx, training=True):
         base = "[{}/{} ({:.0f}%)]"
-        if hasattr(data_loader, "n_samples"):
-            total = data_loader.n_samples
-            if batch_idx == -1:
-                current = total
+        if hasattr(self.data_loader, "n_samples"):
+            if training:
+                total = self.data_loader.split_sample_num["train"]
             else:
-                current = batch_idx * data_loader.batch_size
+                total = self.data_loader.split_sample_num["valid"]
         else:
             total = self.len_epoch
-            if batch_idx == -1:
-                current = total
-            else:
-                current = batch_idx * data_loader.batch_size
+
+        if batch_idx == -1:
+            current = total
+        else:
+            current = batch_idx * self.data_loader.batch_size
 
         return base.format(current, total, 100.0 * current / total)
 
