@@ -1085,6 +1085,7 @@ class MambaUNet(BaseModel):
         # shape = self.__input_shape__[1:]
         supported_ops = {
             "aten::silu": None,  # as relu is in _IGNORED_OPS
+            "aten::gelu": None,  # as relu is in _IGNORED_OPS
             "aten::neg": None,  # as relu is in _IGNORED_OPS
             "aten::exp": None,  # as relu is in _IGNORED_OPS
             "aten::flip": None,  # as permute is in _IGNORED_OPS
@@ -1094,6 +1095,7 @@ class MambaUNet(BaseModel):
             "prim::PythonOp.SelectiveScanOflex": selective_scan_flop_jit,
             "prim::PythonOp.SelectiveScanCore": selective_scan_flop_jit,
             "prim::PythonOp.SelectiveScanNRow": selective_scan_flop_jit,
+            "prim::PythonOp.CrossScanTriton": selective_scan_flop_jit,
         }
 
         model = deepcopy(self)
@@ -1250,6 +1252,7 @@ class DualStreamInteractiveMambaUNet(MambaUNet):
         # shape = self.__input_shape__[1:]
         supported_ops = {
             "aten::silu": None,  # as relu is in _IGNORED_OPS
+            "aten::gelu": None,  # as relu is in _IGNORED_OPS
             "aten::neg": None,  # as relu is in _IGNORED_OPS
             "aten::exp": None,  # as relu is in _IGNORED_OPS
             "aten::flip": None,  # as permute is in _IGNORED_OPS
@@ -1396,6 +1399,26 @@ class MultiPeriodDiscriminator(torch.nn.Module):
             fmap_gs.append(fmap_g)
 
         return y_d_rs, y_d_gs, fmap_rs, fmap_gs
+
+    def flops(self, shape=(1, 121890)):
+        model = deepcopy(self)
+        model.cuda().eval()
+        supported_ops = {
+            "aten::gelu": None,  # as relu is in _IGNORED_OPS
+        }
+
+        input = torch.randn((1, *shape), device=next(model.parameters()).device)
+        input_hat = torch.randn((1, *shape), device=next(model.parameters()).device)
+        params = parameter_count(model)[""]
+        Gflops, unsupported = flop_count(
+            model=model, inputs=(input, input_hat), supported_ops=supported_ops
+        )
+
+        del model, input, input_hat
+        torch.cuda.empty_cache()
+
+        # Return the number of parameters and FLOPs
+        return f"params {params/1e6:.2f}M, GFLOPs {sum(Gflops.values()):.2f}"
 
 
 if __name__ == "__main__":

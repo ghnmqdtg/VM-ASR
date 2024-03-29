@@ -45,8 +45,10 @@ class Trainer(BaseTrainer):
         self.do_validation = self.valid_data_loader is not None
         self.lr_scheduler = lr_scheduler
         self.log_step = self.len_epoch
-
+        # Initialize the discriminator
         self.MPD = MultiPeriodDiscriminator().to(self.device)
+        # Print the number of parameters and FLOPs of the MPD
+        self.logger.info(self.MPD.flops())
         # Get trainables parameters of MPD
         self.trainable_params_D = filter(
             lambda p: p.requires_grad, self.MPD.parameters()
