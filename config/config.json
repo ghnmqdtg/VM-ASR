@@ -104,6 +104,7 @@
         "monitor": "min val_total_loss",
         "early_stop": 10,
         "amp": true,
+        "gan": false,
         "tensorboard": true,
         "sync_wandb": false
     }

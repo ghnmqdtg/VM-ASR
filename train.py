@@ -72,6 +72,7 @@ def main(config):
         valid_data_loader=valid_data_loader,
         lr_scheduler=lr_scheduler,
         amp=config["trainer"]["amp"],
+        gan=config["trainer"]["gan"],
     )
 
     trainer.train()

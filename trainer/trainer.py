@@ -27,6 +27,7 @@ class Trainer(BaseTrainer):
         valid_data_loader=None,
         lr_scheduler=None,
         amp=False,
+        gan=False,
         len_epoch=None,
     ):
         super().__init__(model, criterion, metric_ftns, optimizer, config)
@@ -46,25 +47,11 @@ class Trainer(BaseTrainer):
         self.do_validation = self.valid_data_loader is not None
         self.lr_scheduler = lr_scheduler
         self.amp = amp
+        self.gan = gan
         self.log_step = self.len_epoch
-        # Initialize the discriminator
-        self.MPD = MultiPeriodDiscriminator().to(self.device)
-        # Print the number of parameters and FLOPs of the MPD
-        self.logger.info(self.MPD.flops(shape=(1, self.config_dataloader["length"])))
-        # Get trainables parameters of MPD
-        self.trainable_params_D = filter(
-            lambda p: p.requires_grad, self.MPD.parameters()
-        )
-        self.optimizer_D = torch.optim.Adam(self.trainable_params_D, lr=0.0001)
-        # Print the number of trainable parameters of the MPD
-        print(
-            f"Trainable parameters of MPD: {sum(p.numel() for p in self.MPD.parameters() if p.requires_grad)}"
-        )
-        self.lr_scheduler_D = torch.optim.lr_scheduler.StepLR(
-            self.optimizer_D, step_size=25, gamma=0.1
-        )
 
-        self.train_metrics = MetricTracker(
+        # Initialize the metrics
+        self.metrics = [
             "total_loss",
             "global_loss",
             "global_mag_loss",
@@ -72,23 +59,38 @@ class Trainer(BaseTrainer):
             "local_loss",
             "local_mag_loss",
             "local_phase_loss",
-            "generator_loss",
-            "discriminator_loss",
-            "feature_loss",
+        ]
+
+        if self.gan:
+            # Initialize the discriminator
+            self.MPD = MultiPeriodDiscriminator().to(self.device)
+            # Print the number of parameters and FLOPs of the MPD
+            self.logger.info(
+                self.MPD.flops(shape=(1, self.config_dataloader["length"]))
+            )
+            # Get trainables parameters of MPD
+            self.trainable_params_D = filter(
+                lambda p: p.requires_grad, self.MPD.parameters()
+            )
+            self.optimizer_D = torch.optim.Adam(self.trainable_params_D, lr=0.0001)
+            # Print the number of trainable parameters of the MPD
+            print(
+                f"Trainable parameters of MPD: {sum(p.numel() for p in self.MPD.parameters() if p.requires_grad)}"
+            )
+            self.lr_scheduler_D = torch.optim.lr_scheduler.StepLR(
+                self.optimizer_D, step_size=25, gamma=0.1
+            )
+            # Add the discriminator and generator losses if training with GAN
+            self.metrics += ["loss_G", "loss_D", "loss_F"]
+
+        # Initialize the metric trackers
+        self.train_metrics = MetricTracker(
+            *self.metrics,
             *[m.__name__ for m in self.metric_ftns],
             writer=self.writer,
         )
         self.valid_metrics = MetricTracker(
-            "total_loss",
-            "global_loss",
-            "global_mag_loss",
-            "global_phase_loss",
-            "local_loss",
-            "local_mag_loss",
-            "local_phase_loss",
-            "generator_loss",
-            "discriminator_loss",
-            "feature_loss",
+            *self.metrics,
             *[m.__name__ for m in self.metric_ftns],
             writer=self.writer,
         )
@@ -102,7 +104,8 @@ class Trainer(BaseTrainer):
         """
         # Set the model to training mode
         self.model.train()
-        self.MPD.train()
+        if self.gan:
+            self.MPD.train()
         # Reset the train metrics
         self.train_metrics.reset()
         # Grad scaler for mixed precision training
@@ -120,10 +123,11 @@ class Trainer(BaseTrainer):
             tepoch.set_postfix(
                 {
                     "total_loss": 0.0,
+                    "global_loss": 0.0,
                     "local_loss": 0.0,
                     "loss_G": 0.0,
                     "loss_D": 0.0,
-                    "feat_loss": 0.0,
+                    "loss_F": 0.0,
                     "mem": 0,
                 }
             )
@@ -131,10 +135,6 @@ class Trainer(BaseTrainer):
             for batch_idx, (data, target) in enumerate(tepoch):
                 # Reset the peak memory stats for the GPU
                 torch.cuda.reset_peak_memory_stats()
-                # Set description for the progress bar
-                tepoch.set_description(
-                    f"Epoch {epoch} [TRAIN] {self._progress(batch_idx, training=True)}"
-                )
                 # Both data and target are in the shape of (batch_size, 2 (mag and phase), num_chunks, frequency_bins, frames)
                 data, target = data.to(self.device, non_blocking=True), target.to(
                     self.device, non_blocking=True
@@ -216,38 +216,46 @@ class Trainer(BaseTrainer):
                     stft_params=self.config_dataloader["stft_params"],
                 )
 
-                # Detach for discriminator (prevent graph modifications)
-                target_waveform = target_waveform.detach()
-                output_waveform = output_waveform.detach()
+                if self.gan:
+                    # Discriminator training
+                    # Detach for discriminator (prevent graph modifications)
+                    target_waveform = target_waveform.detach()
+                    output_waveform = output_waveform.detach()
+                    # Zero the gradients of the discriminator
+                    self.optimizer_D.zero_grad()
+                    # Set amp enabled for the discriminator
+                    with torch.autocast(device_type="cuda", enabled=self.amp):
+                        # Get the discriminator output
+                        y_real, y_gen, feature_map_real, feature_map_gen = self.MPD(
+                            target_waveform, output_waveform
+                        )
 
-                # Discriminator training
-                self.optimizer_D.zero_grad()
+                    # Calculate the discriminator loss
+                    loss_D, _, _ = self.criterion["discriminator_loss"](y_real, y_gen)
 
-                # Get the discriminator output
-                y_real, y_gen, _, _ = self.MPD(target_waveform, output_waveform)
-                # Calculate the discriminator loss
-                loss_MPD, _, _ = self.criterion["discriminator_loss"](y_real, y_gen)
-
-                # Backward pass
-                scaler_D.scale(loss_MPD).backward()
-                # Update the weights
-                scaler_D.step(self.optimizer_D)
-                # Update the scaler for the next iteration
-                scaler_D.update()
+                    # Backward pass
+                    scaler_D.scale(loss_D).backward()
+                    # Update the weights
+                    scaler_D.step(self.optimizer_D)
+                    # Update the scaler for the next iteration
+                    scaler_D.update()
 
                 self.optimizer.zero_grad()
-                with torch.autocast(device_type="cuda", enabled=self.amp):
-                    # Get the discriminator output
-                    y_real, y_gen, feature_map_real, feature_map_gen = self.MPD(
-                        target_waveform, output_waveform
+                if self.gan:
+                    # Set amp enabled for the generator
+                    with torch.autocast(device_type="cuda", enabled=self.amp):
+                        # Get the discriminator output
+                        y_real, y_gen, feature_map_real, feature_map_gen = self.MPD(
+                            target_waveform, output_waveform
+                        )
+
+                    # Calculate the generator loss
+                    loss_G, _ = self.criterion["generator_loss"](y_gen)
+                    # Calculate the feature loss
+                    loss_F = self.criterion["feature_loss"](
+                        feature_map_real, feature_map_gen
                     )
 
-                # Calculate the feature loss
-                loss_feature = self.criterion["feature_loss"](
-                    feature_map_real, feature_map_gen
-                )
-                # Calculate the generator loss
-                loss_G, _ = self.criterion["generator_loss"](y_gen)
                 # Calculate the mag and phase loss
                 local_mag_loss = torch.stack(chunk_losses["mag"]).mean()
                 local_phase_loss = torch.stack(chunk_losses["phase"]).mean()
@@ -259,7 +267,10 @@ class Trainer(BaseTrainer):
                 global_loss = global_mag_loss + global_phase_loss
                 local_loss = local_mag_loss + local_phase_loss
                 # Calculate total loss
-                total_loss = global_loss + local_loss + loss_feature + loss_G
+                if self.gan:
+                    total_loss = global_loss + local_loss + loss_F + loss_G
+                else:
+                    total_loss = global_loss + local_loss
 
                 # Backward pass
                 scaler.scale(total_loss).backward()
@@ -268,42 +279,52 @@ class Trainer(BaseTrainer):
                 # Update the scaler for the next iteration
                 scaler.update()
 
+                # Delete the variables to free memory
+                del chunk_data, chunk_target, chunk_mag, chunk_phase, chunk_losses
+
                 # Update step for the tensorboard
                 self.writer.set_step(epoch)
 
-                # Update the epoch loss and metrics from epoch_log
-                self.train_metrics.update("total_loss", total_loss.item())
-                self.train_metrics.update("global_loss", global_loss.item())
-                self.train_metrics.update("global_mag_loss", global_mag_loss.item())
-                self.train_metrics.update(
-                    "global_phase_loss",
-                    global_phase_loss.item(),
-                )
-                self.train_metrics.update("local_loss", local_loss.item())
-                self.train_metrics.update("local_mag_loss", local_mag_loss.item())
-                self.train_metrics.update("local_phase_loss", local_phase_loss.item())
-                self.train_metrics.update("generator_loss", loss_G.item())
-                self.train_metrics.update(
-                    "discriminator_loss",
-                    loss_MPD.item(),
-                )
-                self.train_metrics.update("feature_loss", loss_feature.item())
+                # Create a dictionary with the losses
+                loss_values = {
+                    "total_loss": total_loss.item(),
+                    "global_loss": global_loss.item(),
+                    "global_mag_loss": global_mag_loss.item(),
+                    "global_phase_loss": global_phase_loss.item(),
+                    "local_loss": local_loss.item(),
+                    "local_mag_loss": local_mag_loss.item(),
+                    "local_phase_loss": local_phase_loss.item(),
+                }
+
+                # Conditionally add GAN-related metrics
+                if self.gan:
+                    loss_values.update(
+                        {
+                            "loss_G": loss_G.item(),
+                            "loss_D": loss_D.item(),
+                            "loss_F": loss_F.item(),
+                        }
+                    )
+
+                # Update the batch metrics
+                for key, value in loss_values.items():
+                    self.train_metrics.update(key, value)
 
                 for met in self.metric_ftns:
                     self.train_metrics.update(met.__name__, met(output_mag, target_mag))
 
-                memory_used = torch.cuda.max_memory_allocated() / (1024.0 * 1024.0)
                 # Update the progress bar
-                tepoch.set_postfix(
-                    {
-                        "total_loss": total_loss.item(),
-                        "local_loss": local_loss.item(),
-                        "loss_G": loss_G.item(),
-                        "loss_D": loss_MPD.item(),
-                        "feat_loss": loss_feature.item(),
-                        "mem": f"{memory_used:.0f} MB",
-                    }
+                # Filter out the necessary metrics to display in the progress bar
+                progress_metrics = {
+                    k: v
+                    for k, v in loss_values.items()
+                    if k in ["total_loss", "local_loss", "loss_G", "loss_D", "loss_F"]
+                }
+                # Add the memory usage to the progress bar
+                progress_metrics["mem"] = (
+                    f"{torch.cuda.max_memory_allocated() / (1024.0 * 1024.0):.0f} MB"
                 )
+                tepoch.set_postfix(progress_metrics)
 
                 # Log mean losses and metrics of this epoch to the tensorboard
                 if batch_idx == (self.len_epoch - 1):
@@ -368,6 +389,11 @@ class Trainer(BaseTrainer):
                     tepoch.set_description(
                         f"Epoch {epoch} [TRAIN] {self._progress(-1, training=True)}"
                     )
+                else:
+                    # Set description for the progress bar
+                    tepoch.set_description(
+                        f"Epoch {epoch} [TRAIN] {self._progress(batch_idx, training=True)}"
+                    )
 
             # Save the log of the epoch into dict
             self.epoch_log = self.train_metrics.result()
@@ -379,11 +405,12 @@ class Trainer(BaseTrainer):
                 self.writer.add_scalar(
                     "learning_rate", self.lr_scheduler.get_last_lr()[0]
                 )
-                # Log the learning rate of the discriminator to the tensorboard
-                self.lr_scheduler_D.step()
-                self.writer.add_scalar(
-                    "learning_rate_D", self.lr_scheduler_D.get_last_lr()[0]
-                )
+                if self.gan:
+                    # Log the learning rate of the discriminator to the tensorboard
+                    self.lr_scheduler_D.step()
+                    self.writer.add_scalar(
+                        "learning_rate_D", self.lr_scheduler_D.get_last_lr()[0]
+                    )
 
     def _valid_epoch(self, epoch):
         """
@@ -406,10 +433,11 @@ class Trainer(BaseTrainer):
             tepoch.set_postfix(
                 {
                     "total_loss": 0.0,
+                    "global_loss": 0.0,
                     "local_loss": 0.0,
                     "loss_G": 0.0,
                     "loss_D": 0.0,
-                    "feat_loss": 0.0,
+                    "loss_F": 0.0,
                     "mem": 0,
                 }
             )
@@ -499,19 +527,24 @@ class Trainer(BaseTrainer):
                         stft_params=self.config_dataloader["stft_params"],
                     )
 
-                    with torch.autocast(device_type="cuda", enabled=self.amp):
-                        # Get the discriminator output
-                        y_real, y_gen, feature_map_real, feature_map_gen = self.MPD(
-                            target_waveform, output_waveform
+                    if self.gan:
+                        # Set amp enabled for the generator
+                        with torch.autocast(device_type="cuda", enabled=self.amp):
+                            # Get the discriminator output
+                            y_real, y_gen, feature_map_real, feature_map_gen = self.MPD(
+                                target_waveform, output_waveform
+                            )
+                        # Calculate the discriminator loss
+                        loss_D, _, _ = self.criterion["discriminator_loss"](
+                            y_real, y_gen
                         )
-                    # Calculate the discriminator loss
-                    loss_MPD, _, _ = self.criterion["discriminator_loss"](y_real, y_gen)
-                    # Calculate the feature loss
-                    loss_feature = self.criterion["feature_loss"](
-                        feature_map_real, feature_map_gen
-                    )
-                    # Calculate the generator loss
-                    loss_G, _ = self.criterion["generator_loss"](y_gen)
+                        # Calculate the feature loss
+                        loss_F = self.criterion["feature_loss"](
+                            feature_map_real, feature_map_gen
+                        )
+                        # Calculate the generator loss
+                        loss_G, _ = self.criterion["generator_loss"](y_gen)
+
                     # Calculate the mag and phase loss
                     local_mag_loss = torch.stack(chunk_losses["mag"]).mean()
                     local_phase_loss = torch.stack(chunk_losses["phase"]).mean()
@@ -523,48 +556,60 @@ class Trainer(BaseTrainer):
                     global_loss = global_mag_loss + global_phase_loss
                     local_loss = local_mag_loss + local_phase_loss
                     # Calculate total loss
-                    total_loss = global_loss + local_loss + loss_feature + loss_G
+                    if self.gan:
+                        total_loss = global_loss + local_loss + loss_F + loss_G
+                    else:
+                        total_loss = global_loss + local_loss
+
+                    # Delete the variables to free memory
+                    del chunk_data, chunk_target, chunk_mag, chunk_phase, chunk_losses
 
                     # Update step for the tensorboard
                     self.writer.set_step(epoch, "valid")
 
-                    # Update the epoch loss and metrics from epoch_log
-                    self.valid_metrics.update("total_loss", total_loss.item())
-                    self.valid_metrics.update("global_loss", global_loss.item())
-                    self.valid_metrics.update("global_mag_loss", global_mag_loss.item())
-                    self.valid_metrics.update(
-                        "global_phase_loss",
-                        global_phase_loss.item(),
-                    )
-                    self.valid_metrics.update("local_loss", local_loss.item())
-                    self.valid_metrics.update("local_mag_loss", local_mag_loss.item())
-                    self.valid_metrics.update(
-                        "local_phase_loss", local_phase_loss.item()
-                    )
-                    self.valid_metrics.update("generator_loss", loss_G.item())
-                    self.valid_metrics.update(
-                        "discriminator_loss",
-                        loss_MPD.item(),
-                    )
-                    self.valid_metrics.update("feature_loss", loss_feature.item())
+                    # Create a dictionary with the losses
+                    loss_values = {
+                        "total_loss": total_loss.item(),
+                        "global_loss": global_loss.item(),
+                        "global_mag_loss": global_mag_loss.item(),
+                        "global_phase_loss": global_phase_loss.item(),
+                        "local_loss": local_loss.item(),
+                        "local_mag_loss": local_mag_loss.item(),
+                        "local_phase_loss": local_phase_loss.item(),
+                    }
+
+                    # Conditionally add GAN-related metrics
+                    if self.gan:
+                        loss_values.update(
+                            {
+                                "loss_G": loss_G.item(),
+                                "loss_D": loss_D.item(),
+                                "loss_F": loss_F.item(),
+                            }
+                        )
+
+                    # Update the batch metrics
+                    for key, value in loss_values.items():
+                        self.valid_metrics.update(key, value)
 
                     for met in self.metric_ftns:
                         self.valid_metrics.update(
                             met.__name__, met(output_mag, target_mag)
                         )
 
-                    memory_used = torch.cuda.max_memory_allocated() / (1024.0 * 1024.0)
                     # Update the progress bar
-                    tepoch.set_postfix(
-                        {
-                            "total_loss": total_loss.item(),
-                            "local_loss": local_loss.item(),
-                            "loss_G": loss_G.item(),
-                            "loss_D": loss_MPD.item(),
-                            "feat_loss": loss_feature.item(),
-                            "mem": f"{memory_used:.0f} MB",
-                        }
+                    # Filter out the necessary metrics to display in the progress bar
+                    progress_metrics = {
+                        k: v
+                        for k, v in loss_values.items()
+                        if k
+                        in ["total_loss", "local_loss", "loss_G", "loss_D", "loss_F"]
+                    }
+                    # Add the memory usage to the progress bar
+                    progress_metrics["mem"] = (
+                        f"{torch.cuda.max_memory_allocated() / (1024.0 * 1024.0):.0f} MB"
                     )
+                    tepoch.set_postfix(progress_metrics)
 
                     # Log mean losses and metrics of this epoch to the tensorboard
                     if batch_idx == (len(self.valid_data_loader) - 1):
@@ -632,6 +677,11 @@ class Trainer(BaseTrainer):
                         # Set description for the progress bar after the last batch
                         tepoch.set_description(
                             f"Epoch {epoch} [VALID] {self._progress(-1, training=False)}"
+                        )
+                    else:
+                        # Set description for the progress bar
+                        tepoch.set_description(
+                            f"Epoch {epoch} [VALID] {self._progress(batch_idx, training=False)}"
                         )
 
             # Add histogram of model parameters to the tensorboard
