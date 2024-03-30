@@ -233,7 +233,7 @@ class CustomVCTK_092(datasets.VCTK_092):
             num_smaples = len(self._sample_ids)
             loaded_samples = int(num_smaples * self.quantity)
             print(
-                f"Loading {self.quantity * 100}% of the sample IDs ({loaded_samples} of {num_smaples})..."
+                f"Loading {self.quantity}% of the sample IDs ({loaded_samples} of {num_smaples})..."
             )
             # Set the seed on data loading for reproducibility
             random.seed(9527)
