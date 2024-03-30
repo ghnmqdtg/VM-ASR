@@ -6,5 +6,9 @@
 #SBATCH --ntasks-per-node=1
 #SBATCH --account=MST112230
 
-python train.py --config config/config_v2.json
-# python train.py --config config/config_gan.json
+python train.py --config config/config_20240330_v2_chunk_StepLR.json
+python train.py --config config/config_20240330_v2_chunk_CosineWarmUp.json
+python train.py --config config/config_20240330_v2_full_StepLR.json
+python train.py --config config/config_20240330_v2_full_CosineWarmUp.json
+python train.py --config config/config_20240330_v1_full_StepLR_GAN.json
+python train.py --config config/config_20240330_v1_full_CosineWarmUp_GAN.json

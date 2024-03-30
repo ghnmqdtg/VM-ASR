@@ -89,15 +89,20 @@
         "psnr"
     ],
     "lr_scheduler": {
-        "type": "StepLR",
+        "type": "CosineAnnealingWarmupRestarts",
         "args": {
-            "step_size": 25,
-            "gamma": 0.1
+            "first_cycle_steps": 50,
+            "cycle_mult": 1.0,
+            "max_lr": 1e-3,
+            "min_lr": 1e-5,
+            "warmup_steps": 10,
+            "gamma": 1.0
         }
     },
     "trainer": {
         "version": "v2",
-        "epochs": 30,
+        "update_mode": "v2",
+        "epochs": 50,
         "save_dir": "saved/",
         "save_period": 1,
         "verbosity": 2,
@@ -106,6 +111,6 @@
         "amp": true,
         "gan": false,
         "tensorboard": true,
-        "sync_wandb": false
+        "sync_wandb": true
     }
 }
