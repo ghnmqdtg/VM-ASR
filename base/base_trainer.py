@@ -58,6 +58,15 @@ class BaseTrainer:
         """
         raise NotImplementedError
 
+    @abstractmethod
+    def _valid_epoch(self, epoch):
+        """
+        Validate after training an epoch
+
+        :param epoch: Current epoch number
+        """
+        raise NotImplementedError
+
     def train(self):
         """
         Full training logic
@@ -65,11 +74,15 @@ class BaseTrainer:
         not_improved_count = 0
         self.logger.info("Start training...")
         for epoch in range(self.start_epoch, self.epochs + 1):
-            result = self._train_epoch(epoch)
+            # Train the model for an epoch
+            self._train_epoch(epoch)
+            # Check if do validation
+            if self.do_validation:
+                self._valid_epoch(epoch)
 
             # save logged informations into log dict
             log = {"epoch": epoch}
-            log.update(result)
+            log.update(self.epoch_log)
 
             # print logged informations to the screen
             self._log_epoch(log)

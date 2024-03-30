@@ -6,9 +6,6 @@ from utils import inf_loop, MetricTracker
 from utils.output_logger import log_audio, log_waveform, log_spectrogram
 from data_loader import preprocessing, postprocessing
 
-# TODO: Set the discriminator in the config file and init in train.py
-from model.model import MultiPeriodDiscriminator
-
 
 class Trainer(BaseTrainer):
     """
@@ -62,6 +59,8 @@ class Trainer(BaseTrainer):
         ]
 
         if self.gan:
+            from model.model import MultiPeriodDiscriminator
+
             # Initialize the discriminator
             self.MPD = MultiPeriodDiscriminator().to(self.device)
             # Print the number of parameters and FLOPs of the MPD
@@ -139,9 +138,10 @@ class Trainer(BaseTrainer):
                 data, target = data.to(self.device, non_blocking=True), target.to(
                     self.device, non_blocking=True
                 )
+                # Reset the total loss
+                total_loss = 0
 
                 # Initialize the chunk ouptut and losses
-                total_loss = 0
                 chunk_inputs = {"mag": [], "phase": []}
                 chunk_outputs = {"mag": [], "phase": []}
                 chunk_losses = {"mag": [], "phase": []}
@@ -184,7 +184,6 @@ class Trainer(BaseTrainer):
                 chunk_outputs["phase"] = torch.cat(
                     chunk_outputs["phase"], dim=1
                 ).unsqueeze(1)
-                # print(f'chunk_outputs["mag"].shape: {chunk_outputs["mag"].shape}, chunk_outputs["phase"].shape: {chunk_outputs["phase"].shape}')
                 # Reconstruct the waveform from the concatenated output and target
                 output_waveform = postprocessing.reconstruct_from_stft_chunks(
                     mag=chunk_outputs["mag"],
@@ -449,9 +448,10 @@ class Trainer(BaseTrainer):
                     data, target = data.to(self.device, non_blocking=True), target.to(
                         self.device, non_blocking=True
                     )
+                    # Reset the total loss
+                    total_loss = 0
 
                     # Initialize the chunk ouptut and losses
-                    total_loss = 0
                     chunk_inputs = {"mag": [], "phase": []}
                     chunk_outputs = {"mag": [], "phase": []}
                     chunk_losses = {"mag": [], "phase": []}
@@ -705,60 +705,3 @@ class Trainer(BaseTrainer):
             current = batch_idx * self.data_loader.batch_size
 
         return base.format(current, total, 100.0 * current / total)
-
-    def train(self):
-        """
-        Full training logic
-        """
-        not_improved_count = 0
-        self.logger.info("Start training...")
-        for epoch in range(self.start_epoch, self.epochs + 1):
-            # Train the model for an epoch
-            self._train_epoch(epoch)
-            # Check if do validation
-            if self.do_validation:
-                self._valid_epoch(epoch)
-
-            # save logged informations into log dict
-            log = {"epoch": epoch}
-            log.update(self.epoch_log)
-
-            # print logged informations to the screen
-            self._log_epoch(log)
-
-            # evaluate model performance according to configured metric, save best checkpoint as model_best
-            best = False
-            if self.mnt_mode != "off":
-                try:
-                    # check whether model performance improved or not, according to specified metric(mnt_metric)
-                    improved = (
-                        self.mnt_mode == "min" and log[self.mnt_metric] <= self.mnt_best
-                    ) or (
-                        self.mnt_mode == "max" and log[self.mnt_metric] >= self.mnt_best
-                    )
-                except KeyError:
-                    self.logger.warning(
-                        "Warning: Metric '{}' is not found. "
-                        "Model performance monitoring is disabled.".format(
-                            self.mnt_metric
-                        )
-                    )
-                    self.mnt_mode = "off"
-                    improved = False
-
-                if improved:
-                    self.mnt_best = log[self.mnt_metric]
-                    not_improved_count = 0
-                    best = True
-                else:
-                    not_improved_count += 1
-
-                if not_improved_count > self.early_stop:
-                    self.logger.info(
-                        "Validation performance didn't improve for {} epochs. "
-                        "Training stops.".format(self.early_stop)
-                    )
-                    break
-
-            if epoch % self.save_period == 0:
-                self._save_checkpoint(epoch, save_best=best)

@@ -943,7 +943,7 @@ class MambaUNet(BaseModel):
                 if (channel_first and (not patch_norm))
                 else Permute(0, 2, 3, 1)
             ),
-            # norm_layer(embed_dim // 2) if patch_norm else nn.Identity(),
+            norm_layer(embed_dim // 2) if patch_norm else nn.Identity(),
             (
                 nn.Identity()
                 if (channel_first and (not patch_norm))
@@ -953,7 +953,7 @@ class MambaUNet(BaseModel):
             nn.Conv2d(embed_dim // 2, embed_dim, kernel_size=3, stride=2, padding=1),
             # Permute the dimensions if channel_first is False and patch_norm is True
             (nn.Identity() if channel_first else Permute(0, 2, 3, 1)),
-            # (norm_layer(embed_dim) if patch_norm else nn.Identity()),
+            (norm_layer(embed_dim) if patch_norm else nn.Identity()),
         )
 
     @staticmethod
