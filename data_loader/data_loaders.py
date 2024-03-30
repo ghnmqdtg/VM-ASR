@@ -33,12 +33,11 @@ class VCTKDataLoader(BaseDataLoader):
         data_dir,
         batch_size,
         shuffle=True,
+        num_workers=1,
+        quantity=1.0,
         training_test_split=[100, 8],
         validation_split=0.0,
-        quantity=1.0,
-        num_workers=1,
         training=True,
-        random_resample=[8000],
         **kwargs,
     ):
         # Set up data directory
@@ -47,14 +46,10 @@ class VCTKDataLoader(BaseDataLoader):
             if quantity > 0.0 and quantity <= 1.0
             else sys.exit("quantity of loading data should be in the range of (0, 1].")
         )
-        self.length = kwargs.get("length", 121890)
-        self.white_noise = kwargs.get("white_noise", 0)
-        self.chunking_params = kwargs.get("chunking_params", None)
         # Download VCTK_092 dataset
         # The data returns a tuple of the form: waveform, sample rate, transcript, speaker id and utterance id
         self.dataset = CustomVCTK_092(
             root=data_dir,
-            random_resample=random_resample,
             training_test_split=training_test_split,
             training=training,
             quantity=quantity,
@@ -144,7 +139,6 @@ class CustomVCTK_092(datasets.VCTK_092):
         self,
         root,
         audio_ext=".wav",
-        random_resample=[8000],
         training_test_split=[100, 8],
         training=True,
         quantity=1.0,
@@ -155,13 +149,15 @@ class CustomVCTK_092(datasets.VCTK_092):
         self._txt_dir = os.path.join(self._path, "txt")
         self._audio_dir = os.path.join(self._path, "wav48_silence_trimmed_wav")
         self._audio_ext = audio_ext
-        self._random_resample = random_resample
         self.training_test_split = training_test_split
         self.training = training
         self.quantity = quantity
         self._sample_ids = []
+        self.random_resample = kwargs.get("random_resample", [8000])
         self.length = kwargs.get("length", 121890)
         self.white_noise = kwargs.get("white_noise", 0)
+        self.stft_enabled = kwargs.get("stft_enabled", True)
+        self.chunking_enabled = kwargs.get("chunking_enabled", True)
         self.chunking_params = kwargs.get("chunking_params", None)
         # Check if the trimmed wav files exist
         if not os.path.isdir(self._audio_dir):
@@ -246,34 +242,7 @@ class CustomVCTK_092(datasets.VCTK_092):
             # Load the specified quantity of the sample IDs
             self._sample_ids = self._sample_ids[:loaded_samples]
 
-    def _load_audio(self, file_path) -> Tuple[torch.Tensor | int]:
-        return super()._load_audio(file_path)
-
-    def _load_sample(
-        self, speaker_id: str, utterance_id: str
-    ) -> Tuple[torch.Tensor, torch.Tensor]:
-        """
-        Load and preprocess the audio and transcript for a given speaker and utterance ID.
-        """
-        # Get the transcript and audio file path
-        # transcript_path = os.path.join(
-        #     self._txt_dir, speaker_id, f"{speaker_id}_{utterance_id}.txt")
-        audio_path = os.path.join(
-            self._audio_dir,
-            speaker_id,
-            f"{speaker_id}_{utterance_id}{self._audio_ext}",
-        )
-        # Read text (Optional)
-        # transcript = self._load_text(transcript_path)
-        # Read audio file
-        waveform, sr = self._load_audio(audio_path)
-        # TODO: Return the padding length for post-processing
-        # Process the waveform with the audio processing pipeline
-        mag_phase_pair_x, mag_phase_pair_y = self.get_io_pairs(waveform, sr)
-
-        return mag_phase_pair_x, mag_phase_pair_y
-
-    def get_io_pairs(self, waveform: torch.Tensor, sr_org: int) -> torch.Tensor:
+    def get_io_pairs(self, waveform_org: torch.Tensor, sr_org: int) -> torch.Tensor:
         """
         Get the input-output pairs for the audio processing pipeline.
         1. Crop or pad the waveform to a fixed length (consistent shapes within batches for efficient computation)
@@ -288,42 +257,65 @@ class CustomVCTK_092(datasets.VCTK_092):
         10. Return the x-y pair of magnitude and phase
 
         Args:
-            waveform (Tensor): The input audio waveform
+            waveform_org (Tensor): The input audio waveform
             sr (int): The sample rate of the audio waveform
 
         Returns:
             Tensor: The input-output pair of magnitude and phase
         """
         # List of target sample rates to choose from
-        target_sample_rates = self._random_resample
-        # Normalize the audio
-        # waveform = waveform / waveform.abs().max() * 0.95 * 32768
-        # Apply the audio preprocessing pipeline
-        sr_new = random.choice(target_sample_rates)
+        sr_new = random.choice(self.random_resample)
         # Crop or pad the waveform to a fixed length
-        waveform = preprocessing.crop_or_pad_waveform(
-            waveform, {"length": self.length, "white_noise": self.white_noise}
+        waveform_org = preprocessing.crop_or_pad_waveform(
+            waveform_org, {"length": self.length, "white_noise": self.white_noise}
         )
-        # Get magnitude and phase of the original audio
-        mag_phase_pair_y = self._get_mag_phase(
-            waveform, chunk_wave=True, chunk_buffer=self.chunking_params["chunk_buffer"]
-        )
-
         # Preprocess the audio
         # Apply low pass filter to avoid aliasing
-        waveform = preprocessing.low_pass_filter(waveform, sr_org, sr_new)
+        waveform = preprocessing.low_pass_filter(waveform_org, sr_org, sr_new)
         # Downsample the audio to a lower sample rate
         waveform = preprocessing.resample_audio(waveform, sr_org, sr_new)
         # Upsample the audio to a higher sample rate
         waveform = preprocessing.resample_audio(waveform, sr_new, sr_org)
         # Remove the artifacts from the resampling
         waveform = preprocessing.low_pass_filter(waveform, sr_org, sr_new)
-        # Get magnitude and phase of the preprocessed audio
-        mag_phase_pair_x = self._get_mag_phase(
-            waveform, chunk_wave=True, chunk_buffer=self.chunking_params["chunk_buffer"]
-        )
+        # Get data and target pairs
+        if self.stft_enabled:
+            # Return the magnitude and phase of the audio in the time-frequency domain
+            # Shape: (2 (mag and phase), num_chunks, num_frequencies, num_frames)
+            x = self._get_mag_phase(
+                waveform,
+                chunk_wave=self.chunking_enabled,
+                chunk_buffer=self.chunking_params["chunk_buffer"],
+            )
+            y = self._get_mag_phase(
+                waveform_org,
+                chunk_wave=self.chunking_enabled,
+                chunk_buffer=self.chunking_params["chunk_buffer"],
+            )
+        else:
+            if self.chunking_enabled:
+                # Return the chunked waveform
+                # Shape: (num_chunks, channel (mono: 1), chunk_size + 2 * chunk_buffer)
+                x = preprocessing.cut2chunks(
+                    waveform=waveform,
+                    chunk_size=self.chunking_params["chunk_size"],
+                    overlap=self.chunking_params["overlap"],
+                    chunk_buffer=self.chunking_params["chunk_buffer"],
+                )
+                y = preprocessing.cut2chunks(
+                    waveform=waveform_org,
+                    chunk_size=self.chunking_params["chunk_size"],
+                    overlap=self.chunking_params["overlap"],
+                    chunk_buffer=self.chunking_params["chunk_buffer"],
+                )
+                print(x.shape, y.shape)
+            else:
+                # Return the waveform
+                # Shape: (1, self.length)
+                x = waveform
+                y = waveform_org
 
-        return mag_phase_pair_x, mag_phase_pair_y
+        return x, y
 
     def _get_mag_phase(
         self, waveform: torch.Tensor, chunk_wave: bool = True, chunk_buffer: int = 0
@@ -378,6 +370,33 @@ class CustomVCTK_092(datasets.VCTK_092):
 
         # Return the magnitude and phase in tensors
         return mag_phase_pair
+
+    def _load_audio(self, file_path) -> Tuple[torch.Tensor | int]:
+        return super()._load_audio(file_path)
+
+    def _load_sample(
+        self, speaker_id: str, utterance_id: str
+    ) -> Tuple[torch.Tensor, torch.Tensor]:
+        """
+        Load and preprocess the audio and transcript for a given speaker and utterance ID.
+        """
+        # Get the transcript and audio file path
+        # transcript_path = os.path.join(
+        #     self._txt_dir, speaker_id, f"{speaker_id}_{utterance_id}.txt")
+        audio_path = os.path.join(
+            self._audio_dir,
+            speaker_id,
+            f"{speaker_id}_{utterance_id}{self._audio_ext}",
+        )
+        # Read text (Optional)
+        # transcript = self._load_text(transcript_path)
+        # Read audio file
+        waveform, sr = self._load_audio(audio_path)
+        # TODO: Return the padding length for post-processing
+        # Process the waveform with the audio processing pipeline
+        x, y = self.get_io_pairs(waveform, sr)
+
+        return x, y
 
     def __getitem__(self, n: int) -> Tuple[torch.Tensor, torch.Tensor]:
         """Load the n-th sample from the dataset.

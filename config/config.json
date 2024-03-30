@@ -52,6 +52,8 @@
             ],
             "length": 121890,
             "white_noise": 1e-32,
+            "stft_enabled": true,
+            "chunking_enabled": true,
             "chunking_params": {
                 "chunk_size": 10160,
                 "overlap": 0,
