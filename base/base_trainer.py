@@ -209,4 +209,4 @@ class BaseTrainer:
                 val_value = f"{val_value:.4f}"
             table.add_row([key, value, val_value])
 
-        self.logger.info(table)
+        self.logger.info(f"\n{table}")

@@ -43,10 +43,6 @@ def main(config):
 
     # Build model architecture, then print to console
     model = config.init_obj("arch", module_arch)
-    # Show number of parameters and FLOPs
-    logger.info(model)
-    # Show model summary
-    logger.info(model.flops(shape=data_loader.data_shape))
     # Prepare for (multi-device) GPU training
     device, device_ids = prepare_device(config["n_gpu"])
     model = model.to(device)
@@ -78,6 +74,7 @@ def main(config):
         lr_scheduler=lr_scheduler,
         amp=config["trainer"]["amp"],
         gan=config["trainer"]["gan"],
+        update_mode=config["trainer"]["update_mode"],
     )
 
     trainer.train()

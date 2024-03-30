@@ -35,20 +35,17 @@
         "type": "VCTKDataLoader",
         "args": {
             "data_dir": "data/",
-            "batch_size": 20,
+            "batch_size": 84,
             "shuffle": true,
+            "num_workers": 2,
             "quantity": 0.1,
             "training_test_split": [
                 100,
                 8
             ],
             "validation_split": 0.2,
-            "num_workers": 1,
             "random_resample": [
-                8000,
-                12000,
-                16000,
-                24000
+                16000
             ],
             "length": 121890,
             "white_noise": 1e-32,
@@ -99,17 +96,16 @@
         }
     },
     "trainer": {
-        "version": "v1",
-        "update_mode": "v1",
-        "epochs": 50,
+        "version": "v2",
+        "epochs": 30,
         "save_dir": "saved/",
         "save_period": 1,
         "verbosity": 2,
         "monitor": "min val_total_loss",
-        "early_stop": 10,
+        "early_stop": 0,
         "amp": true,
         "gan": false,
         "tensorboard": true,
-        "sync_wandb": true
+        "sync_wandb": false
     }
 }

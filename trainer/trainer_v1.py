@@ -25,6 +25,7 @@ class Trainer(BaseTrainer):
         lr_scheduler=None,
         amp=False,
         gan=False,
+        update_mode=None,
         len_epoch=None,
     ):
         super().__init__(model, criterion, metric_ftns, optimizer, config)
