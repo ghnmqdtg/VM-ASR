@@ -15,7 +15,7 @@ import wandb
 
 
 # Fix random seeds for reproducibility
-SEED = 9527
+SEED = 123
 torch.manual_seed(SEED)
 torch.backends.cudnn.deterministic = True
 torch.backends.cudnn.benchmark = False

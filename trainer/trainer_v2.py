@@ -107,6 +107,8 @@ class Trainer(BaseTrainer):
                 f"Runner for stft_enabled={stft_enabled} and chunking_enabled={chunking_enabled} is not implemented yet."
             )
 
+        self.logger.info(f"Using {runner.__name__} as runner.")
+
         return runner
 
     def _train_epoch(self, epoch):
@@ -115,7 +117,7 @@ class Trainer(BaseTrainer):
         # Reset the train metrics
         self.train_metrics.reset()
         # Grad scaler for mixed precision training
-        scaler = torch.cuda.amp.GradScaler() if self.amp else None
+        self.scaler = torch.cuda.amp.GradScaler() if self.amp else None
         # Set the progress bar for the epoch
         with logging_redirect_tqdm(loggers=[self.logger], tqdm_class=tqdm):
             with tqdm(
@@ -257,17 +259,12 @@ class Trainer(BaseTrainer):
                     self.logger.info(tepoch)
 
     def process_stft_chunks(self, data, target, batch_idx, training=True):
-        if training:
-            # Zero the gradients
-            self.optimizer.zero_grad()
         # Get the number of chunks
         num_chunks = data.size(2)
-        # Initialize the losses and outputs
-        local_loss, local_mag_loss, local_phase_loss = 0, 0, 0
         chunk_losses, chunk_outputs = {"mag": [], "phase": []}, {"mag": [], "phase": []}
-        if self.amp:
-            # Grad scaler for mixed precision training
-            scaler = torch.cuda.amp.GradScaler()
+        if training:
+            # Zero the gradients for each chunk
+            self.optimizer.zero_grad()
         # Process each chunk
         with torch.autocast(device_type="cuda", enabled=self.amp):
             for chunk_idx in range(num_chunks):
@@ -277,9 +274,6 @@ class Trainer(BaseTrainer):
                 chunk_target = target[:, :, chunk_idx, :, :].unsqueeze(2)
                 # Forward pass
                 chunk_mag, chunk_phase = self.model(chunk_data)
-                # Store the chunk output
-                chunk_outputs["mag"].append(chunk_mag)
-                chunk_outputs["phase"].append(chunk_phase)
                 # Accumulate the chunk loss
                 chunk_losses["mag"].append(
                     self.criterion["mse_loss"](chunk_mag, chunk_target[:, 0, ...])
@@ -287,198 +281,203 @@ class Trainer(BaseTrainer):
                 chunk_losses["phase"].append(
                     self.criterion["mse_loss"](chunk_phase, chunk_target[:, 1, ...])
                 )
+                # Store the chunk output
+                chunk_outputs["mag"].append(chunk_mag)
+                chunk_outputs["phase"].append(chunk_phase)
+
+                # Concatenate the chunk outputs if it is the last chunk
                 if chunk_idx == num_chunks - 1:
-                    # Calculate the total loss
-                    local_mag_loss = torch.stack(chunk_losses["mag"]).mean()
-                    local_phase_loss = torch.stack(chunk_losses["phase"]).mean()
-                    # Concatenate the chunk outputs
                     chunk_outputs["mag"] = torch.stack(chunk_outputs["mag"], dim=2)
                     chunk_outputs["phase"] = torch.stack(chunk_outputs["phase"], dim=2)
-                    local_loss = local_mag_loss + local_phase_loss
 
-            # Reconstruct the waveform from the concatenated output and target
-            output_wave = postprocessing.reconstruct_from_stft_chunks(
-                mag=chunk_outputs["mag"],
-                phase=chunk_outputs["phase"],
-                batch_input=True,
-                crop=True,
-                config_dataloader=self.config_dataloader,
-            )
-            target_wave = postprocessing.reconstruct_from_stft_chunks(
-                mag=target[:, 0, ...].unsqueeze(1),
-                phase=target[:, 1, ...].unsqueeze(1),
-                batch_input=True,
-                crop=True,
-                config_dataloader=self.config_dataloader,
-            )
-            # Compute the STFT of the output and target waveforms
-            output_mag, output_phase = preprocessing.get_mag_phase(
-                output_wave,
-                chunk_wave=False,
-                batch_input=True,
-                stft_params=self.config_dataloader["stft_params"],
-            )
-            target_mag, target_phase = preprocessing.get_mag_phase(
-                target_wave,
-                chunk_wave=False,
-                batch_input=True,
-                stft_params=self.config_dataloader["stft_params"],
-            )
-            # Calculate the global loss
-            global_mag_loss = self.criterion["mse_loss"](output_mag, target_mag)
-            global_phase_loss = self.criterion["mse_loss"](output_phase, target_phase)
-            global_loss = global_mag_loss + global_phase_loss
-            # Calculate the total loss
-            total_loss = 0.3 * global_loss + 0.7 * local_loss
+        # Reconstruct the waveform from the concatenated output and target
+        output_wave = postprocessing.reconstruct_from_stft_chunks(
+            mag=chunk_outputs["mag"],
+            phase=chunk_outputs["phase"],
+            batch_input=True,
+            crop=True,
+            config_dataloader=self.config_dataloader,
+        )
+        target_wave = postprocessing.reconstruct_from_stft_chunks(
+            mag=target[:, 0, ...].unsqueeze(1),
+            phase=target[:, 1, ...].unsqueeze(1),
+            batch_input=True,
+            crop=True,
+            config_dataloader=self.config_dataloader,
+        )
+        # Compute the STFT of the output and target waveforms
+        output_mag, output_phase = preprocessing.get_mag_phase(
+            output_wave,
+            chunk_wave=False,
+            batch_input=True,
+            stft_params=self.config_dataloader["stft_params"],
+        )
+        target_mag, target_phase = preprocessing.get_mag_phase(
+            target_wave,
+            chunk_wave=False,
+            batch_input=True,
+            stft_params=self.config_dataloader["stft_params"],
+        )
+        # Calculate the total loss
+        local_mag_loss = torch.stack(chunk_losses["mag"]).mean()
+        local_phase_loss = torch.stack(chunk_losses["phase"]).mean()
+        # Calculate the global loss
+        global_mag_loss = self.criterion["mse_loss"](output_mag, target_mag)
+        global_phase_loss = self.criterion["mse_loss"](output_phase, target_phase)
+        # Calculate the loss
+        local_loss = local_mag_loss + local_phase_loss
+        global_loss = global_mag_loss + global_phase_loss
+        total_loss = 0.3 * global_loss + 0.7 * local_loss
 
-            if training:
-                # Backward pass
-                if self.amp:
-                    # Scale the loss
-                    scaler.scale(total_loss).backward()
-                    # Update the model
-                    scaler.step(self.optimizer)
-                    # Update the scaler
-                    scaler.update()
-                else:
-                    total_loss.backward()
-                    self.optimizer.step()
+        # Backward pass
+        if training:
+            if self.amp:
+                # Scale the loss
+                self.scaler.scale(total_loss).backward()
+                # Update the model
+                self.scaler.step(self.optimizer)
+                # Update the scaler
+                self.scaler.update()
+            else:
+                total_loss.backward()
+                self.optimizer.step()
 
-            # Create a dictionary with the losses
-            metrics_values = {
-                "total_loss": total_loss.item(),
-                "global_loss": global_loss.item(),
-                "global_mag_loss": global_mag_loss.item(),
-                "global_phase_loss": global_phase_loss.item(),
-                "local_loss": local_loss.item(),
-                "local_mag_loss": local_mag_loss.item(),
-                "local_phase_loss": local_phase_loss.item(),
-            }
-            for met in self.metric_ftns:
-                metrics_values[met.__name__] = met(output_mag, target_mag)
+        # Create a dictionary with the losses
+        metrics_values = {
+            "total_loss": total_loss.item(),
+            "global_loss": global_loss.item(),
+            "global_mag_loss": global_mag_loss.item(),
+            "global_phase_loss": global_phase_loss.item(),
+            "local_loss": local_loss.item(),
+            "local_mag_loss": local_mag_loss.item(),
+            "local_phase_loss": local_phase_loss.item(),
+        }
+        for met in self.metric_ftns:
+            metrics_values[met.__name__] = met(output_mag, target_mag)
 
-            # Update the metrics
-            self.update_metrics(metrics_values, training=training)
+        # Update the metrics
+        self.update_metrics(metrics_values, training=training)
 
-            return (
-                # Return the first sample of the batch
-                output_wave[0],
-                target_wave[0],
-                chunk_outputs["mag"][0],
-                chunk_outputs["phase"][0],
-                metrics_values,
-            )
+        return (
+            # Return the first sample of the batch
+            output_wave[0],
+            target_wave[0],
+            chunk_outputs["mag"][0],
+            chunk_outputs["phase"][0],
+            metrics_values,
+        )
 
     def process_stft_chunks_v2(self, data, target, batch_idx, training=True):
         # Get the number of chunks
         num_chunks = data.size(2)
         # Initialize the losses and outputs
         chunk_outputs = {"mag": [], "phase": []}
-        if self.amp:
-            # Grad scaler for mixed precision training
-            scaler = torch.cuda.amp.GradScaler()
         # Process each chunk
-        with torch.autocast(device_type="cuda", enabled=self.amp):
-            for chunk_idx in range(num_chunks):
-                if training:
-                    # Zero the gradients
-                    self.optimizer.zero_grad()
+        for chunk_idx in range(num_chunks):
+            if training:
+                # Zero the gradients for each chunk
+                self.optimizer.zero_grad()
+            # Enable autocast for mixed precision training
+            with torch.autocast(device_type="cuda", enabled=self.amp):
                 # Get current chunk data (and unsqueeze the chunk dimension)
                 chunk_data = data[:, :, chunk_idx, :, :].unsqueeze(2)
                 # Get current chunk target (and unsqueeze the chunk dimension)
                 chunk_target = target[:, :, chunk_idx, :, :].unsqueeze(2)
                 # Forward pass
                 chunk_mag, chunk_phase = self.model(chunk_data)
-                # Store the chunk output
-                chunk_outputs["mag"].append(chunk_mag)
-                chunk_outputs["phase"].append(chunk_phase)
-                # Accumulate the chunk loss
-                local_mag_loss = self.criterion["mse_loss"](
-                    chunk_mag, chunk_target[:, 0, ...]
-                )
-                local_phase_loss = self.criterion["mse_loss"](
-                    chunk_phase, chunk_target[:, 1, ...]
-                )
-                local_loss = local_mag_loss + local_phase_loss
-                if training:
-                    # Backward pass
-                    if self.amp:
-                        # Scale the loss
-                        scaler.scale(local_loss).backward()
-                        # Update the model
-                        scaler.step(self.optimizer)
-                        # Update the scaler
-                        scaler.update()
-                    else:
-                        local_loss.backward()
-                        self.optimizer.step()
-                if chunk_idx == num_chunks - 1:
-                    # Concatenate the chunk outputs
-                    chunk_outputs["mag"] = torch.stack(chunk_outputs["mag"], dim=2)
-                    chunk_outputs["phase"] = torch.stack(chunk_outputs["phase"], dim=2)
 
-            # Reconstruct the waveform from the concatenated output and target
-            output_wave = postprocessing.reconstruct_from_stft_chunks(
-                mag=chunk_outputs["mag"],
-                phase=chunk_outputs["phase"],
-                batch_input=True,
-                crop=True,
-                config_dataloader=self.config_dataloader,
+            # Store the chunk output
+            chunk_outputs["mag"].append(chunk_mag)
+            chunk_outputs["phase"].append(chunk_phase)
+            # Accumulate the chunk loss
+            local_mag_loss = self.criterion["mse_loss"](
+                chunk_mag, chunk_target[:, 0, ...]
             )
-            target_wave = postprocessing.reconstruct_from_stft_chunks(
-                mag=target[:, 0, ...].unsqueeze(1),
-                phase=target[:, 1, ...].unsqueeze(1),
-                batch_input=True,
-                crop=True,
-                config_dataloader=self.config_dataloader,
+            local_phase_loss = self.criterion["mse_loss"](
+                chunk_phase, chunk_target[:, 1, ...]
             )
-            # Compute the STFT of the output and target waveforms
-            output_mag, output_phase = preprocessing.get_mag_phase(
-                output_wave,
-                chunk_wave=False,
-                batch_input=True,
-                stft_params=self.config_dataloader["stft_params"],
-            )
-            target_mag, target_phase = preprocessing.get_mag_phase(
-                target_wave,
-                chunk_wave=False,
-                batch_input=True,
-                stft_params=self.config_dataloader["stft_params"],
-            )
+            local_loss = local_mag_loss + local_phase_loss
 
-            # Calculate the global loss
-            # We only log them to compare with the previous implementation
-            # We don't use them for training
-            global_mag_loss = self.criterion["mse_loss"](output_mag, target_mag)
-            global_phase_loss = self.criterion["mse_loss"](output_phase, target_phase)
-            global_loss = global_mag_loss + global_phase_loss
-            # Calculate the total loss
-            total_loss = 0.3 * global_loss + 0.7 * local_loss
+            # Backward pass
+            if training:
+                if self.amp:
+                    # Scale the loss
+                    self.scaler.scale(local_loss).backward()
+                    # Update the model
+                    self.scaler.step(self.optimizer)
+                    # Update the scaler
+                    self.scaler.update()
+                else:
+                    local_loss.backward()
+                    self.optimizer.step()
 
-            # Create a dictionary with the losses
-            metrics_values = {
-                "total_loss": total_loss.item(),
-                "global_loss": global_loss.item(),
-                "global_mag_loss": global_mag_loss.item(),
-                "global_phase_loss": global_phase_loss.item(),
-                "local_loss": local_loss.item(),
-                "local_mag_loss": local_mag_loss.item(),
-                "local_phase_loss": local_phase_loss.item(),
-            }
-            for met in self.metric_ftns:
-                metrics_values[met.__name__] = met(output_mag, target_mag)
+            if chunk_idx == num_chunks - 1:
+                # Concatenate the chunk outputs
+                chunk_outputs["mag"] = torch.stack(chunk_outputs["mag"], dim=2)
+                chunk_outputs["phase"] = torch.stack(chunk_outputs["phase"], dim=2)
 
-            # Update the metrics
-            self.update_metrics(metrics_values, training=training)
+        # Reconstruct the waveform from the concatenated output and target
+        output_wave = postprocessing.reconstruct_from_stft_chunks(
+            mag=chunk_outputs["mag"],
+            phase=chunk_outputs["phase"],
+            batch_input=True,
+            crop=True,
+            config_dataloader=self.config_dataloader,
+        )
+        target_wave = postprocessing.reconstruct_from_stft_chunks(
+            mag=target[:, 0, ...].unsqueeze(1),
+            phase=target[:, 1, ...].unsqueeze(1),
+            batch_input=True,
+            crop=True,
+            config_dataloader=self.config_dataloader,
+        )
+        # Compute the STFT of the output and target waveforms
+        output_mag, output_phase = preprocessing.get_mag_phase(
+            output_wave,
+            chunk_wave=False,
+            batch_input=True,
+            stft_params=self.config_dataloader["stft_params"],
+        )
+        target_mag, target_phase = preprocessing.get_mag_phase(
+            target_wave,
+            chunk_wave=False,
+            batch_input=True,
+            stft_params=self.config_dataloader["stft_params"],
+        )
 
-            return (
-                # Return the first sample of the batch
-                output_wave[0],
-                target_wave[0],
-                chunk_outputs["mag"][0],
-                chunk_outputs["phase"][0],
-                metrics_values,
-            )
+        # Calculate the global loss
+        # We only log them to compare with the previous implementation
+        # We don't use them for training
+        global_mag_loss = self.criterion["mse_loss"](output_mag, target_mag)
+        global_phase_loss = self.criterion["mse_loss"](output_phase, target_phase)
+        global_loss = global_mag_loss + global_phase_loss
+        # Calculate the total loss
+        total_loss = 0.3 * global_loss + 0.7 * local_loss
+
+        # Create a dictionary with the losses
+        metrics_values = {
+            "total_loss": total_loss.item(),
+            "global_loss": global_loss.item(),
+            "global_mag_loss": global_mag_loss.item(),
+            "global_phase_loss": global_phase_loss.item(),
+            "local_loss": local_loss.item(),
+            "local_mag_loss": local_mag_loss.item(),
+            "local_phase_loss": local_phase_loss.item(),
+        }
+        for met in self.metric_ftns:
+            metrics_values[met.__name__] = met(output_mag, target_mag)
+
+        # Update the metrics
+        self.update_metrics(metrics_values, training=training)
+
+        return (
+            # Return the first sample of the batch
+            output_wave[0],
+            target_wave[0],
+            chunk_outputs["mag"][0],
+            chunk_outputs["phase"][0],
+            metrics_values,
+        )
 
     def update_discriminator(self):
         raise NotImplementedError
