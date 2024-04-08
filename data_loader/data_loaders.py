@@ -264,20 +264,26 @@ class CustomVCTK_092(datasets.VCTK_092):
             Tensor: The input-output pair of magnitude and phase
         """
         # List of target sample rates to choose from
-        sr_new = random.choice(self.random_resample)
+        # sr_new = random.choice(self.random_resample)
+        # * TEST: Randomly choose an integer from min to max in the list
+        sr_new = random.randint(self.random_resample[0], self.random_resample[-1])
         # Crop or pad the waveform to a fixed length
         waveform_org = preprocessing.crop_or_pad_waveform(
             waveform_org, {"length": self.length, "white_noise": self.white_noise}
         )
-        # Preprocess the audio
-        # Apply low pass filter to avoid aliasing
-        waveform = preprocessing.low_pass_filter(waveform_org, sr_org, sr_new)
-        # Downsample the audio to a lower sample rate
-        waveform = preprocessing.resample_audio(waveform, sr_org, sr_new)
-        # Upsample the audio to a higher sample rate
-        waveform = preprocessing.resample_audio(waveform, sr_new, sr_org)
-        # Remove the artifacts from the resampling
-        waveform = preprocessing.low_pass_filter(waveform, sr_org, sr_new)
+        if sr_new != sr_org:
+            # Preprocess the audio
+            # Apply low pass filter to avoid aliasing
+            waveform = preprocessing.low_pass_filter(waveform_org, sr_org, sr_new)
+            # Downsample the audio to a lower sample rate
+            waveform = preprocessing.resample_audio(waveform, sr_org, sr_new)
+            # Upsample the audio to a higher sample rate
+            waveform = preprocessing.resample_audio(waveform, sr_new, sr_org)
+            # Remove the artifacts from the resampling
+            waveform = preprocessing.low_pass_filter(waveform, sr_org, sr_new)
+        else:
+            waveform = waveform_org
+
         # Get data and target pairs
         if self.stft_enabled:
             # Return the magnitude and phase of the audio in the time-frequency domain

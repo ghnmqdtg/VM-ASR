@@ -9,6 +9,7 @@ from typing import Tuple
 import matplotlib.pyplot as plt
 from scipy.signal import cheby1, butter
 from scipy.signal import sosfiltfilt
+from scipy.signal import resample_poly
 
 try:
     from utils import ensure_dir
@@ -132,7 +133,7 @@ def low_pass_filter(waveform: torch.Tensor, sr_org: int, sr_new: int) -> torch.T
 
 def resample_audio(waveform: torch.Tensor, sr_org: int, sr_new: int) -> torch.Tensor:
     """
-    Downsample the waveform to the new sample rate
+    Resample the waveform to the new sample rate
 
     Args:
         waveform (torch.Tensor): The input waveform
@@ -140,10 +141,11 @@ def resample_audio(waveform: torch.Tensor, sr_org: int, sr_new: int) -> torch.Te
         sr_new (int): The new sample rate
 
     Returns:
-        torch.Tensor: The downsampled waveform
+        torch.Tensor: The resampled waveform
     """
-    waveform_downsampled = T.Resample(sr_org, sr_new)(waveform)
-    return waveform_downsampled
+    # waveform_resampled = T.Resample(sr_org, sr_new)(waveform)
+    waveform_resampled = resample_poly(waveform, sr_new, sr_org, axis=-1)
+    return waveform_resampled
 
 
 def low_sr_simulation(waveform: torch.Tensor, sr_org: int, sr_new: int) -> torch.Tensor:
