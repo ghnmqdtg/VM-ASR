@@ -67,7 +67,30 @@ class Trainer(BaseTrainer):
             self.logger.info(model.flops())
 
     def init_gan(self):
-        raise NotImplementedError
+        # Import the multi period discriminator and the cosine annealing warmup restarts
+        from model.model import MultiPeriodDiscriminator
+        from utils.scheduler import CosineAnnealingWarmupRestarts
+
+        # Initialize the discriminator
+        self.MPD = MultiPeriodDiscriminator().to(self.device)
+        # Initialize the optimizer for the discriminator
+        # Get trainables parameters of MPD
+        self.trainable_params_D = filter(
+            lambda p: p.requires_grad, self.MPD.parameters()
+        )
+        self.optimizer_D = torch.optim.Adam(self.trainable_params_D, lr=0.0001)
+        # Initialize the learning rate scheduler
+        if self.config["lr_scheduler"]["type"] == "CosineAnnealingWarmupRestarts":
+            self.lr_scheduler_D = CosineAnnealingWarmupRestarts(
+                self.optimizer_D,
+                **self.config["lr_scheduler"]["args"],
+            )
+        else:
+            self.lr_scheduler_D = self.config.init_obj(
+                "lr_scheduler", torch.optim.lr_scheduler, self.optimizer_D
+            )
+        # Print the number of parameters and FLOPs of the MPD
+        self.logger.info(self.MPD.flops(shape=(1, self.config_dataloader["length"])))
 
     def init_metrics(self):
         # Initialize the metrics
