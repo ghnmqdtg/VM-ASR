@@ -33,6 +33,11 @@ class Trainer(BaseTrainer):
         self.config = config
         self.config_dataloader = self.config["data_loader"]["args"]
         self.device = device
+        # Check if "mse_loss" or "mae_loss" is in criterion, if one of them is, set it to be the loss function
+        if "mse_loss" in criterion:
+            self.loss_for_chunk = criterion["mse_loss"]
+        elif "mae_loss" in criterion:
+            self.loss_for_chunk = criterion["mae_loss"]
         self.data_loader = data_loader
         if len_epoch is None:
             # epoch-based training
@@ -259,6 +264,9 @@ class Trainer(BaseTrainer):
                     self.logger.info(tepoch)
 
     def process_stft_chunks(self, data, target, batch_idx, training=True):
+        """
+        Update the model weights once after processing all the chunks.
+        """
         # Get the number of chunks
         num_chunks = data.size(2)
         chunk_losses, chunk_outputs = {"mag": [], "phase": []}, {"mag": [], "phase": []}
@@ -276,10 +284,10 @@ class Trainer(BaseTrainer):
                 chunk_mag, chunk_phase = self.model(chunk_data)
                 # Accumulate the chunk loss
                 chunk_losses["mag"].append(
-                    self.criterion["mse_loss"](chunk_mag, chunk_target[:, 0, ...])
+                    self.loss_for_chunk(chunk_mag, chunk_target[:, 0, ...])
                 )
                 chunk_losses["phase"].append(
-                    self.criterion["mse_loss"](chunk_phase, chunk_target[:, 1, ...])
+                    self.loss_for_chunk(chunk_phase, chunk_target[:, 1, ...])
                 )
                 # Store the chunk output
                 chunk_outputs["mag"].append(chunk_mag)
@@ -322,8 +330,8 @@ class Trainer(BaseTrainer):
         local_mag_loss = torch.stack(chunk_losses["mag"]).mean()
         local_phase_loss = torch.stack(chunk_losses["phase"]).mean()
         # Calculate the global loss
-        global_mag_loss = self.criterion["mse_loss"](output_mag, target_mag)
-        global_phase_loss = self.criterion["mse_loss"](output_phase, target_phase)
+        global_mag_loss = self.loss_for_chunk(output_mag, target_mag)
+        global_phase_loss = self.loss_for_chunk(output_phase, target_phase)
         # Calculate the loss
         local_loss = local_mag_loss + local_phase_loss
         global_loss = global_mag_loss + global_phase_loss
@@ -368,6 +376,9 @@ class Trainer(BaseTrainer):
         )
 
     def process_stft_chunks_v2(self, data, target, batch_idx, training=True):
+        """
+        Update the model weights after processing each chunk.
+        """
         # Get the number of chunks
         num_chunks = data.size(2)
         # Initialize the losses and outputs
@@ -390,12 +401,8 @@ class Trainer(BaseTrainer):
             chunk_outputs["mag"].append(chunk_mag)
             chunk_outputs["phase"].append(chunk_phase)
             # Accumulate the chunk loss
-            local_mag_loss = self.criterion["mse_loss"](
-                chunk_mag, chunk_target[:, 0, ...]
-            )
-            local_phase_loss = self.criterion["mse_loss"](
-                chunk_phase, chunk_target[:, 1, ...]
-            )
+            local_mag_loss = self.loss_for_chunk(chunk_mag, chunk_target[:, 0, ...])
+            local_phase_loss = self.loss_for_chunk(chunk_phase, chunk_target[:, 1, ...])
             local_loss = local_mag_loss + local_phase_loss
 
             # Backward pass
@@ -448,8 +455,8 @@ class Trainer(BaseTrainer):
         # Calculate the global loss
         # We only log them to compare with the previous implementation
         # We don't use them for training
-        global_mag_loss = self.criterion["mse_loss"](output_mag, target_mag)
-        global_phase_loss = self.criterion["mse_loss"](output_phase, target_phase)
+        global_mag_loss = self.loss_for_chunk(output_mag, target_mag)
+        global_phase_loss = self.loss_for_chunk(output_phase, target_phase)
         global_loss = global_mag_loss + global_phase_loss
         # Calculate the total loss
         total_loss = 0.3 * global_loss + 0.7 * local_loss

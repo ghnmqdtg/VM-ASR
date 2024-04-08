@@ -10,6 +10,10 @@ def mse_loss(output, target):
     return F.mse_loss(output, target)
 
 
+def mae_loss(output, target):
+    return F.l1_loss(output, target)
+
+
 def generator_loss(disc_outputs):
     loss = 0
     gen_losses = []
