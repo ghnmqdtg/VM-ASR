@@ -679,16 +679,13 @@ class MambaUNet(BaseModel):
         # Here we have 4 stages, each stage has a different number of input and ouptut dimensions
         # Encoders
         for i_layer in range(self.num_layers):
-            downsample = (
-                _make_downsample(
-                    self.dims[i_layer],
-                    self.dims[i_layer + 1],
-                    norm_layer=norm_layer,
-                    channel_first=self.channel_first,
-                )
-                if (i_layer < self.num_layers - 1)
-                # The last layer does not need downsample
-                else nn.Identity()
+            downsample = _make_downsample(
+                self.dims[i_layer],
+                # The original VMamba code didn't set the downsampling for the last stage
+                # So we add extra dim for the last stage
+                self.dims[i_layer + 1],
+                norm_layer=norm_layer,
+                channel_first=self.channel_first,
             )
             self.layers_encoder.append(
                 self.VSSLayer(
@@ -720,7 +717,7 @@ class MambaUNet(BaseModel):
         # Latent layer
         self.layers_latent.append(
             self.VSSLayer(
-                dim=self.dims[self.num_layers - 1],
+                dim=self.dims[self.num_layers],
                 drop_path=self.dpr[
                     sum(self.depths[: self.num_layers - 1]) : sum(
                         self.depths[: self.num_layers]
@@ -748,28 +745,24 @@ class MambaUNet(BaseModel):
             )
         )
         # Decoders
-        for i_layer in range(self.num_layers - 1, -1, -1):
-            # print(
-            #     self.dims[i_layer + 1]
-            #     if i_layer < self.num_layers - 1
-            #     else self.dims[self.num_layers - 1]
-            # )
+        # num_layers is 4, so we iterate from 3 to 0 intuatively
+        # But we iterate from 4 to 0 because we add the downsample layer to the output of last encoder layer
+        # So the extra 1 is used to match the dimension from the latent layer
+        for i_layer in range(self.num_layers, -1, -1):
+            print(f"i_layer: {i_layer}, dims: {self.dims[i_layer]}")
             upsample = (
                 _make_upsample(
-                    self.dims[i_layer + 1],
+                    self.dims[i_layer],
                     dim_scale=2,
                     norm_layer=norm_layer,
                 )
-                if (i_layer < self.num_layers - 1)
+                if i_layer > 0
+                # We don't need to upsample the last decoder layer
                 else nn.Identity()
             )
             self.layers_decoder.append(
                 self.VSSLayer(
-                    dim=(
-                        self.dims[i_layer + 1]
-                        if i_layer < self.num_layers - 1
-                        else self.dims[self.num_layers - 1]
-                    ),
+                    dim=self.dims[i_layer],
                     drop_path=self.dpr[
                         sum(self.depths[:i_layer]) : sum(self.depths[: i_layer + 1])
                     ],
@@ -841,8 +834,8 @@ class MambaUNet(BaseModel):
         skip_connections = []
         # Encoder
         for i, layer in enumerate(self.layers_encoder):
-            skip_connections.append(mag)
             mag = layer(mag)
+            skip_connections.append(mag)
             if verbose:
                 print(f"Encoder layer {i} shape: {mag.shape}")
         # Latent layer
@@ -850,10 +843,21 @@ class MambaUNet(BaseModel):
             mag = layer(mag)
             if verbose:
                 print(f"Latent layer {i} shape: {mag.shape}")
+
+        if verbose:
+            # Print shape of each item in skip_connections
+            for i, skip in enumerate(skip_connections):
+                print(f"Skip connection {i} shape: {skip.shape}")
+
         # Decoder
         for i, layer in enumerate(self.layers_decoder):
+            if verbose:
+                print(f"Decoder layer {i} shape: {mag.shape}")
+            # print(mag.shape, skip_connections.pop().shape)
+            # Concatenate the skip connection with channel dimension
+            # mag = torch.cat((mag, skip_connections.pop()), dim=-1)
             # Add the skip connection
-            mag = mag + skip_connections.pop() if i != 0 else mag
+            mag = mag + skip_connections.pop() if skip_connections else mag
             mag = layer(mag)
             if verbose:
                 print(f"Decoder layer {i} shape: {mag.shape}")
@@ -1174,7 +1178,6 @@ class MambaUNet(BaseModel):
             "prim::PythonOp.SelectiveScanOflex": selective_scan_flop_jit,
             "prim::PythonOp.SelectiveScanCore": selective_scan_flop_jit,
             "prim::PythonOp.SelectiveScanNRow": selective_scan_flop_jit,
-            "prim::PythonOp.CrossScanTriton": selective_scan_flop_jit,
         }
 
         model = deepcopy(self)
@@ -1185,9 +1188,8 @@ class MambaUNet(BaseModel):
         Gflops, unsupported = flop_count(
             model=model, inputs=(input,), supported_ops=supported_ops
         )
-
-        del model, input
         statics = summary(model, input_size=input.shape, verbose=0)
+        del model, input
         torch.cuda.empty_cache()
 
         # Return the number of parameters and FLOPs
@@ -1301,9 +1303,9 @@ class DualStreamInteractiveMambaUNet(MambaUNet):
         for i, (encoder_mag, encoder_phase) in enumerate(
             zip(self.layers_encoder_mag, self.layers_encoder_phase)
         ):
-            skip_connections.append((mag, phase))
             mag = encoder_mag(mag)
             phase = encoder_phase(phase)
+            skip_connections.append((mag, phase))
             # Interacting
             mag = mag + phase
             phase = phase + mag
@@ -1318,7 +1320,9 @@ class DualStreamInteractiveMambaUNet(MambaUNet):
             zip(self.layers_decoder_mag, self.layers_decoder_phase)
         ):
             # Add the skip connection
-            mag_skip, phase_skip = skip_connections.pop() if i != 0 else (mag, phase)
+            mag_skip, phase_skip = (
+                skip_connections.pop() if skip_connections else (0, 0)
+            )
             mag = decoder_mag(mag + mag_skip)
             phase = decoder_phase(phase + phase_skip)
             # Interacting
