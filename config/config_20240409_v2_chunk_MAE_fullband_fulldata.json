@@ -38,7 +38,7 @@
             "batch_size": 84,
             "shuffle": true,
             "num_workers": 2,
-            "quantity": 0.1,
+            "quantity": 1.0,
             "training_test_split": [
                 100,
                 8
@@ -80,7 +80,7 @@
         }
     },
     "loss": [
-        "mse_loss",
+        "mae_loss",
         "generator_loss",
         "discriminator_loss",
         "feature_loss"
@@ -103,12 +103,12 @@
     "trainer": {
         "version": "v2",
         "update_mode": "v2",
-        "epochs": 50,
+        "epochs": 30,
         "save_dir": "saved/",
         "save_period": 1,
         "verbosity": 2,
         "monitor": "min val_total_loss",
-        "early_stop": 0,
+        "early_stop": 5,
         "amp": true,
         "gan": false,
         "tensorboard": true,

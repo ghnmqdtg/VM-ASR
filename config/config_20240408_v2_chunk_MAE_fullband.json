@@ -80,7 +80,7 @@
         }
     },
     "loss": [
-        "mse_loss",
+        "mae_loss",
         "generator_loss",
         "discriminator_loss",
         "feature_loss"
