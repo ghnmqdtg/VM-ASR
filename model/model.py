@@ -606,13 +606,14 @@ class MambaUNet(BaseModel):
         # Default norm layer is LayerNorm, can be changed to BatchNorm or LayerNorm2D
         self.channel_first = norm_layer.lower() in ["bn", "ln2d"]
         self.num_layers = len(depths)
+        self.depths = depths
         if isinstance(dims, int):
             # If dims is an integer, use it as the base dimension for all layers
             # and scale it by 2^i for the i-th layer
             dims = [int(dims * 2**i_layer) for i_layer in range(self.num_layers)]
         self.num_features = dims[-1]
         self.dims = dims
-        dpr = [
+        self.dpr = [
             x.item() for x in torch.linspace(0, drop_path_rate, sum(depths))
         ]  # stochastic depth decay rule (dpr = drop path rate)
 
@@ -640,9 +641,9 @@ class MambaUNet(BaseModel):
             v2=self._make_patch_embed_v2,
         ).get(patchembed_version, None)
 
-        _make_output_layer = dict(v1=self._make_output_layer_v1).get(
-            output_version, None
-        )
+        _make_output_layer = dict(
+            v1=self._make_output_layer_v1, v2=self._make_output_layer_v2
+        ).get(output_version, None)
 
         # Pass parameters to chosen patch embed
         self.patch_embed = _make_patch_embed(
@@ -692,7 +693,9 @@ class MambaUNet(BaseModel):
             self.layers_encoder.append(
                 self.VSSLayer(
                     dim=self.dims[i_layer],
-                    drop_path=dpr[sum(depths[:i_layer]) : sum(depths[: i_layer + 1])],
+                    drop_path=self.dpr[
+                        sum(self.depths[:i_layer]) : sum(self.depths[: i_layer + 1])
+                    ],
                     use_checkpoint=use_checkpoint,
                     norm_layer=norm_layer,
                     sampler=downsample,
@@ -718,8 +721,10 @@ class MambaUNet(BaseModel):
         self.layers_latent.append(
             self.VSSLayer(
                 dim=self.dims[self.num_layers - 1],
-                drop_path=dpr[
-                    sum(depths[: self.num_layers - 1]) : sum(depths[: self.num_layers])
+                drop_path=self.dpr[
+                    sum(self.depths[: self.num_layers - 1]) : sum(
+                        self.depths[: self.num_layers]
+                    )
                 ],
                 use_checkpoint=use_checkpoint,
                 norm_layer=norm_layer,
@@ -765,7 +770,9 @@ class MambaUNet(BaseModel):
                         if i_layer < self.num_layers - 1
                         else self.dims[self.num_layers - 1]
                     ),
-                    drop_path=dpr[sum(depths[:i_layer]) : sum(depths[: i_layer + 1])],
+                    drop_path=self.dpr[
+                        sum(self.depths[:i_layer]) : sum(self.depths[: i_layer + 1])
+                    ],
                     use_checkpoint=use_checkpoint,
                     norm_layer=norm_layer,
                     sampler=upsample,
@@ -788,75 +795,32 @@ class MambaUNet(BaseModel):
                 )
             )
 
-        # self.output_layer = _make_output_layer(
-        #     in_chans,
-        #     dims[0],
-        #     patch_size,
-        #     patch_norm,
-        #     norm_layer,
-        #     channel_first=self.channel_first,
-        # )
-
-        self.output_layer = nn.Sequential(
-            self.VSSLayer(
-                dim=self.dims[0],
-                drop_path=dpr[
-                    sum(depths[: self.num_layers - 1]) : sum(depths[: self.num_layers])
-                ],
-                use_checkpoint=use_checkpoint,
-                norm_layer=norm_layer,
-                sampler=_make_upsample(
-                    self.dims[0],
-                    dim_scale=2,
-                    norm_layer=None,
-                ),
-                channel_first=self.channel_first,
-                # =================
-                ssm_d_state=ssm_d_state,
-                ssm_ratio=ssm_ratio,
-                ssm_dt_rank=ssm_dt_rank,
-                ssm_act_layer=ssm_act_layer,
-                ssm_conv=ssm_conv,
-                ssm_conv_bias=ssm_conv_bias,
-                ssm_drop_rate=ssm_drop_rate,
-                ssm_init=ssm_init,
-                forward_type=forward_type,
-                # =================
-                mlp_ratio=mlp_ratio,
-                mlp_act_layer=mlp_act_layer,
-                mlp_drop_rate=mlp_drop_rate,
-                gmlp=gmlp,
-            ),
-            self.VSSLayer(
-                dim=self.dims[0] // 2,
-                drop_path=dpr[
-                    sum(depths[: self.num_layers - 1]) : sum(depths[: self.num_layers])
-                ],
-                use_checkpoint=use_checkpoint,
-                norm_layer=norm_layer,
-                sampler=_make_upsample(
-                    self.dims[0] // 2,
-                    dim_scale=2**2,
-                    norm_layer=None,
-                ),
-                channel_first=self.channel_first,
-                # =================
-                ssm_d_state=ssm_d_state,
-                ssm_ratio=ssm_ratio,
-                ssm_dt_rank=ssm_dt_rank,
-                ssm_act_layer=ssm_act_layer,
-                ssm_conv=ssm_conv,
-                ssm_conv_bias=ssm_conv_bias,
-                ssm_drop_rate=ssm_drop_rate,
-                ssm_init=ssm_init,
-                forward_type=forward_type,
-                # =================
-                mlp_ratio=mlp_ratio,
-                mlp_act_layer=mlp_act_layer,
-                mlp_drop_rate=mlp_drop_rate,
-                gmlp=gmlp,
-            ),
-            Permute(0, 3, 1, 2),
+        self.output_layer = _make_output_layer(
+            in_chans=in_chans,
+            embed_dim=dims[0],
+            patch_size=patch_size,
+            patch_norm=patch_norm,
+            norm_layer=None,
+            sampler=_make_upsample,
+            use_checkpoint=use_checkpoint,
+            channel_first=self.channel_first,
+            # =================
+            # Used for output versions that require VSSLayer
+            ssm_d_state=ssm_d_state,
+            ssm_ratio=ssm_ratio,
+            ssm_dt_rank=ssm_dt_rank,
+            ssm_act_layer=ssm_act_layer,
+            ssm_conv=ssm_conv,
+            ssm_conv_bias=ssm_conv_bias,
+            ssm_drop_rate=ssm_drop_rate,
+            ssm_init=ssm_init,
+            forward_type=forward_type,
+            # =================
+            # Used for output versions that require VSSLayer
+            mlp_ratio=mlp_ratio,
+            mlp_act_layer=mlp_act_layer,
+            mlp_drop_rate=mlp_drop_rate,
+            gmlp=gmlp,
         )
 
         self.apply(self._init_weights)
@@ -962,7 +926,13 @@ class MambaUNet(BaseModel):
         patch_norm=True,
         norm_layer=nn.LayerNorm,
         channel_first=False,
+        **kwargs,
     ):
+        """
+        Output layer v1: Using two ConvTranspose2d for upscaling.
+
+        The first ConvTranspose2d decreases input channel size by half, and the second decreases it to the input channel size.
+        """
         # If channel_first is True, then Norm and Output are both channel_first
         return nn.Sequential(
             # Permute the dimensions if channel_first is False and patch_norm is True
@@ -979,17 +949,23 @@ class MambaUNet(BaseModel):
                 padding=1,
                 output_padding=1,
             ),
-            # Permute the dimensions if channel_first is False and patch_norm is True
+            # Permute the dimensions if norm_layer is not None
             (
-                nn.Identity()
-                if (channel_first and (not patch_norm))
-                else Permute(0, 2, 3, 1)
-            ),
-            # norm_layer(embed_dim // 2) if patch_norm else nn.Identity(),
-            (
-                nn.Identity()
-                if (channel_first and (not patch_norm))
-                else Permute(0, 3, 1, 2)
+                (
+                    (
+                        nn.Identity()
+                        if (channel_first and (not patch_norm))
+                        else Permute(0, 2, 3, 1)
+                    ),
+                    norm_layer(embed_dim // 2) if patch_norm else nn.Identity(),
+                    (
+                        nn.Identity()
+                        if (channel_first and (not patch_norm))
+                        else Permute(0, 3, 1, 2)
+                    ),
+                )
+                if norm_layer is not None
+                else nn.Identity()
             ),
             nn.GELU(),
             nn.ConvTranspose2d(
@@ -1000,15 +976,117 @@ class MambaUNet(BaseModel):
                 padding=1,
                 output_padding=1,
             ),
-            # Permute the dimensions if channel_first is False and patch_norm is True
-            (nn.Identity() if channel_first else Permute(0, 2, 3, 1)),
-            # (norm_layer(in_chans) if patch_norm else nn.Identity()),
-            # Permute the dimensions if channel_first is False and patch_norm is True
+            # Permute the dimensions if norm_layer is not None
             (
-                nn.Identity()
-                if (channel_first and (not patch_norm))
-                else Permute(0, 3, 1, 2)
+                (
+                    (nn.Identity() if channel_first else Permute(0, 2, 3, 1)),
+                    (norm_layer(in_chans) if patch_norm else nn.Identity()),
+                    # Permute the dimensions if channel_first is False and patch_norm is True
+                    (
+                        nn.Identity()
+                        if (channel_first and (not patch_norm))
+                        else Permute(0, 3, 1, 2)
+                    ),
+                )
+                if norm_layer is not None
+                else nn.Identity()
             ),
+        )
+
+    def _make_output_layer_v2(
+        self,
+        use_checkpoint=False,
+        sampler=nn.Identity(),
+        # ===========================
+        ssm_d_state=16,
+        ssm_ratio=2.0,
+        ssm_dt_rank="auto",
+        ssm_act_layer=nn.SiLU,
+        ssm_conv=3,
+        ssm_conv_bias=True,
+        ssm_drop_rate=0.0,
+        ssm_init="v0",
+        forward_type="v2",
+        # ===========================
+        mlp_ratio=4.0,
+        mlp_act_layer=nn.GELU,
+        mlp_drop_rate=0.0,
+        gmlp=False,
+        **kwargs,
+    ):
+        """
+        Output layer v2: Using VSSLayer + PatchExpanding for upscaling.
+
+        The first VSSLayer decreases input channel size by half, and the second decreases it by 4.
+        Therefore, this version only works when dims[0]=8.
+        """
+        # Check if dims[0] is 8
+        assert self.dims[0] == 8
+
+        return nn.Sequential(
+            self.VSSLayer(
+                dim=self.dims[0],
+                drop_path=self.dpr[
+                    sum(self.depths[: self.num_layers - 1]) : sum(
+                        self.depths[: self.num_layers]
+                    )
+                ],
+                use_checkpoint=use_checkpoint,
+                norm_layer=nn.LayerNorm,
+                sampler=sampler(
+                    self.dims[0],
+                    dim_scale=2,
+                    norm_layer=None,
+                ),
+                channel_first=self.channel_first,
+                # =================
+                ssm_d_state=ssm_d_state,
+                ssm_ratio=ssm_ratio,
+                ssm_dt_rank=ssm_dt_rank,
+                ssm_act_layer=ssm_act_layer,
+                ssm_conv=ssm_conv,
+                ssm_conv_bias=ssm_conv_bias,
+                ssm_drop_rate=ssm_drop_rate,
+                ssm_init=ssm_init,
+                forward_type=forward_type,
+                # =================
+                mlp_ratio=mlp_ratio,
+                mlp_act_layer=mlp_act_layer,
+                mlp_drop_rate=mlp_drop_rate,
+                gmlp=gmlp,
+            ),
+            self.VSSLayer(
+                dim=self.dims[0] // 2,
+                drop_path=self.dpr[
+                    sum(self.depths[: self.num_layers - 1]) : sum(
+                        self.depths[: self.num_layers]
+                    )
+                ],
+                use_checkpoint=use_checkpoint,
+                norm_layer=nn.LayerNorm,
+                sampler=sampler(
+                    self.dims[0] // 2,
+                    dim_scale=2**2,
+                    norm_layer=None,
+                ),
+                channel_first=self.channel_first,
+                # =================
+                ssm_d_state=ssm_d_state,
+                ssm_ratio=ssm_ratio,
+                ssm_dt_rank=ssm_dt_rank,
+                ssm_act_layer=ssm_act_layer,
+                ssm_conv=ssm_conv,
+                ssm_conv_bias=ssm_conv_bias,
+                ssm_drop_rate=ssm_drop_rate,
+                ssm_init=ssm_init,
+                forward_type=forward_type,
+                # =================
+                mlp_ratio=mlp_ratio,
+                mlp_act_layer=mlp_act_layer,
+                mlp_drop_rate=mlp_drop_rate,
+                gmlp=gmlp,
+            ),
+            Permute(0, 3, 1, 2),
         )
 
     @staticmethod
