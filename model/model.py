@@ -1160,7 +1160,7 @@ class MambaUNet(BaseModel):
             nn.init.constant_(m.weight, 1.0)
 
     @torch.no_grad()
-    def flops(self, shape=(3, 224, 224)):
+    def flops(self, shape=(2, 1, 512, 128)):
         # shape = self.__input_shape__[1:]
         supported_ops = {
             "aten::silu": None,  # as relu is in _IGNORED_OPS
