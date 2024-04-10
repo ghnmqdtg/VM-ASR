@@ -537,13 +537,11 @@ class PatchMerging2D(nn.Module):
         return x
 
 
-class PatchExpand(nn.Module):
+class PatchExpanding(nn.Module):
     """
-    Patch expansion module.
+    Patch expansion module that doubles the spatial dimensions and halves the channel count.
 
-    input: (B, H, W, C) -> output: (B, 2H, 2W, C/4)
-
-    SRC: Mamba-UNet
+    input: (B, H, W, C) -> output: (B, 2H, 2W, C/2)
     """
 
     def __init__(self, dim, dim_scale=2, norm_layer=nn.LayerNorm):
@@ -670,7 +668,7 @@ class MambaUNet(BaseModel):
 
         # Get the upsample version
         _make_upsample = dict(
-            v1=PatchExpand,
+            v1=PatchExpanding,
         ).get(upsample_version, None)
 
         self.layers_encoder = nn.ModuleList()
