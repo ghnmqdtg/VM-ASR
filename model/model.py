@@ -1247,6 +1247,7 @@ class DualStreamInteractiveMambaUNet(MambaUNet):
         output_version: str = "v2",  # "v1", "v2"
         downsample_version: str = "v1",  # "v1", "v2", "v3"
         upsample_version: str = "v1",  # "v1"
+        concat_skip=False,
         use_checkpoint=False,
         **kwargs,
     ):
@@ -1276,6 +1277,7 @@ class DualStreamInteractiveMambaUNet(MambaUNet):
             output_version,
             downsample_version,
             upsample_version,
+            concat_skip,
             use_checkpoint,
             **kwargs,
         )
@@ -1334,18 +1336,24 @@ class DualStreamInteractiveMambaUNet(MambaUNet):
         for i, (decoder_mag, decoder_phase) in enumerate(
             zip(self.layers_decoder_mag, self.layers_decoder_phase)
         ):
-            # Add the skip connection
-            mag_skip, phase_skip = (
-                skip_connections.pop() if skip_connections else (0, 0)
-            )
-            mag = decoder_mag(mag + mag_skip)
-            phase = decoder_phase(phase + phase_skip)
+            # Pop the skip connection
+            mag_skip, phase_skip = skip_connections.pop()
+
+            if self.concat_skip:
+                mag = decoder_mag(torch.cat((mag, mag_skip), dim=-1))
+                phase = decoder_phase(torch.cat((phase, phase_skip), dim=-1))
+            else:
+                mag = decoder_mag(mag + mag_skip)
+                phase = decoder_phase(phase + phase_skip)
+
             # Interacting
             mag = mag + phase
             phase = phase + mag
+
         # Output layer
         mag = self.output_layer_mag(mag)
         phase = self.output_layer_phase(phase)
+
         # Residual connection
         return mag + residual_mag, phase + residual_phase
 
