@@ -598,6 +598,7 @@ class MambaUNet(BaseModel):
         output_version: str = "v2",  # "v1", "v2"
         downsample_version: str = "v1",  # "v1", "v2", "v3"
         upsample_version: str = "v1",  # "v1"
+        concat_skip=False,
         use_checkpoint=False,
         **kwargs,
     ):
@@ -616,6 +617,7 @@ class MambaUNet(BaseModel):
         self.dpr = [
             x.item() for x in torch.linspace(0, drop_path_rate, sum(depths))
         ]  # stochastic depth decay rule (dpr = drop path rate)
+        self.concat_skip = concat_skip
 
         _NORMLAYERS = dict(
             ln=nn.LayerNorm,
@@ -697,6 +699,7 @@ class MambaUNet(BaseModel):
                     norm_layer=norm_layer,
                     sampler=downsample,
                     channel_first=self.channel_first,
+                    concat_skip=False,
                     # =================
                     ssm_d_state=ssm_d_state,
                     ssm_ratio=ssm_ratio,
@@ -727,6 +730,7 @@ class MambaUNet(BaseModel):
                 norm_layer=norm_layer,
                 sampler=nn.Identity(),
                 channel_first=self.channel_first,
+                concat_skip=False,
                 # =================
                 ssm_d_state=ssm_d_state,
                 ssm_ratio=ssm_ratio,
@@ -765,6 +769,7 @@ class MambaUNet(BaseModel):
                     norm_layer=norm_layer,
                     sampler=upsample,
                     channel_first=self.channel_first,
+                    concat_skip=self.concat_skip if i_layer > 0 else False,
                     # =================
                     ssm_d_state=ssm_d_state,
                     ssm_ratio=ssm_ratio,
@@ -846,16 +851,17 @@ class MambaUNet(BaseModel):
 
         # Decoder
         for i, layer in enumerate(self.layers_decoder):
-            if verbose:
-                print(f"Decoder layer {i} shape: {mag.shape}")
-            # print(mag.shape, skip_connections.pop().shape)
-            # Concatenate the skip connection with channel dimension
-            # mag = torch.cat((mag, skip_connections.pop()), dim=-1)
-            # Add the skip connection
-            mag = mag + skip_connections.pop() if skip_connections else mag
+            # Concatenate or add skip connection
+            mag = (
+                torch.cat((mag, skip_connections.pop()), dim=-1)
+                if self.concat_skip
+                else (mag + skip_connections.pop())
+            )
+
             mag = layer(mag)
             if verbose:
                 print(f"Decoder layer {i} shape: {mag.shape}")
+
         mag = self.output_layer(mag)
         if verbose:
             print(f"Patch output shape: {mag.shape}")
@@ -1038,6 +1044,7 @@ class MambaUNet(BaseModel):
                     norm_layer=None,
                 ),
                 channel_first=self.channel_first,
+                concat_skip=False,
                 # =================
                 ssm_d_state=ssm_d_state,
                 ssm_ratio=ssm_ratio,
@@ -1069,6 +1076,7 @@ class MambaUNet(BaseModel):
                     norm_layer=None,
                 ),
                 channel_first=self.channel_first,
+                concat_skip=False,
                 # =================
                 ssm_d_state=ssm_d_state,
                 ssm_ratio=ssm_ratio,
@@ -1096,6 +1104,7 @@ class MambaUNet(BaseModel):
         norm_layer=nn.LayerNorm,
         sampler=nn.Identity(),
         channel_first=False,
+        concat_skip=False,
         # ===========================
         ssm_d_state=16,
         ssm_ratio=2.0,
@@ -1113,7 +1122,17 @@ class MambaUNet(BaseModel):
         gmlp=False,
         **kwargs,
     ):
-        # if channel first, then Norm and Output are both channel_first
+        skip_handler = nn.Identity()
+        if concat_skip:
+            # If concat_skip is True, then then input dimension is doubled
+            # We use a Conv2d layer to reduce the dimension back to the original
+            skip_handler = nn.Sequential(
+                Permute(0, 3, 1, 2),
+                nn.Conv2d(2 * dim, dim, kernel_size=1, stride=1, padding=0),
+                Permute(0, 2, 3, 1),
+            )
+
+        # If channel first, then Norm and Output are both channel_first
         depth = len(drop_path)
         blocks = []
         for d in range(depth):
@@ -1142,10 +1161,11 @@ class MambaUNet(BaseModel):
 
         return nn.Sequential(
             OrderedDict(
-                blocks=nn.Sequential(
-                    *blocks,
-                ),
-                sampler=sampler,
+                [
+                    ("skip_handler", skip_handler),
+                    ("blocks", nn.Sequential(*blocks)),
+                    ("sampler", sampler),
+                ]
             )
         )
 
