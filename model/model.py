@@ -745,20 +745,15 @@ class MambaUNet(BaseModel):
             )
         )
         # Decoders
-        # num_layers is 4, so we iterate from 3 to 0 intuatively
-        # But we iterate from 4 to 0 because we add the downsample layer to the output of last encoder layer
-        # So the extra 1 is used to match the dimension from the latent layer
-        for i_layer in range(self.num_layers, -1, -1):
-            print(f"i_layer: {i_layer}, dims: {self.dims[i_layer]}")
-            upsample = (
-                _make_upsample(
-                    self.dims[i_layer],
-                    dim_scale=2,
-                    norm_layer=norm_layer,
-                )
-                if i_layer > 0
-                # We don't need to upsample the last decoder layer
-                else nn.Identity()
+        # num_layers is 4, so we iterate from 3 to 0 intuitively
+        # But we iterate from 4 to 1 because we add the downsample layer to the output of the last encoder layer
+        # Therefore, there is an extra dim for the last stage (we set it in config), so we iterate from 4 to 1
+        # The inversed dim would be 128 -> 64 -> 32 -> 16 ->8, The 8 is not used as input dim here. It's the output dim for the last decoder
+        for i_layer in range(self.num_layers, 0, -1):
+            upsample = _make_upsample(
+                self.dims[i_layer],
+                dim_scale=2,
+                norm_layer=norm_layer,
             )
             self.layers_decoder.append(
                 self.VSSLayer(
