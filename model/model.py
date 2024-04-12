@@ -9,15 +9,13 @@ from torch.nn.utils import weight_norm
 from torch.nn.utils.parametrizations import spectral_norm
 from fvcore.nn import (
     flop_count,
-    parameter_count,
-    FlopCountAnalysis,
-    parameter_count_table,
+    parameter_count
 )
 from torchinfo import summary
 
 try:
     from base import BaseModel
-    from .vmamba import VSSM, VSSBlock, selective_scan_flop_jit
+    from .vmamba import VSSBlock, selective_scan_flop_jit
 except:
     # Used for debugging data_loader
     # Add the project root directory to the Python path
@@ -29,7 +27,7 @@ except:
 
     # Now you can import BaseModel
     from base.base_model import BaseModel
-    from vmamba import VSSM, VSSBlock, selective_scan_flop_jit
+    from vmamba import VSSBlock, selective_scan_flop_jit
 
 
 class DualStreamBlock(BaseModel):
@@ -595,9 +593,9 @@ class MambaUNet(BaseModel):
         patch_norm=True,
         norm_layer="LN",  # "BN", "LN2D"
         patchembed_version: str = "v2",  # "v1", "v2"
-        output_version: str = "v2",  # "v1", "v2"
         downsample_version: str = "v1",  # "v1", "v2", "v3"
         upsample_version: str = "v1",  # "v1"
+        output_version: str = "v2",  # "v1", "v2", "v3"
         concat_skip=False,
         use_checkpoint=False,
         **kwargs,
@@ -639,12 +637,14 @@ class MambaUNet(BaseModel):
 
         # Select the patch embedding module
         _make_patch_embed = dict(
-            v1=self._make_patch_embed,
+            v1=self._make_patch_embed_v1,
             v2=self._make_patch_embed_v2,
         ).get(patchembed_version, None)
 
         _make_output_layer = dict(
-            v1=self._make_output_layer_v1, v2=self._make_output_layer_v2
+            v1=self._make_output_layer_v1,
+            v2=self._make_output_layer_v2,
+            v3=self._make_output_layer_v3,
         ).get(output_version, None)
 
         # Pass parameters to chosen patch embed
@@ -791,8 +791,6 @@ class MambaUNet(BaseModel):
         self.output_layer = _make_output_layer(
             in_chans=in_chans,
             embed_dim=dims[0],
-            patch_size=patch_size,
-            patch_norm=patch_norm,
             norm_layer=None,
             sampler=_make_upsample,
             use_checkpoint=use_checkpoint,
@@ -819,19 +817,20 @@ class MambaUNet(BaseModel):
         self.apply(self._init_weights)
 
     def forward(self, x):
-        verbose = False
+        verbose = True
         mag = x[:, 0, :, :, :]
         phase = x[:, 1, :, :, :]
         # Clone the input for residual connection
         if verbose:
             print(f"Input shape: {mag.shape}")
         residual_mag = mag.clone()
-        # Patch embedding
-        mag = self.patch_embed(mag)
-        if verbose:
-            print(f"Patch embedding shape: {mag.shape}")
         # Skip connections
         skip_connections = []
+        # Patch embedding
+        mag = self.patch_embed(mag)
+        skip_connections.append(mag)
+        if verbose:
+            print(f"Patch embedding shape: {mag.shape}")
         # Encoder
         for i, layer in enumerate(self.layers_encoder):
             mag = layer(mag)
@@ -857,18 +856,29 @@ class MambaUNet(BaseModel):
                 if self.concat_skip
                 else (mag + skip_connections.pop())
             )
-
             mag = layer(mag)
             if verbose:
                 print(f"Decoder layer {i} shape: {mag.shape}")
 
+        # Concatenate or add skip connection
+        mag = (
+            torch.cat((mag, skip_connections.pop()), dim=-1)
+            if self.concat_skip
+            else (mag + skip_connections.pop())
+        )
+        if verbose:
+            print(f"Output layer input shape: {mag.shape}")
+
+        # Output layer
         mag = self.output_layer(mag)
+
         if verbose:
             print(f"Patch output shape: {mag.shape}")
+
         return mag + residual_mag, phase
 
     @staticmethod
-    def _make_patch_embed(
+    def _make_patch_embed_v1(
         in_chans=3,
         embed_dim=96,
         patch_size=4,
@@ -927,10 +937,6 @@ class MambaUNet(BaseModel):
     def _make_output_layer_v1(
         in_chans=3,
         embed_dim=96,
-        patch_size=4,
-        patch_norm=True,
-        norm_layer=nn.LayerNorm,
-        channel_first=False,
         **kwargs,
     ):
         """
@@ -940,12 +946,6 @@ class MambaUNet(BaseModel):
         """
         # If channel_first is True, then Norm and Output are both channel_first
         return nn.Sequential(
-            # Permute the dimensions if channel_first is False and patch_norm is True
-            (
-                nn.Identity()
-                if (channel_first and (not patch_norm))
-                else Permute(0, 3, 1, 2)
-            ),
             nn.ConvTranspose2d(
                 embed_dim,
                 embed_dim // 2,
@@ -953,24 +953,6 @@ class MambaUNet(BaseModel):
                 stride=2,
                 padding=1,
                 output_padding=1,
-            ),
-            # Permute the dimensions if norm_layer is not None
-            (
-                (
-                    (
-                        nn.Identity()
-                        if (channel_first and (not patch_norm))
-                        else Permute(0, 2, 3, 1)
-                    ),
-                    norm_layer(embed_dim // 2) if patch_norm else nn.Identity(),
-                    (
-                        nn.Identity()
-                        if (channel_first and (not patch_norm))
-                        else Permute(0, 3, 1, 2)
-                    ),
-                )
-                if norm_layer is not None
-                else nn.Identity()
             ),
             nn.GELU(),
             nn.ConvTranspose2d(
@@ -980,21 +962,6 @@ class MambaUNet(BaseModel):
                 stride=2,
                 padding=1,
                 output_padding=1,
-            ),
-            # Permute the dimensions if norm_layer is not None
-            (
-                (
-                    (nn.Identity() if channel_first else Permute(0, 2, 3, 1)),
-                    (norm_layer(in_chans) if patch_norm else nn.Identity()),
-                    # Permute the dimensions if channel_first is False and patch_norm is True
-                    (
-                        nn.Identity()
-                        if (channel_first and (not patch_norm))
-                        else Permute(0, 3, 1, 2)
-                    ),
-                )
-                if norm_layer is not None
-                else nn.Identity()
             ),
         )
 
@@ -1077,6 +1044,125 @@ class MambaUNet(BaseModel):
                 ),
                 channel_first=self.channel_first,
                 concat_skip=False,
+                # =================
+                ssm_d_state=ssm_d_state,
+                ssm_ratio=ssm_ratio,
+                ssm_dt_rank=ssm_dt_rank,
+                ssm_act_layer=ssm_act_layer,
+                ssm_conv=ssm_conv,
+                ssm_conv_bias=ssm_conv_bias,
+                ssm_drop_rate=ssm_drop_rate,
+                ssm_init=ssm_init,
+                forward_type=forward_type,
+                # =================
+                mlp_ratio=mlp_ratio,
+                mlp_act_layer=mlp_act_layer,
+                mlp_drop_rate=mlp_drop_rate,
+                gmlp=gmlp,
+            ),
+            Permute(0, 3, 1, 2),
+        )
+
+    def _make_output_layer_v3(
+        self,
+        in_chans=1,
+        use_checkpoint=False,
+        sampler=nn.Identity(),
+        concat_skip=True,
+        # ===========================
+        ssm_d_state=16,
+        ssm_ratio=2.0,
+        ssm_dt_rank="auto",
+        ssm_act_layer=nn.SiLU,
+        ssm_conv=3,
+        ssm_conv_bias=True,
+        ssm_drop_rate=0.0,
+        ssm_init="v0",
+        forward_type="v2",
+        # ===========================
+        mlp_ratio=4.0,
+        mlp_act_layer=nn.GELU,
+        mlp_drop_rate=0.0,
+        gmlp=False,
+        **kwargs,
+    ):
+        """
+        Output layer v3: Using Conv2d (skip connection) + PatchExpanding + VSSLayer for upscaling.
+        """
+
+        return nn.Sequential(
+            self.VSSLayer(
+                dim=self.dims[0],
+                drop_path=self.dpr[-1:],
+                use_checkpoint=use_checkpoint,
+                norm_layer=nn.Identity,
+                # Input: (B, H, W, C) -> Output: (B, 2 * H, 2 * W, C // 2)
+                sampler=sampler(
+                    self.dims[0],
+                    dim_scale=2,
+                    norm_layer=nn.LayerNorm,
+                ),
+                channel_first=self.channel_first,
+                concat_skip=concat_skip,
+                # =================
+                ssm_d_state=ssm_d_state,
+                ssm_ratio=ssm_ratio,
+                ssm_dt_rank=ssm_dt_rank,
+                ssm_act_layer=ssm_act_layer,
+                ssm_conv=ssm_conv,
+                ssm_conv_bias=ssm_conv_bias,
+                ssm_drop_rate=ssm_drop_rate,
+                ssm_init=ssm_init,
+                forward_type=forward_type,
+                # =================
+                mlp_ratio=mlp_ratio,
+                mlp_act_layer=mlp_act_layer,
+                mlp_drop_rate=mlp_drop_rate,
+                gmlp=gmlp,
+            ),
+            # Refine the output
+            self.VSSLayer(
+                dim=self.dims[0] // 2,
+                drop_path=self.dpr[-1:],
+                use_checkpoint=use_checkpoint,
+                norm_layer=nn.LayerNorm,
+                # Input: (B, 2 * H, 2 * W, C // 2) -> Output: (B, 4 * H, 4 * W, C // 4)
+                sampler=sampler(
+                    self.dims[0] // 2,
+                    dim_scale=2,
+                    norm_layer=nn.LayerNorm,
+                ),
+                channel_first=self.channel_first,
+                concat_skip=False,  # We already handle the skip connection above
+                # =================
+                ssm_d_state=ssm_d_state,
+                ssm_ratio=ssm_ratio,
+                ssm_dt_rank=ssm_dt_rank,
+                ssm_act_layer=ssm_act_layer,
+                ssm_conv=ssm_conv,
+                ssm_conv_bias=ssm_conv_bias,
+                ssm_drop_rate=ssm_drop_rate,
+                ssm_init=ssm_init,
+                forward_type=forward_type,
+                # =================
+                mlp_ratio=mlp_ratio,
+                mlp_act_layer=mlp_act_layer,
+                mlp_drop_rate=mlp_drop_rate,
+                gmlp=gmlp,
+            ),
+            # Input: (B, 4 * H, 4 * W, C // 4) -> Output: (B, 4 * H, 4 * W, C)
+            Permute(0, 3, 1, 2),
+            nn.Conv2d(self.dims[0] // 4, in_chans, kernel_size=1, stride=1, padding=0),
+            Permute(0, 2, 3, 1),
+            # Refine the output
+            self.VSSLayer(
+                dim=in_chans,
+                drop_path=self.dpr[-1:],
+                use_checkpoint=use_checkpoint,
+                norm_layer=nn.Identity,
+                sampler=nn.Identity(),
+                channel_first=self.channel_first,
+                concat_skip=False,  # We already handle the skip connection above
                 # =================
                 ssm_d_state=ssm_d_state,
                 ssm_ratio=ssm_ratio,
@@ -1244,9 +1330,9 @@ class DualStreamInteractiveMambaUNet(MambaUNet):
         patch_norm=True,
         norm_layer="LN",  # "BN", "LN2D"
         patchembed_version: str = "v2",  # "v1", "v2"
-        output_version: str = "v2",  # "v1", "v2"
         downsample_version: str = "v1",  # "v1", "v2", "v3"
         upsample_version: str = "v1",  # "v1"
+        output_version: str = "v2",  # "v1", "v2", "v3"
         concat_skip=False,
         use_checkpoint=False,
         **kwargs,
@@ -1274,9 +1360,9 @@ class DualStreamInteractiveMambaUNet(MambaUNet):
             patch_norm,
             norm_layer,
             patchembed_version,
-            output_version,
             downsample_version,
             upsample_version,
+            output_version,
             concat_skip,
             use_checkpoint,
             **kwargs,
@@ -1311,11 +1397,12 @@ class DualStreamInteractiveMambaUNet(MambaUNet):
         # Clone the input for residual connection
         residual_mag = mag.clone()
         residual_phase = phase.clone()
+        # Skip connections
+        skip_connections = []
         # Patch embedding
         mag = self.patch_embed_mag(mag)
         phase = self.patch_embed_phase(phase)
-        # Skip connections
-        skip_connections = []
+        skip_connections.append((mag, phase))
         # Encoders (zip is used to iterate over two lists at the same time)
         for i, (encoder_mag, encoder_phase) in enumerate(
             zip(self.layers_encoder_mag, self.layers_encoder_phase)
@@ -1336,9 +1423,8 @@ class DualStreamInteractiveMambaUNet(MambaUNet):
         for i, (decoder_mag, decoder_phase) in enumerate(
             zip(self.layers_decoder_mag, self.layers_decoder_phase)
         ):
-            # Pop the skip connection
+            # Concatenate or add skip connection
             mag_skip, phase_skip = skip_connections.pop()
-
             if self.concat_skip:
                 mag = decoder_mag(torch.cat((mag, mag_skip), dim=-1))
                 phase = decoder_phase(torch.cat((phase, phase_skip), dim=-1))
@@ -1350,9 +1436,14 @@ class DualStreamInteractiveMambaUNet(MambaUNet):
             mag = mag + phase
             phase = phase + mag
 
-        # Output layer
-        mag = self.output_layer_mag(mag)
-        phase = self.output_layer_phase(phase)
+        # Concatenate or add skip connection for the output layer
+        mag_skip, phase_skip = skip_connections.pop()
+        if self.concat_skip:
+            mag = self.output_layer_mag(torch.cat((mag, mag_skip), dim=-1))
+            phase = self.output_layer_phase(torch.cat((phase, phase_skip), dim=-1))
+        else:
+            mag = self.output_layer_mag(mag + mag_skip)
+            phase = self.output_layer_phase(phase + phase_skip)
 
         # Residual connection
         return mag + residual_mag, phase + residual_phase
