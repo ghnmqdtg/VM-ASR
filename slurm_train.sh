@@ -20,4 +20,10 @@
 # python train.py --config config/config_20240410_v2_chunk_MSE_large.json
 # python train.py --config config/config_20240410_v2_chunk_MAE_ouputv1.json
 # python train.py --config config/config_20240410_v2_chunk_MAE_ouputv2.json
-python train.py --config config/config_20240411_cat.json
+# python train.py --config config/config_20240411_cat.json
+# python train.py --config config/config_20240412_cat_outputv3.json
+python train.py --config config/config_20240413_cat_outputv1_dB.json
+python train.py --config config/config_20240413_cat_outputv2_dB.json
+python train.py --config config/config_20240413_cat_outputv3_dB.json
+python train.py --config config/config_20240413_cat_outputv3_dB_downv1.json
+python train.py --config config/config_20240413_cat_outputv3_dB_fullband.json
