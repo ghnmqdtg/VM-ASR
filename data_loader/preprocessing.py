@@ -257,6 +257,7 @@ def get_mag_phase(
         "chunks": {"n_fft": 1022, "hop_length": 80, "win_length": 320},
         "full": {"n_fft": 1022, "hop_length": 478, "win_length": 956},
     },
+    scale: str = "log",  # "log" or "dB"
 ) -> Tuple[torch.Tensor, torch.Tensor]:
     """
     Apply short time Fourier transform to the waveform and return the magnitude and phase
@@ -297,8 +298,16 @@ def get_mag_phase(
         if chunk_buffer:
             # Crop the spectrogram
             spec = spec[..., crop_side:-crop_side]
-        # The AmplitudeToDB default input is in power |x|^2
-        mag = T.AmplitudeToDB(stype="power", top_db=80)(torch.abs(spec).pow(2))
+
+        if scale == "dB":
+            # The AmplitudeToDB default input is in power |x|^2
+            mag = T.AmplitudeToDB(stype="power", top_db=80)(torch.abs(spec).pow(2))
+            phase = torch.angle(spec)
+        else:
+            # Magnitude is calculated as the absolute value, and log2 is applied to compress the dynamic range
+            mag = torch.log2(torch.abs(spec) + 1e-8)
+            phase = torch.angle(spec)
+
         phase = torch.angle(spec)
 
         # Return the magnitude and phase
@@ -321,8 +330,16 @@ def get_mag_phase(
             if chunk_buffer:
                 # Crop the spectrogram
                 spec = spec[..., crop_side:-crop_side]
-            mag = T.AmplitudeToDB(top_db=80)(torch.abs(spec).pow(2))
-            phase = torch.angle(spec)
+
+            if scale == "dB":
+                # The AmplitudeToDB default input is in power |x|^2
+                mag = T.AmplitudeToDB(stype="power", top_db=80)(torch.abs(spec).pow(2))
+                phase = torch.angle(spec)
+            else:
+                # Magnitude is calculated as the absolute value, and log2 is applied to compress the dynamic range
+                mag = torch.log2(torch.abs(spec) + 1e-8)
+                phase = torch.angle(spec)
+
             mags.append(mag)
             phases.append(phase)
         # Stack the magnitude and phase
@@ -347,26 +364,34 @@ def plot_all(waveform: torch.Tensor, sample_rate: int, filename: str) -> None:
         None
     """
     # Get the magnitude and phase
-    mag, phase = get_mag_phase(waveform, chunk_wave=False)
+    mag_log, phase = get_mag_phase(waveform, chunk_wave=False, scale="log")
+    mag_dB, _ = get_mag_phase(waveform, chunk_wave=False, scale="dB")
     # Plot the waveform, magnitude and phase
-    plt.figure(figsize=(12, 4))
+    plt.figure(figsize=(16, 4))
     # Add title to the figure
     plt.suptitle(f"Waveform, Magnitude and Phase at {sample_rate} Hz")
-    plt.subplot(1, 3, 1)
+    # Waveform
+    plt.subplot(1, 4, 1)
     plt.plot(waveform.t().numpy())
     plt.title("Waveform")
-    plt.subplot(1, 3, 2)
+    # Magnitude (log)
+    plt.subplot(1, 4, 2)
+    plt.pcolormesh(mag_log.numpy().squeeze(0), vmin=-15, cmap="viridis", shading="auto")
+    plt.title("Magnitude (log)")
+    plt.colorbar()
+    # Magnitude (dB)
+    plt.subplot(1, 4, 3)
     plt.imshow(
-        mag.numpy().squeeze(0),
+        mag_dB.numpy().squeeze(0),
         aspect="auto",
         origin="lower",
         interpolation="none",
         cmap="viridis",
     )
-    plt.title("Magnitude")
-    # Add color bar
+    plt.title("Magnitude (dB)")
     plt.colorbar()
-    plt.subplot(1, 3, 3)
+    # Phase
+    plt.subplot(1, 4, 4)
     plt.imshow(phase.numpy().squeeze(0), aspect="auto", origin="lower")
     plt.colorbar()
     # Add space between subplots
@@ -376,26 +401,22 @@ def plot_all(waveform: torch.Tensor, sample_rate: int, filename: str) -> None:
     plt.close()
 
 
-def plot_chunks(sr_new, chunks, mag_chunks, phase_chunks):
-    fig, axs = plt.subplots(3, mag_chunks.size(0), figsize=(25, 7))
+def plot_chunks(sr_new, chunks, mag_chunks, mag_chunks_dB, phase_chunks):
+    fig, axs = plt.subplots(4, mag_chunks.size(0), figsize=(25, 7))
     # Set the title of the plot
     plt.suptitle(f"Chunks: Magnitude and Phase at {sr_new} Hz")
     # Set the titles for each row at the left side of the figure
-    axs[0, 0].set_ylabel("Magnitude")
-    axs[1, 0].set_ylabel("Phase")
-    axs[2, 0].set_ylabel("Waveform")
+    axs[0, 0].set_ylabel("Magnitude (log)")
+    axs[1, 0].set_ylabel("Magnitude (dB)")
+    axs[2, 0].set_ylabel("Phase")
+    axs[3, 0].set_ylabel("Waveform")
     # Set y limit for the waveform plot
-    axs[2, 0].set_ylim(-1, 1)
+    axs[3, 0].set_ylim(-1, 1)
     for i in range(mag_chunks.size(0)):
-        axs[0, i].imshow(
-            mag_chunks[i].numpy(),
-            aspect="auto",
-            origin="lower",
-            interpolation="none",
-            cmap="viridis",
-        )
-        axs[1, i].imshow(phase_chunks[i].numpy(), aspect="auto", origin="lower")
-        axs[2, i].plot(chunks[i].squeeze().numpy())
+        axs[0, i].imshow(mag_chunks[i].numpy(), aspect="auto", origin="lower")
+        axs[1, i].imshow(mag_chunks_dB[i].numpy(), aspect="auto", origin="lower")
+        axs[2, i].imshow(phase_chunks[i].numpy(), aspect="auto", origin="lower")
+        axs[3, i].plot(chunks[i].squeeze().numpy())
     plt.tight_layout()
     # plt.savefig(f"./output/dev/data_preprocessing/{timestr}_chunks_{sr_new}.png")
     plt.savefig(f"./output/dev/data_preprocessing/chunks_{sr_new}.png")
@@ -490,11 +511,11 @@ if __name__ == "__main__":
         plot_all(
             waveform_reconstructed_stft,
             sr_new,
-            f"./output/dev/data_preprocessing/{timestr}_reconstructed_stft_full_{sr_new}.png",
+            f"./output/dev/data_preprocessing/{timestr}_full_{sr_new}.png",
         )
         # Save the reconstructed waveform
         torchaudio.save(
-            f"./output/dev/data_preprocessing/{timestr}_reconstructed_stft_full_{sr_new}.wav",
+            f"./output/dev/data_preprocessing/{timestr}_full_{sr_new}.wav",
             waveform_reconstructed_stft,
             sr_org,
         )
@@ -507,7 +528,7 @@ if __name__ == "__main__":
 
         # Save the reconstructed waveform
         torchaudio.save(
-            f"./output/dev/data_preprocessing/reconstructed_wave_chunks_{sr_new}.wav",
+            f"./output/dev/data_preprocessing/wave_chunks_{sr_new}.wav",
             waveform_reconstructed,
             sr_org,
         )
@@ -521,16 +542,31 @@ if __name__ == "__main__":
             batch_input=True,
             stft_params=config_dataloader["stft_params"],
         )
+        mag_chunks_dB, _ = get_mag_phase(
+            chunks,
+            chunk_wave=True,
+            chunk_buffer=chunk_buffer,
+            batch_input=True,
+            stft_params=config_dataloader["stft_params"],
+            scale="dB",
+        )
         print(
             f"Shape of mag_chunks: {mag_chunks.shape}, Shape of phase_chunks: {phase_chunks.shape}"
         )
         # Plot the magnitude, phase and wave of chunks
         # The figure is in the shape of (3, chunk_num)
         # Drop the channel dimension
-        plot_chunks(sr_new, chunks, mag_chunks.squeeze(1), phase_chunks.squeeze(1))
+        plot_chunks(
+            sr_new,
+            chunks,
+            mag_chunks.squeeze(1),
+            mag_chunks_dB.squeeze(1),
+            phase_chunks.squeeze(1),
+        )
 
         # Stack the magnitude and phase, shapes are [1, chunk_num, freq, time]
         mag_chunks = mag_chunks.permute(1, 0, 2, 3)
+        mag_chunks_dB = mag_chunks_dB.permute(1, 0, 2, 3)
         phase_chunks = phase_chunks.permute(1, 0, 2, 3)
         print(f"Shape of mag: {mag_chunks.shape}, Shape of phase: {phase_chunks.shape}")
 
@@ -541,16 +577,17 @@ if __name__ == "__main__":
             padding_length,
             batch_input=False,
             config_dataloader=config_dataloader,
+            scale="log",
         )
         # Plot the waveform, magnitude and phase
         plot_all(
             waveform_reconstructed_stft,
             sr_new,
-            f"./output/dev/data_preprocessing/{timestr}_reconstructed_stft_chunks_{sr_new}.png",
+            f"./output/dev/data_preprocessing/{timestr}_chunks_{sr_new}.png",
         )
-        # Save the reconstructed waveform
+        # # Save the reconstructed waveform
         torchaudio.save(
-            f"./output/dev/data_preprocessing/{timestr}_reconstructed_stft_chunks_{sr_new}.wav",
+            f"./output/dev/data_preprocessing/{timestr}_chunks_{sr_new}.wav",
             waveform_reconstructed_stft,
             sr_org,
         )
