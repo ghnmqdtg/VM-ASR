@@ -78,7 +78,7 @@ def butter_lowpass_filter(
     """
     Apply low pass filter to the waveform to remove the high frequency components.
     """
-    order = 6
+    order = random.randint(1, 11)
     # Create the filter coefficients
     sos = butter(order, normalized_cutoff, btype="low", output="sos")
     # Apply the filter
@@ -97,6 +97,8 @@ def cheby1_lowpass_filter(
     """
     order = 6
     ripple = 1e-3
+    # order = random.randint(1, 11)
+    # ripple = random.choice([1e-9, 1e-6, 1e-3, 1, 5])
     # Create the filter coefficients
     sos = cheby1(order, ripple, normalized_cutoff, btype="lowpass", output="sos")
     # Apply the filter
@@ -145,6 +147,23 @@ def resample_audio(waveform: torch.Tensor, sr_org: int, sr_new: int) -> torch.Te
     """
     # waveform_resampled = T.Resample(sr_org, sr_new)(waveform)
     waveform_resampled = resample_poly(waveform, sr_new, sr_org, axis=-1)
+    return torch.tensor(waveform_resampled, dtype=torch.float32)
+
+
+def align_waveform(
+    waveform_resampled: torch.Tensor, waveform: torch.Tensor
+) -> torch.Tensor:
+    # Make sure the waveform has the same length
+    if waveform_resampled.shape[1] < waveform.shape[1]:
+        waveform_resampled = F.pad(
+            waveform_resampled,
+            (0, waveform.shape[1] - waveform_resampled.shape[1]),
+            mode="constant",
+            value=0,
+        )
+    elif waveform_resampled.shape[1] > waveform.shape[1]:
+        waveform_resampled = waveform_resampled[: waveform.shape[1]]
+
     return waveform_resampled
 
 
@@ -191,7 +210,7 @@ def cut2chunks(
     # Initialize the list of chunks
     chunks = []
     # Get the length of the waveform
-    length = waveform.size(-1)
+    length = waveform.shape[-1]
     # Step size
     step_size = chunk_size - overlap
 
@@ -223,50 +242,10 @@ def cut2chunks(
         last_chunk = F.pad(last_chunk, (0, padding_length), "constant", 0)
         chunks.append(last_chunk)
 
-    # print(
-    #     f"Length: {length}, Chunk number: {len(chunks)}, Padding length: {padding_length}"
-    # )
-
     if return_padding_length:
         return torch.stack(chunks), padding_length
     else:
         return torch.stack(chunks)
-
-
-def plot_all(waveform: torch.Tensor, sample_rate: int, filename: str) -> None:
-    """
-    Plot the waveform, magnitude and phase in a row at the same figure and save it to the output folder
-
-    Args:
-        waveform (torch.Tensor): The waveform
-        sample_rate (int): The sample rate
-        filename (str): The filename of the output figure
-
-    Returns:
-        None
-    """
-    # Get the magnitude and phase
-    mag, phase = get_mag_phase(waveform, chunk_wave=False)
-    # Plot the waveform, magnitude and phase
-    plt.figure(figsize=(12, 4))
-    # Add title to the figure
-    plt.suptitle(f"Waveform, Magnitude and Phase at {sample_rate} Hz")
-    plt.subplot(1, 3, 1)
-    plt.plot(waveform.t().numpy())
-    plt.title("Waveform")
-    plt.subplot(1, 3, 2)
-    plt.pcolormesh(mag.numpy().squeeze(0), vmin=-15, cmap="viridis", shading="auto")
-    plt.title("Magnitude")
-    # Add color bar
-    plt.colorbar()
-    plt.subplot(1, 3, 3)
-    plt.imshow(phase.numpy().squeeze(0), aspect="auto", origin="lower")
-    plt.colorbar()
-    # Add space between subplots
-    plt.tight_layout()
-    plt.title("Phase")
-    plt.savefig(filename)
-    plt.close()
 
 
 def get_mag_phase(
@@ -318,8 +297,8 @@ def get_mag_phase(
         if chunk_buffer:
             # Crop the spectrogram
             spec = spec[..., crop_side:-crop_side]
-        # Magnitude is calculated as the absolute value, and log2 is applied to compress the dynamic range
-        mag = torch.log2(torch.abs(spec) + 1e-8)
+        # The AmplitudeToDB default input is in power |x|^2
+        mag = T.AmplitudeToDB(stype="power", top_db=80)(torch.abs(spec).pow(2))
         phase = torch.angle(spec)
 
         # Return the magnitude and phase
@@ -342,8 +321,7 @@ def get_mag_phase(
             if chunk_buffer:
                 # Crop the spectrogram
                 spec = spec[..., crop_side:-crop_side]
-            # Magnitude is calculated as the absolute value, and log2 is applied to compress the dynamic range
-            mag = torch.log2(torch.abs(spec) + 1e-8)
+            mag = T.AmplitudeToDB(top_db=80)(torch.abs(spec).pow(2))
             phase = torch.angle(spec)
             mags.append(mag)
             phases.append(phase)
@@ -354,6 +332,48 @@ def get_mag_phase(
         # print(f"Shape of mag: {mags.shape}, Shape of phase: {phases.shape}")
         # Return the magnitude and phase
         return mags, phases
+
+
+def plot_all(waveform: torch.Tensor, sample_rate: int, filename: str) -> None:
+    """
+    Plot the waveform, magnitude and phase in a row at the same figure and save it to the output folder
+
+    Args:
+        waveform (torch.Tensor): The waveform
+        sample_rate (int): The sample rate
+        filename (str): The filename of the output figure
+
+    Returns:
+        None
+    """
+    # Get the magnitude and phase
+    mag, phase = get_mag_phase(waveform, chunk_wave=False)
+    # Plot the waveform, magnitude and phase
+    plt.figure(figsize=(12, 4))
+    # Add title to the figure
+    plt.suptitle(f"Waveform, Magnitude and Phase at {sample_rate} Hz")
+    plt.subplot(1, 3, 1)
+    plt.plot(waveform.t().numpy())
+    plt.title("Waveform")
+    plt.subplot(1, 3, 2)
+    plt.imshow(
+        mag.numpy().squeeze(0),
+        aspect="auto",
+        origin="lower",
+        interpolation="none",
+        cmap="viridis",
+    )
+    plt.title("Magnitude")
+    # Add color bar
+    plt.colorbar()
+    plt.subplot(1, 3, 3)
+    plt.imshow(phase.numpy().squeeze(0), aspect="auto", origin="lower")
+    plt.colorbar()
+    # Add space between subplots
+    plt.tight_layout()
+    plt.title("Phase")
+    plt.savefig(filename)
+    plt.close()
 
 
 def plot_chunks(sr_new, chunks, mag_chunks, phase_chunks):
@@ -367,7 +387,13 @@ def plot_chunks(sr_new, chunks, mag_chunks, phase_chunks):
     # Set y limit for the waveform plot
     axs[2, 0].set_ylim(-1, 1)
     for i in range(mag_chunks.size(0)):
-        axs[0, i].imshow(mag_chunks[i].numpy(), aspect="auto", origin="lower")
+        axs[0, i].imshow(
+            mag_chunks[i].numpy(),
+            aspect="auto",
+            origin="lower",
+            interpolation="none",
+            cmap="viridis",
+        )
         axs[1, i].imshow(phase_chunks[i].numpy(), aspect="auto", origin="lower")
         axs[2, i].plot(chunks[i].squeeze().numpy())
     plt.tight_layout()
@@ -386,14 +412,14 @@ if __name__ == "__main__":
     config_dataloader = config["data_loader"]["args"]
 
     # Choose the test to run
-    TEST_FILTER = False
-    TEST_FULL_WAVEFORM = False
-    TEST_CONCATENATE_CHUNKS = False
-    TEST_RECONSTRUCT_FROM_CHUNKS = False
+    TEST_FILTER = True
+    TEST_FULL_WAVEFORM = True
+    TEST_CONCATENATE_CHUNKS = True
+    TEST_RECONSTRUCT_FROM_CHUNKS = True
 
     # Set the parameters
     # List of target sample rates to choose from
-    target_sample_rates = [8000]
+    target_sample_rates = [16000]
     # Size of each audio chunk
     chunk_size = config_dataloader["chunking_params"]["chunk_size"]
     chunk_buffer = config_dataloader["chunking_params"]["chunk_buffer"]
@@ -410,6 +436,9 @@ if __name__ == "__main__":
     waveform_downsampled = resample_audio(waveform_filtered, sr_org, sr_new)
     # Apply upsampling to get a unified sample rate as input
     waveform_upsampled = resample_audio(waveform_downsampled, sr_new, sr_org)
+    # Align the waveform to the same length
+    waveform_upsampled = align_waveform(waveform_upsampled, waveform)
+
     # Cut the waveform into chunks
     chunks, padding_length = cut2chunks(
         waveform_upsampled,
@@ -519,7 +548,7 @@ if __name__ == "__main__":
             sr_new,
             f"./output/dev/data_preprocessing/{timestr}_reconstructed_stft_chunks_{sr_new}.png",
         )
-        # # Save the reconstructed waveform
+        # Save the reconstructed waveform
         torchaudio.save(
             f"./output/dev/data_preprocessing/{timestr}_reconstructed_stft_chunks_{sr_new}.wav",
             waveform_reconstructed_stft,

@@ -5,7 +5,6 @@ import random
 import json
 import os
 import sys
-import math
 from tqdm import tqdm
 
 try:
@@ -264,9 +263,9 @@ class CustomVCTK_092(datasets.VCTK_092):
             Tensor: The input-output pair of magnitude and phase
         """
         # List of target sample rates to choose from
-        sr_new = random.choice(self.random_resample)
+        # sr_new = random.choice(self.random_resample)
         # * TEST: Uniformly choose an integer from min to max in the list
-        # sr_new = random.randint(self.random_resample[0], self.random_resample[-1])
+        sr_new = random.randint(self.random_resample[0], self.random_resample[-1])
         # Crop or pad the waveform to a fixed length
         waveform_org = preprocessing.crop_or_pad_waveform(
             waveform_org, {"length": self.length, "white_noise": self.white_noise}
@@ -279,8 +278,8 @@ class CustomVCTK_092(datasets.VCTK_092):
             waveform = preprocessing.resample_audio(waveform, sr_org, sr_new)
             # Upsample the audio to a higher sample rate
             waveform = preprocessing.resample_audio(waveform, sr_new, sr_org)
-            # Remove the artifacts from the resampling
-            waveform = preprocessing.low_pass_filter(waveform, sr_org, sr_new)
+            # Align the length of the waveform
+            waveform = preprocessing.align_waveform(waveform, waveform_org)
         else:
             waveform = waveform_org
 

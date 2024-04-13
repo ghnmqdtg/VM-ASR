@@ -3,6 +3,8 @@ import numpy as np
 from scipy import signal
 import matplotlib.pyplot as plt
 
+from data_loader import preprocessing
+
 
 def fig2np(fig):
     """
@@ -153,28 +155,27 @@ def plot_spectrogram_from_wave(
     for i, (name, waveform) in enumerate(zip(names, waveforms)):
         if stft:
             # Compute the STFT
-            spec = torch.stft(
-                waveform,
-                n_fft=n_fft,
-                hop_length=hop_length,
-                win_length=win_length,
-                window=window,
-                return_complex=True,
+            mag, phase = preprocessing.get_mag_phase(
+                waveform=waveform, chunk_wave=False
             )
             # Plot the magnitude of the STFT
-            img = axs[i, 0].pcolormesh(
-                torch.log2(torch.abs(spec) + 1e-8).squeeze(0).detach().cpu().numpy(),
-                vmin=-15,
+            img = axs[i, 0].imshow(
+                mag.squeeze(0).detach().cpu().numpy(),
+                aspect="auto",
+                origin="lower",
+                interpolation="none",
                 cmap="viridis",
-                shading="auto",
+                vmin=-40,
             )
             # Add colorbar
             plt.colorbar(img, ax=axs[i, 0])
             # Plot the phase of the STFT
-            img = axs[i, 1].pcolormesh(
-                torch.angle(spec).squeeze(0).detach().cpu().numpy(),
+            img = axs[i, 1].imshow(
+                phase.squeeze(0).detach().cpu().numpy(),
+                aspect="auto",
+                origin="lower",
+                interpolation="none",
                 cmap="viridis",
-                shading="auto",
             )
             # Add colorbar
             plt.colorbar(img, ax=axs[i, 1])
@@ -190,15 +191,16 @@ def plot_spectrogram_from_wave(
         else:
             # Plot the waveform (Spectrogram)
             frequencies, times, spectrogram = signal.spectrogram(
-                waveform.squeeze().detach().cpu().numpy(), fs=sample_rate
+                waveform.squeeze().detach().cpu().numpy(),
+                fs=sample_rate,
+                scaling="spectrum",
             )
             img = axs[i].pcolormesh(
                 times,
                 frequencies,
-                10 * np.log10(spectrogram + 1e-18),
+                10 * np.log10(np.abs(spectrogram) ** 2 + 1e-18),
                 cmap="viridis",
                 shading="auto",
-                vmin=-150,
             )
             # Add colorbar
             plt.colorbar(img, ax=axs[i])
@@ -276,8 +278,6 @@ def plot_spectrogram_from_chunks(names, chunk_list, title="Chunks (Magnitude)"):
             img = axs[i, j].pcolormesh(
                 # Clip the values
                 chunk.squeeze().detach().cpu().numpy(),
-                vmax=7 if title == "Chunks (Magnitude)" else None,
-                vmin=-15 if title == "Chunks (Magnitude)" else None,
                 cmap="viridis",
                 shading="auto",
             )

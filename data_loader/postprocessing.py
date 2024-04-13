@@ -1,4 +1,6 @@
 import torch
+import torchaudio
+import torchaudio.transforms as T
 
 try:
     from data_loader import preprocessing
@@ -8,6 +10,16 @@ except:
 
     sys.path.append(os.path.join(os.path.dirname(__file__), ".."))
     from data_loader import preprocessing
+
+
+class DBToAmplitude(T.AmplitudeToDB):
+    def __init__(self):
+        super().__init__()
+
+    def forward(self, x):
+        # Set the power to 1 to convert from dB to power (multiplier is set to 10.0)
+        # In our project, we convert the magnitude to dB with "power" in AmplitudeToDB
+        return torchaudio.functional.DB_to_amplitude(x, ref=1, power=1)
 
 
 def concatenate_wave_chunks(
@@ -102,7 +114,9 @@ def reconstruct_from_stft_chunks(
     if not batch_input:
         # Combine magnitude and phase to get the complex STFT
         # mag is log-magnitude, so we have to apply exp to get the magnitude
-        complex_stft = torch.exp2(mag) * torch.exp(1j * phase)
+        complex_stft = torch.clamp(DBToAmplitude()(mag).pow(0.5), min=1e-5) * torch.exp(
+            1j * phase
+        )
         # Swap the channel 1 and channel 0
         complex_stft = complex_stft.permute(1, 0, 2, 3)
 
@@ -147,7 +161,7 @@ def reconstruct_from_stft_chunks(
             # Print the shape of the chunk data and target
             # print(f'Chunk data shape: {_mag.shape}, Chunk target shape: {_phase.shape}')
             # Combine magnitude and phase to get the complex STFT
-            complex_stft = torch.exp2(_mag) * torch.exp(1j * _phase)
+            complex_stft = DBToAmplitude()(_mag).pow(0.5) * torch.exp(1j * _phase)
             # torch.Size([1, 9, 513, 101])
             # Swap the channel 1 and channel 0 and get torch.Size([9, 1, 513, 101])
             complex_stft = complex_stft.permute(1, 0, 2, 3)
@@ -209,7 +223,9 @@ def reconstruct_from_stft(
     win_length = config_dataloader["stft_params"]["full"]["win_length"]
     window = torch.hann_window(win_length)
     # Combine magnitude and phase to get the complex STFT
-    complex_stft = torch.exp2(mag) * torch.exp(1j * phase)
+    complex_stft = torch.clamp(DBToAmplitude()(mag).pow(0.5), min=1e-5) * torch.exp(
+        1j * phase
+    )
     # Apply iSTFT
     waveform = torch.istft(
         complex_stft,
