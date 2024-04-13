@@ -7,10 +7,7 @@ from einops import rearrange
 from timm.models.layers import trunc_normal_
 from torch.nn.utils import weight_norm
 from torch.nn.utils.parametrizations import spectral_norm
-from fvcore.nn import (
-    flop_count,
-    parameter_count
-)
+from fvcore.nn import flop_count, parameter_count
 from torchinfo import summary
 
 try:
@@ -790,10 +787,11 @@ class MambaUNet(BaseModel):
 
         self.output_layer = _make_output_layer(
             in_chans=in_chans,
-            embed_dim=dims[0],
+            dim=dims[0],
             norm_layer=None,
             sampler=_make_upsample,
             use_checkpoint=use_checkpoint,
+            concat_skip=self.concat_skip,
             channel_first=self.channel_first,
             # =================
             # Used for output versions that require VSSLayer
@@ -936,7 +934,8 @@ class MambaUNet(BaseModel):
     @staticmethod
     def _make_output_layer_v1(
         in_chans=3,
-        embed_dim=96,
+        dim=96,
+        concat_skip=False,
         **kwargs,
     ):
         """
@@ -946,9 +945,16 @@ class MambaUNet(BaseModel):
         """
         # If channel_first is True, then Norm and Output are both channel_first
         return nn.Sequential(
+            Permute(0, 3, 1, 2),
+            (
+                nn.Conv2d(dim * 2, dim, kernel_size=1, stride=1, padding=0)
+                if concat_skip
+                else nn.Identity()
+            ),
+            nn.GELU(),
             nn.ConvTranspose2d(
-                embed_dim,
-                embed_dim // 2,
+                dim,
+                dim // 2,
                 kernel_size=3,
                 stride=2,
                 padding=1,
@@ -956,7 +962,7 @@ class MambaUNet(BaseModel):
             ),
             nn.GELU(),
             nn.ConvTranspose2d(
-                embed_dim // 2,
+                dim // 2,
                 in_chans,
                 kernel_size=3,
                 stride=2,
@@ -967,8 +973,11 @@ class MambaUNet(BaseModel):
 
     def _make_output_layer_v2(
         self,
-        use_checkpoint=False,
+        in_chans=3,
+        dim=96,
         sampler=nn.Identity(),
+        concat_skip=False,
+        use_checkpoint=False,
         # ===========================
         ssm_d_state=16,
         ssm_ratio=2.0,
@@ -993,11 +1002,11 @@ class MambaUNet(BaseModel):
         Therefore, this version only works when dims[0]=8.
         """
         # Check if dims[0] is 8
-        assert self.dims[0] == 8
+        assert dim == 8
 
         return nn.Sequential(
             self.VSSLayer(
-                dim=self.dims[0],
+                dim=dim,
                 drop_path=self.dpr[
                     sum(self.depths[: self.num_layers - 1]) : sum(
                         self.depths[: self.num_layers]
@@ -1006,7 +1015,39 @@ class MambaUNet(BaseModel):
                 use_checkpoint=use_checkpoint,
                 norm_layer=nn.LayerNorm,
                 sampler=sampler(
-                    self.dims[0],
+                    dim,
+                    dim_scale=2,
+                    norm_layer=None,
+                ),
+                channel_first=self.channel_first,
+                concat_skip=concat_skip,
+                # =================
+                ssm_d_state=ssm_d_state,
+                ssm_ratio=ssm_ratio,
+                ssm_dt_rank=ssm_dt_rank,
+                ssm_act_layer=ssm_act_layer,
+                ssm_conv=ssm_conv,
+                ssm_conv_bias=ssm_conv_bias,
+                ssm_drop_rate=ssm_drop_rate,
+                ssm_init=ssm_init,
+                forward_type=forward_type,
+                # =================
+                mlp_ratio=mlp_ratio,
+                mlp_act_layer=mlp_act_layer,
+                mlp_drop_rate=mlp_drop_rate,
+                gmlp=gmlp,
+            ),
+            self.VSSLayer(
+                dim=dim // 2,
+                drop_path=self.dpr[
+                    sum(self.depths[: self.num_layers - 1]) : sum(
+                        self.depths[: self.num_layers]
+                    )
+                ],
+                use_checkpoint=use_checkpoint,
+                norm_layer=nn.LayerNorm,
+                sampler=sampler(
+                    dim // 2,
                     dim_scale=2,
                     norm_layer=None,
                 ),
@@ -1028,44 +1069,14 @@ class MambaUNet(BaseModel):
                 mlp_drop_rate=mlp_drop_rate,
                 gmlp=gmlp,
             ),
-            self.VSSLayer(
-                dim=self.dims[0] // 2,
-                drop_path=self.dpr[
-                    sum(self.depths[: self.num_layers - 1]) : sum(
-                        self.depths[: self.num_layers]
-                    )
-                ],
-                use_checkpoint=use_checkpoint,
-                norm_layer=nn.LayerNorm,
-                sampler=sampler(
-                    self.dims[0] // 2,
-                    dim_scale=2**2,
-                    norm_layer=None,
-                ),
-                channel_first=self.channel_first,
-                concat_skip=False,
-                # =================
-                ssm_d_state=ssm_d_state,
-                ssm_ratio=ssm_ratio,
-                ssm_dt_rank=ssm_dt_rank,
-                ssm_act_layer=ssm_act_layer,
-                ssm_conv=ssm_conv,
-                ssm_conv_bias=ssm_conv_bias,
-                ssm_drop_rate=ssm_drop_rate,
-                ssm_init=ssm_init,
-                forward_type=forward_type,
-                # =================
-                mlp_ratio=mlp_ratio,
-                mlp_act_layer=mlp_act_layer,
-                mlp_drop_rate=mlp_drop_rate,
-                gmlp=gmlp,
-            ),
             Permute(0, 3, 1, 2),
+            nn.Conv2d(dim // 4, in_chans, kernel_size=1, stride=1, padding=0),
         )
 
     def _make_output_layer_v3(
         self,
         in_chans=1,
+        dim=96,
         use_checkpoint=False,
         sampler=nn.Identity(),
         concat_skip=True,
@@ -1092,13 +1103,13 @@ class MambaUNet(BaseModel):
 
         return nn.Sequential(
             self.VSSLayer(
-                dim=self.dims[0],
+                dim=dim,
                 drop_path=self.dpr[-1:],
                 use_checkpoint=use_checkpoint,
                 norm_layer=nn.Identity,
                 # Input: (B, H, W, C) -> Output: (B, 2 * H, 2 * W, C // 2)
                 sampler=sampler(
-                    self.dims[0],
+                    dim,
                     dim_scale=2,
                     norm_layer=nn.LayerNorm,
                 ),
@@ -1122,13 +1133,13 @@ class MambaUNet(BaseModel):
             ),
             # Refine the output
             self.VSSLayer(
-                dim=self.dims[0] // 2,
+                dim=dim // 2,
                 drop_path=self.dpr[-1:],
                 use_checkpoint=use_checkpoint,
                 norm_layer=nn.LayerNorm,
                 # Input: (B, 2 * H, 2 * W, C // 2) -> Output: (B, 4 * H, 4 * W, C // 4)
                 sampler=sampler(
-                    self.dims[0] // 2,
+                    dim // 2,
                     dim_scale=2,
                     norm_layer=nn.LayerNorm,
                 ),
@@ -1152,7 +1163,7 @@ class MambaUNet(BaseModel):
             ),
             # Input: (B, 4 * H, 4 * W, C // 4) -> Output: (B, 4 * H, 4 * W, C)
             Permute(0, 3, 1, 2),
-            nn.Conv2d(self.dims[0] // 4, in_chans, kernel_size=1, stride=1, padding=0),
+            nn.Conv2d(dim // 4, in_chans, kernel_size=1, stride=1, padding=0),
             Permute(0, 2, 3, 1),
             # Refine the output
             self.VSSLayer(
