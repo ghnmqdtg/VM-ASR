@@ -1065,7 +1065,11 @@ class MambaUNet(BaseModel):
                 gmlp=gmlp,
             ),
             Permute(0, 3, 1, 2),
-            nn.Conv2d(dim // 4, in_chans, kernel_size=1, stride=1, padding=0),
+            (
+                nn.Conv2d(dim // 4, in_chans, kernel_size=1, stride=1, padding=0)
+                if dim // 4 != in_chans
+                else nn.Identity()
+            ),
         )
 
     def _make_output_layer_v3(
