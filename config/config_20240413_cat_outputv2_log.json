@@ -23,7 +23,7 @@
             "patchembed_version": "v2",
             "downsample_version": "v1",
             "upsample_version": "v1",
-            "output_version": "v3",
+            "output_version": "v2",
             "concat_skip": true
         }
     },
@@ -71,7 +71,7 @@
                 }
             },
             "random_lpf": false,
-            "scale": "dB"
+            "scale": "log"
         }
     },
     "optimizer": {

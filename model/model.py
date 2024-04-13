@@ -659,9 +659,6 @@ class MambaUNet(BaseModel):
         # Get the downsample version
         _make_downsample = dict(
             v1=PatchMerging2D,
-            # v2=self._make_downsample,
-            # v3=self._make_downsample_v3,
-            none=(lambda *_, **_k: None),
         ).get(downsample_version, None)
 
         # print(f"downsample_version: {downsample_version} -> {_make_downsample}")

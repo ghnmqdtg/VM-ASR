@@ -24,7 +24,7 @@
             "downsample_version": "v1",
             "upsample_version": "v1",
             "output_version": "v3",
-            "concat_skip": true
+            "concat_skip": false
         }
     },
     "flac2wav": {
@@ -70,8 +70,8 @@
                     "win_length": 2048
                 }
             },
-            "random_lpf": false,
-            "scale": "dB"
+            "random_lpf": true,
+            "scale": "log"
         }
     },
     "optimizer": {

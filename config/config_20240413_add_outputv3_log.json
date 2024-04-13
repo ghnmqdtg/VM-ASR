@@ -24,7 +24,7 @@
             "downsample_version": "v1",
             "upsample_version": "v1",
             "output_version": "v3",
-            "concat_skip": true
+            "concat_skip": false
         }
     },
     "flac2wav": {
@@ -69,7 +69,9 @@
                     "hop_length": 512,
                     "win_length": 2048
                 }
-            }
+            },
+            "random_lpf": false,
+            "scale": "log"
         }
     },
     "optimizer": {
@@ -109,10 +111,10 @@
         "save_period": 1,
         "verbosity": 2,
         "monitor": "min val_total_loss",
-        "early_stop": 10,
+        "early_stop": 5,
         "amp": true,
         "gan": false,
         "tensorboard": true,
-        "sync_wandb": false
+        "sync_wandb": true
     }
 }

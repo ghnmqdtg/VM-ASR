@@ -71,7 +71,7 @@
                 }
             },
             "random_lpf": false,
-            "scale": "dB"
+            "scale": "log"
         }
     },
     "optimizer": {
