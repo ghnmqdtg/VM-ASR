@@ -86,6 +86,7 @@ def reconstruct_from_stft_chunks(
         "stft_params": {
             "chunks": {"n_fft": 1022, "hop_length": 80, "win_length": 320},
         },
+        "scale": "log",  # "log" or "dB
     },
 ) -> torch.Tensor:
     """
@@ -113,10 +114,13 @@ def reconstruct_from_stft_chunks(
     # Normally, input would be of shape (1 (mono), num_chunks, frequency_bins, frames)
     if not batch_input:
         # Combine magnitude and phase to get the complex STFT
-        # mag is log-magnitude, so we have to apply exp to get the magnitude
-        complex_stft = torch.clamp(DBToAmplitude()(mag).pow(0.5), min=1e-5) * torch.exp(
-            1j * phase
-        )
+        if config_dataloader["scale"] == "dB":
+            # mag is in dB, so we have to convert it to amplitude
+            complex_stft = DBToAmplitude()(mag).pow(0.5) * torch.exp(1j * phase)
+        else:
+            # mag is log-magnitude, so we have to apply exp to get the magnitude
+            complex_stft = torch.exp2(mag) * torch.exp(1j * phase)
+
         # Swap the channel 1 and channel 0
         complex_stft = complex_stft.permute(1, 0, 2, 3)
 
@@ -161,7 +165,13 @@ def reconstruct_from_stft_chunks(
             # Print the shape of the chunk data and target
             # print(f'Chunk data shape: {_mag.shape}, Chunk target shape: {_phase.shape}')
             # Combine magnitude and phase to get the complex STFT
-            complex_stft = DBToAmplitude()(_mag).pow(0.5) * torch.exp(1j * _phase)
+            if config_dataloader["scale"] == "dB":
+                # mag is in dB, so we have to convert it to amplitude
+                complex_stft = DBToAmplitude()(_mag).pow(0.5) * torch.exp(1j * _phase)
+            else:
+                # mag is log-magnitude, so we have to apply exp to get the magnitude
+                complex_stft = torch.exp2(_mag) * torch.exp(1j * _phase)
+
             # torch.Size([1, 9, 513, 101])
             # Swap the channel 1 and channel 0 and get torch.Size([9, 1, 513, 101])
             complex_stft = complex_stft.permute(1, 0, 2, 3)
@@ -208,6 +218,7 @@ def reconstruct_from_stft(
             "chunks": {"n_fft": 1022, "hop_length": 80, "win_length": 320},
             "full": {"n_fft": 1022, "hop_length": 478, "win_length": 956},
         },
+        "scale": "log",  # "log" or "dB
     },
 ) -> torch.Tensor:
     """
@@ -223,9 +234,12 @@ def reconstruct_from_stft(
     win_length = config_dataloader["stft_params"]["full"]["win_length"]
     window = torch.hann_window(win_length)
     # Combine magnitude and phase to get the complex STFT
-    complex_stft = torch.clamp(DBToAmplitude()(mag).pow(0.5), min=1e-5) * torch.exp(
-        1j * phase
-    )
+    if config_dataloader["scale"] == "dB":
+        # mag is in dB, so we have to convert it to amplitude
+        complex_stft = DBToAmplitude()(mag).pow(0.5) * torch.exp(1j * phase)
+    else:
+        # mag is log-magnitude, so we have to apply exp to get the magnitude
+        complex_stft = torch.exp2(mag) * torch.exp(1j * phase)
     # Apply iSTFT
     waveform = torch.istft(
         complex_stft,

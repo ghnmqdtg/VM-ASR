@@ -157,6 +157,7 @@ class CustomVCTK_092(datasets.VCTK_092):
         self.white_noise = kwargs.get("white_noise", 0)
         self.stft_enabled = kwargs.get("stft_enabled", True)
         self.chunking_enabled = kwargs.get("chunking_enabled", True)
+        self.scale = kwargs.get("scale", "log")
         self.chunking_params = kwargs.get("chunking_params", None)
         # Check if the trimmed wav files exist
         if not os.path.isdir(self._audio_dir):
@@ -291,11 +292,13 @@ class CustomVCTK_092(datasets.VCTK_092):
                 waveform,
                 chunk_wave=self.chunking_enabled,
                 chunk_buffer=self.chunking_params["chunk_buffer"],
+                scale=self.scale,
             )
             y = self._get_mag_phase(
                 waveform_org,
                 chunk_wave=self.chunking_enabled,
                 chunk_buffer=self.chunking_params["chunk_buffer"],
+                scale=self.scale,
             )
         else:
             if self.chunking_enabled:
@@ -313,7 +316,7 @@ class CustomVCTK_092(datasets.VCTK_092):
                     overlap=self.chunking_params["overlap"],
                     chunk_buffer=self.chunking_params["chunk_buffer"],
                 )
-                print(x.shape, y.shape)
+                # print(x.shape, y.shape)
             else:
                 # Return the waveform
                 # Shape: (1, self.length)
@@ -323,7 +326,11 @@ class CustomVCTK_092(datasets.VCTK_092):
         return x, y
 
     def _get_mag_phase(
-        self, waveform: torch.Tensor, chunk_wave: bool = True, chunk_buffer: int = 0
+        self,
+        waveform: torch.Tensor,
+        chunk_wave: bool = True,
+        chunk_buffer: int = 0,
+        scale: str = "log",
     ) -> torch.Tensor:
         """
         Compute the magnitude and phase of the audio in the time-frequency domain.
@@ -354,7 +361,7 @@ class CustomVCTK_092(datasets.VCTK_092):
             phase = []
             for chunk_y in chunks:
                 mag_chunk, phase_chunk = preprocessing.get_mag_phase(
-                    chunk_y, chunk_wave=True, chunk_buffer=chunk_buffer
+                    chunk_y, chunk_wave=True, chunk_buffer=chunk_buffer, scale=scale
                 )
                 mag.append(mag_chunk)
                 phase.append(phase_chunk)
@@ -368,8 +375,10 @@ class CustomVCTK_092(datasets.VCTK_092):
             # Make mag and phase to a pair, shape (2, num_chunks, num_frequencies, num_frames)
             mag_phase_pair = torch.stack((mag, phase))
         else:
-            # Compute STFT for the waveform and convert to magnitude and phase
-            mag, phase = preprocessing.get_mag_phase(waveform, chunk_wave=False)
+            # Compute STFT for the whole waveform and convert to magnitude and phase
+            mag, phase = preprocessing.get_mag_phase(
+                waveform, chunk_wave=False, scale=scale
+            )
             # Make mag and phase to a pair, shape (2, num_frequencies, num_frames)
             mag_phase_pair = torch.stack((mag, phase))
 

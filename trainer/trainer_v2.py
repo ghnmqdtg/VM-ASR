@@ -59,12 +59,17 @@ class Trainer(BaseTrainer):
             self.config_dataloader["stft_enabled"],
             self.config_dataloader["chunking_enabled"],
         )
+        # Show baisc information
         # Show model summary
         if (
             self.config_dataloader["stft_enabled"]
             and self.config_dataloader["chunking_enabled"]
         ):
             self.logger.info(model.flops())
+
+        self.logger.info(
+            f'Training with scale: {self.config_dataloader["scale"]}, AMP: {self.amp}, GAN: {self.gan}'
+        )
 
     def init_gan(self):
         # Import the multi period discriminator and the cosine annealing warmup restarts

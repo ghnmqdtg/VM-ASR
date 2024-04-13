@@ -139,24 +139,22 @@ def plot_spectrogram_from_wave(
     Returns:
         np.ndarray: Spectrogram plot
     """
-    # Set STFT parameters
-    n_fft = 1022
-    hop_length = 478
-    win_length = 956
-    window = torch.hann_window(win_length).to(waveforms[0].device)
     # Set the number of subplots
     n_plots = len(waveforms)
     # Create a subplots figure with n_plots rows
     if stft:
-        fig, axs = plt.subplots(n_plots, 2, figsize=(16, 12))
+        fig, axs = plt.subplots(n_plots, 3, figsize=(16, 12))
     else:
-        fig, axs = plt.subplots(n_plots, 1, figsize=(5, 12))
+        fig, axs = plt.subplots(n_plots, 2, figsize=(10, 12))
     # Iterate over each waveform
     for i, (name, waveform) in enumerate(zip(names, waveforms)):
         if stft:
-            # Compute the STFT
+            # Get mag, mag_dB, phase
             mag, phase = preprocessing.get_mag_phase(
-                waveform=waveform, chunk_wave=False
+                waveform=waveform, chunk_wave=False, scale="log"
+            )
+            mag_dB, _ = preprocessing.get_mag_phase(
+                waveform=waveform, chunk_wave=False, scale="dB"
             )
             # Plot the magnitude of the STFT
             img = axs[i, 0].imshow(
@@ -165,29 +163,40 @@ def plot_spectrogram_from_wave(
                 origin="lower",
                 interpolation="none",
                 cmap="viridis",
+                vmin=-15,
+            )
+            plt.colorbar(img, ax=axs[i, 0])
+            # Plot the magnitude of the STFT
+            img = axs[i, 1].imshow(
+                mag_dB.squeeze(0).detach().cpu().numpy(),
+                aspect="auto",
+                origin="lower",
+                interpolation="none",
+                cmap="viridis",
                 vmin=-40,
             )
-            # Add colorbar
-            plt.colorbar(img, ax=axs[i, 0])
+            plt.colorbar(img, ax=axs[i, 1])
             # Plot the phase of the STFT
-            img = axs[i, 1].imshow(
+            img = axs[i, 2].imshow(
                 phase.squeeze(0).detach().cpu().numpy(),
                 aspect="auto",
                 origin="lower",
                 interpolation="none",
                 cmap="viridis",
             )
-            # Add colorbar
-            plt.colorbar(img, ax=axs[i, 1])
+            plt.colorbar(img, ax=axs[i, 2])
             # Set the title
-            axs[i, 0].set_title(name)
-            axs[i, 1].set_title(name)
+            axs[i, 0].set_title(f"{name} (log)")
+            axs[i, 1].set_title(f"{name} (dB)")
+            axs[i, 2].set_title(name)
             # Set the x-axis label
             axs[i, 0].set_xlabel("Time")
             axs[i, 1].set_xlabel("Time")
+            axs[i, 2].set_xlabel("Time")
             # Set the y-axis label
             axs[i, 0].set_ylabel("Frequency")
             axs[i, 1].set_ylabel("Frequency")
+            axs[i, 2].set_ylabel("Frequency")
         else:
             # Plot the waveform (Spectrogram)
             frequencies, times, spectrogram = signal.spectrogram(
@@ -195,26 +204,45 @@ def plot_spectrogram_from_wave(
                 fs=sample_rate,
                 scaling="spectrum",
             )
-            img = axs[i].pcolormesh(
+            img = axs[i, 0].pcolormesh(
+                times,
+                frequencies,
+                10 * np.log10(spectrogram + 1e-18),
+                cmap="viridis",
+                shading="auto",
+                vmin=-150,
+            )
+            plt.colorbar(img, ax=axs[i, 0])
+            img = axs[i, 1].pcolormesh(
                 times,
                 frequencies,
                 10 * np.log10(np.abs(spectrogram) ** 2 + 1e-18),
                 cmap="viridis",
                 shading="auto",
             )
-            # Add colorbar
-            plt.colorbar(img, ax=axs[i])
+            plt.colorbar(img, ax=axs[i, 1])
             # Set the title
-            axs[i].set_title(name)
+            axs[i, 0].set_title(f"{name} (log)")
+            axs[i, 1].set_title(f"{name} (dB)")
             # Set the x-axis label
-            axs[i].set_xlabel("Time")
+            axs[i, 0].set_xlabel("Time")
+            axs[i, 1].set_xlabel("Time")
             # Set the y-axis label
-            axs[i].set_ylabel("Frequency (kHz)")
+            axs[i, 0].set_ylabel("Frequency (kHz)")
+            axs[i, 1].set_ylabel("Frequency (kHz)")
             # Set y-axis from Hz to kHz
-            axs[i].yaxis.set_major_locator(
+            axs[i, 0].yaxis.set_major_locator(
                 plt.FixedLocator([0, 5000, 10000, 15000, 20000])
             )
-            axs[i].set_yticklabels([f"{int(f/1000)}" for f in axs[i].get_yticks()])
+            axs[i, 1].yaxis.set_major_locator(
+                plt.FixedLocator([0, 5000, 10000, 15000, 20000])
+            )
+            axs[i, 0].set_yticklabels(
+                [f"{int(f/1000)}" for f in axs[i, 0].get_yticks()]
+            )
+            axs[i, 1].set_yticklabels(
+                [f"{int(f/1000)}" for f in axs[i, 1].get_yticks()]
+            )
 
     # Set the title of the plot
     plt.suptitle(title)
@@ -273,11 +301,13 @@ def plot_spectrogram_from_chunks(names, chunk_list, title="Chunks (Magnitude)"):
         # Iterate over each chunk (column)
         for j, chunk in enumerate(chunks):
             # Set the title of the plot
-            axs[i, j].set_title(f"{j+1}")
+            axs[0, j].set_title(f"{j+1}")
             # Plot the chunk
             img = axs[i, j].pcolormesh(
                 # Clip the values
                 chunk.squeeze().detach().cpu().numpy(),
+                # vmax=7 if title == "Chunks (Magnitude)" else None,
+                # vmin=-15 if title == "Chunks (Magnitude)" else None,
                 cmap="viridis",
                 shading="auto",
             )

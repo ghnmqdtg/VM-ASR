@@ -997,12 +997,7 @@ class MambaUNet(BaseModel):
     ):
         """
         Output layer v2: Using VSSLayer + PatchExpanding for upscaling.
-
-        The first VSSLayer decreases input channel size by half, and the second decreases it by 4.
-        Therefore, this version only works when dims[0]=8.
         """
-        # Check if dims[0] is 8
-        assert dim == 8
 
         return nn.Sequential(
             self.VSSLayer(
