@@ -157,6 +157,7 @@ class CustomVCTK_092(datasets.VCTK_092):
         self.white_noise = kwargs.get("white_noise", 0)
         self.stft_enabled = kwargs.get("stft_enabled", True)
         self.chunking_enabled = kwargs.get("chunking_enabled", True)
+        self.random_lpf = kwargs.get("random_lpf", False)
         self.scale = kwargs.get("scale", "log")
         self.chunking_params = kwargs.get("chunking_params", None)
         # Check if the trimmed wav files exist
@@ -274,7 +275,9 @@ class CustomVCTK_092(datasets.VCTK_092):
         if sr_new != sr_org:
             # Preprocess the audio
             # Apply low pass filter to avoid aliasing
-            waveform = preprocessing.low_pass_filter(waveform_org, sr_org, sr_new)
+            waveform = preprocessing.low_pass_filter(
+                waveform_org, sr_org, sr_new, self.random_lpf
+            )
             # Downsample the audio to a lower sample rate
             waveform = preprocessing.resample_audio(waveform, sr_org, sr_new)
             # Upsample the audio to a higher sample rate

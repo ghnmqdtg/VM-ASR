@@ -90,15 +90,18 @@ def butter_lowpass_filter(
 
 
 def cheby1_lowpass_filter(
-    normalized_cutoff: float, waveform: torch.Tensor
+    normalized_cutoff: float, waveform: torch.Tensor, randomize: bool = False
 ) -> torch.Tensor:
     """
     Apply low pass filter to the waveform to remove the high frequency components.
     """
-    order = 6
-    ripple = 1e-3
-    # order = random.randint(1, 11)
-    # ripple = random.choice([1e-9, 1e-6, 1e-3, 1, 5])
+    if randomize:
+        order = random.randint(1, 11)
+        ripple = random.choice([1e-9, 1e-6, 1e-3, 1, 5])
+    else:
+        order = 6
+        ripple = 1e-3
+
     # Create the filter coefficients
     sos = cheby1(order, ripple, normalized_cutoff, btype="lowpass", output="sos")
     # Apply the filter
@@ -109,7 +112,9 @@ def cheby1_lowpass_filter(
     return waveform_tensor
 
 
-def low_pass_filter(waveform: torch.Tensor, sr_org: int, sr_new: int) -> torch.Tensor:
+def low_pass_filter(
+    waveform: torch.Tensor, sr_org: int, sr_new: int, randomize: bool
+) -> torch.Tensor:
     """
     Apply low pass filter to the waveform to remove the high frequency components.
     This can avoid aliasing when downsampling the waveform.
@@ -118,6 +123,7 @@ def low_pass_filter(waveform: torch.Tensor, sr_org: int, sr_new: int) -> torch.T
         waveform (torch.Tensor): The input waveform
         sr_org (int): The original sample rate
         sr_new (int): The new sample rate
+        randomize (bool): Whether to randomize the filter parameters
 
     Returns:
         torch.Tensor: The filtered waveform
@@ -127,7 +133,7 @@ def low_pass_filter(waveform: torch.Tensor, sr_org: int, sr_new: int) -> torch.T
     highcut = sr_new // 2
     normalized_cutoff = highcut / nyquist
     # Apply the low pass filter
-    waveform = cheby1_lowpass_filter(normalized_cutoff, waveform)
+    waveform = cheby1_lowpass_filter(normalized_cutoff, waveform, randomize)
 
     # Return the waveform
     return waveform
