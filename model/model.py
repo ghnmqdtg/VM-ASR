@@ -672,17 +672,32 @@ class MambaUNet(BaseModel):
         self.layers_latent = nn.ModuleList()
         self.layers_decoder = nn.ModuleList()
         # self.num_layers is "stage" in the VMamba paper
-        # Here we have 4 stages, each stage has a different number of input and ouptut dimensions
+
         # Encoders
         for i_layer in range(self.num_layers):
-            downsample = _make_downsample(
-                self.dims[i_layer],
-                # The original VMamba code didn't set the downsampling for the last stage
-                # So we add extra dim for the last stage
-                self.dims[i_layer + 1],
-                norm_layer=norm_layer,
-                channel_first=self.channel_first,
-            )
+            if len(self.dims) == 5:
+                downsample = _make_downsample(
+                    # Here we have 4 stages, each stage has a different number of input and ouptut dimensions
+                    # The original VMamba code didn't set the downsampling for the last stage
+                    # So we add extra dim for the last stage
+                    self.dims[i_layer],
+                    self.dims[i_layer + 1],
+                    norm_layer=norm_layer,
+                    channel_first=self.channel_first,
+                )
+            else:
+                downsample = (
+                    _make_downsample(
+                        self.dims[i_layer],
+                        self.dims[i_layer + 1],
+                        norm_layer=norm_layer,
+                        channel_first=self.channel_first,
+                    )
+                    if (i_layer < self.num_layers - 1)
+                    # The last layer does not need downsample
+                    else nn.Identity()
+                )
+
             self.layers_encoder.append(
                 self.VSSLayer(
                     dim=self.dims[i_layer],
@@ -712,50 +727,75 @@ class MambaUNet(BaseModel):
                 )
             )
         # Latent layer
-        self.layers_latent.append(
-            self.VSSLayer(
-                dim=self.dims[self.num_layers],
-                drop_path=self.dpr[
-                    sum(self.depths[: self.num_layers - 1]) : sum(
-                        self.depths[: self.num_layers]
-                    )
-                ],
-                use_checkpoint=use_checkpoint,
-                norm_layer=norm_layer,
-                sampler=nn.Identity(),
-                channel_first=self.channel_first,
-                concat_skip=False,
-                # =================
-                ssm_d_state=ssm_d_state,
-                ssm_ratio=ssm_ratio,
-                ssm_dt_rank=ssm_dt_rank,
-                ssm_act_layer=ssm_act_layer,
-                ssm_conv=ssm_conv,
-                ssm_conv_bias=ssm_conv_bias,
-                ssm_drop_rate=ssm_drop_rate,
-                ssm_init=ssm_init,
-                forward_type=forward_type,
-                # =================
-                mlp_ratio=mlp_ratio,
-                mlp_act_layer=mlp_act_layer,
-                mlp_drop_rate=mlp_drop_rate,
-                gmlp=gmlp,
+        if len(self.dims) == 5:
+            self.layers_latent.append(
+                self.VSSLayer(
+                    dim=(
+                        self.dims[self.num_layers]
+                        if len(self.dims) == 5
+                        else self.dims[self.num_layers - 1]
+                    ),
+                    drop_path=self.dpr[
+                        sum(self.depths[: self.num_layers - 1]) : sum(
+                            self.depths[: self.num_layers]
+                        )
+                    ],
+                    use_checkpoint=use_checkpoint,
+                    norm_layer=norm_layer,
+                    sampler=nn.Identity(),
+                    channel_first=self.channel_first,
+                    concat_skip=False,
+                    # =================
+                    ssm_d_state=ssm_d_state,
+                    ssm_ratio=ssm_ratio,
+                    ssm_dt_rank=ssm_dt_rank,
+                    ssm_act_layer=ssm_act_layer,
+                    ssm_conv=ssm_conv,
+                    ssm_conv_bias=ssm_conv_bias,
+                    ssm_drop_rate=ssm_drop_rate,
+                    ssm_init=ssm_init,
+                    forward_type=forward_type,
+                    # =================
+                    mlp_ratio=mlp_ratio,
+                    mlp_act_layer=mlp_act_layer,
+                    mlp_drop_rate=mlp_drop_rate,
+                    gmlp=gmlp,
+                )
             )
-        )
         # Decoders
         # num_layers is 4, so we iterate from 3 to 0 intuitively
         # But we iterate from 4 to 1 because we add the downsample layer to the output of the last encoder layer
         # Therefore, there is an extra dim for the last stage (we set it in config), so we iterate from 4 to 1
         # The inversed dim would be 128 -> 64 -> 32 -> 16 ->8, The 8 is not used as input dim here. It's the output dim for the last decoder
         for i_layer in range(self.num_layers, 0, -1):
-            upsample = _make_upsample(
-                self.dims[i_layer],
-                dim_scale=2,
-                norm_layer=norm_layer,
-            )
+            if len(self.dims) == 5:
+                upsample = _make_upsample(
+                    self.dims[i_layer],
+                    dim_scale=2,
+                    norm_layer=norm_layer,
+                )
+            else:
+                upsample = (
+                    _make_upsample(
+                        self.dims[i_layer],
+                        dim_scale=2,
+                        norm_layer=norm_layer,
+                    )
+                    if i_layer < self.num_layers
+                    else nn.Identity()
+                )
+
             self.layers_decoder.append(
                 self.VSSLayer(
-                    dim=self.dims[i_layer],
+                    dim=(
+                        self.dims[i_layer]
+                        if len(self.dims) == 5
+                        else (
+                            self.dims[i_layer]
+                            if i_layer < self.num_layers - 1
+                            else self.dims[self.num_layers - 1]
+                        )
+                    ),
                     drop_path=self.dpr[
                         sum(self.depths[:i_layer]) : sum(self.depths[: i_layer + 1])
                     ],
@@ -763,7 +803,11 @@ class MambaUNet(BaseModel):
                     norm_layer=norm_layer,
                     sampler=upsample,
                     channel_first=self.channel_first,
-                    concat_skip=self.concat_skip if i_layer > 0 else False,
+                    concat_skip=(
+                        self.concat_skip
+                        if len(self.dims) == 5
+                        else (self.concat_skip if i_layer < self.num_layers else False)
+                    ),
                     # =================
                     ssm_d_state=ssm_d_state,
                     ssm_ratio=ssm_ratio,
@@ -826,49 +870,87 @@ class MambaUNet(BaseModel):
         skip_connections.append(mag)
         if verbose:
             print(f"Patch embedding shape: {mag.shape}")
-        # Encoder
-        for i, layer in enumerate(self.layers_encoder):
-            mag = layer(mag)
-            skip_connections.append(mag)
+        if len(self.dims) == 5:
+            for i, layer in enumerate(self.layers_encoder):
+                mag = layer(mag)
+                skip_connections.append(mag)
+                if verbose:
+                    print(f"Encoder layer {i} shape: {mag.shape}")
+            # Latent layer
+            for i, layer in enumerate(self.layers_latent):
+                mag = layer(mag)
+                if verbose:
+                    print(f"Latent layer {i} shape: {mag.shape}")
             if verbose:
-                print(f"Encoder layer {i} shape: {mag.shape}")
-        # Latent layer
-        for i, layer in enumerate(self.layers_latent):
-            mag = layer(mag)
-            if verbose:
-                print(f"Latent layer {i} shape: {mag.shape}")
+                # Print shape of each item in skip_connections
+                for i, skip in enumerate(skip_connections):
+                    print(f"Skip connection {i} shape: {skip.shape}")
+            # Decoder
+            for i, layer in enumerate(self.layers_decoder):
+                # Concatenate or add skip connection
+                mag = (
+                    torch.cat((mag, skip_connections.pop()), dim=-1)
+                    if self.concat_skip
+                    else (mag + skip_connections.pop())
+                )
+                mag = layer(mag)
+                if verbose:
+                    print(f"Decoder layer {i} shape: {mag.shape}")
 
-        if verbose:
-            # Print shape of each item in skip_connections
-            for i, skip in enumerate(skip_connections):
-                print(f"Skip connection {i} shape: {skip.shape}")
-
-        # Decoder
-        for i, layer in enumerate(self.layers_decoder):
             # Concatenate or add skip connection
             mag = (
                 torch.cat((mag, skip_connections.pop()), dim=-1)
                 if self.concat_skip
                 else (mag + skip_connections.pop())
             )
-            mag = layer(mag)
             if verbose:
-                print(f"Decoder layer {i} shape: {mag.shape}")
+                print(f"Output layer input shape: {mag.shape}")
 
-        # Concatenate or add skip connection
-        mag = (
-            torch.cat((mag, skip_connections.pop()), dim=-1)
-            if self.concat_skip
-            else (mag + skip_connections.pop())
-        )
-        if verbose:
-            print(f"Output layer input shape: {mag.shape}")
+            # Output layer
+            mag = self.output_layer(mag)
 
-        # Output layer
-        mag = self.output_layer(mag)
+            if verbose:
+                print(f"Patch output shape: {mag.shape}")
+        else:
+            # Encoder
+            for i, layer in enumerate(self.layers_encoder):
+                mag = layer(mag)
+                if i < self.num_layers - 1:
+                    skip_connections.append(mag)
+                if verbose:
+                    print(f"Encoder layer {i} shape: {mag.shape}")
+            if verbose:
+                # Print shape of each item in skip_connections
+                for i, skip in enumerate(skip_connections):
+                    print(f"Skip connection {i} shape: {skip.shape}")
+            # Decoder
+            for i, layer in enumerate(self.layers_decoder):
+                # Concatenate or add skip connection
+                if i != 0:
+                    mag = (
+                        torch.cat((mag, skip_connections.pop()), dim=-1)
+                        if self.concat_skip
+                        else (mag + skip_connections.pop())
+                    )
 
-        if verbose:
-            print(f"Patch output shape: {mag.shape}")
+                mag = layer(mag)
+                if verbose:
+                    print(f"Decoder layer {i} shape: {mag.shape}")
+
+            # Concatenate or add skip connection
+            mag = (
+                torch.cat((mag, skip_connections.pop()), dim=-1)
+                if self.concat_skip
+                else (mag + skip_connections.pop())
+            )
+            if verbose:
+                print(f"Output layer input shape: {mag.shape}")
+
+            # Output layer
+            mag = self.output_layer(mag)
+
+            if verbose:
+                print(f"Patch output shape: {mag.shape}")
 
         return mag + residual_mag, phase
 
@@ -1642,14 +1724,12 @@ if __name__ == "__main__":
     from tqdm import tqdm
     import time
 
-    # TEST: Set all the chunks to shape[0]
-    torch.cuda.reset_peak_memory_stats()
     x = torch.rand(15, 2, 1, 512, 128).to("cuda")
-    model = DualStreamInteractiveMambaUNet(
-        in_chans=x.shape[2],
+    model = MambaUNet(
+        in_chans=1,
         depths=[2, 2, 2, 2],
         dims=[8, 16, 32, 64],
-        # ===================
+        # dims=[32, 64, 128, 256],
         ssm_d_state=1,
         ssm_ratio=2.0,
         ssm_dt_rank="auto",
@@ -1658,47 +1738,10 @@ if __name__ == "__main__":
         forward_type="v5",
         mlp_ratio=4.0,
         patchembed_version="v2",
-        output_version="v2",
         downsample_version="v1",
         upsample_version="v1",
+        output_version="v3",
+        concat_skip=False,
     ).to("cuda")
-    print(model)
-    total_time = 0
-    for i in tqdm(range(12)):
-        for _ in range(x.shape[0]):
-            y = model(x)
-        # print(f"Sample time: {time_sample:.4f}")
-    print(f"Total time: {total_time:.4f}, average time: {total_time/12:.4f}")
-    print(torch.cuda.max_memory_allocated() / (1024.0 * 1024.0))
 
-    # TEST: Set all the chunks to shape[3] as channel
-    del x, model
-    torch.cuda.reset_peak_memory_stats()
-    x = torch.rand(1, 2, 15, 512, 128).to("cuda")
-    model = DualStreamInteractiveMambaUNet(
-        in_chans=x.shape[2],
-        depths=[2, 2, 2, 2],
-        dims=[8, 16, 32, 64],
-        # ===================
-        ssm_d_state=1,
-        ssm_ratio=2.0,
-        ssm_dt_rank="auto",
-        ssm_conv=3,
-        ssm_conv_bias=False,
-        forward_type="v5",
-        mlp_ratio=4.0,
-        patchembed_version="v2",
-        output_version="v2",
-        downsample_version="v1",
-        upsample_version="v1",
-    ).to("cuda")
-    total_time = 0
-    for i in tqdm(range(12)):
-        for _ in range(x.shape[0]):
-            y = model(x)
-        # print(f"Sample time: {time_sample:.4f}")
-    print(f"Total time: {total_time:.4f}, average time: {total_time/12:.4f}")
-    print(torch.cuda.max_memory_allocated() / (1024.0 * 1024.0))
-
-    # Test the flops
-    # print(model.flops(shape=(2, 15, 512, 128)))
+    print(model.flops())
