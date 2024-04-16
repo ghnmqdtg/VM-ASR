@@ -357,12 +357,14 @@ class Trainer(BaseTrainer):
             chunk_wave=False,
             batch_input=True,
             stft_params=self.config_dataloader["stft_params"],
+            scale="dB"
         )
         target_mag, target_phase = preprocessing.get_mag_phase(
             target_wave,
             chunk_wave=False,
             batch_input=True,
             stft_params=self.config_dataloader["stft_params"],
+            scale="dB"
         )
         # Calculate the total loss
         local_mag_loss = torch.stack(chunk_losses["mag"]).mean()
@@ -484,12 +486,14 @@ class Trainer(BaseTrainer):
             chunk_wave=False,
             batch_input=True,
             stft_params=self.config_dataloader["stft_params"],
+            scale="dB"
         )
         target_mag, target_phase = preprocessing.get_mag_phase(
             target_wave,
             chunk_wave=False,
             batch_input=True,
             stft_params=self.config_dataloader["stft_params"],
+            scale="dB"
         )
 
         # Calculate the global loss
