@@ -1460,13 +1460,17 @@ class DualStreamInteractiveMambaUNet(MambaUNet):
         # Create magnitude stream
         self.patch_embed_mag = deepcopy(self.patch_embed)
         self.layers_encoder_mag = deepcopy(self.layers_encoder)
-        self.layers_latent_mag = deepcopy(self.layers_latent)
+        self.layers_latent_mag = (
+            deepcopy(self.layers_latent) if len(self.dims) == 5 else None
+        )
         self.layers_decoder_mag = deepcopy(self.layers_decoder)
         self.output_layer_mag = deepcopy(self.output_layer)
         # Create phase stream
         self.patch_embed_phase = deepcopy(self.patch_embed)
         self.layers_encoder_phase = deepcopy(self.layers_encoder)
-        self.layers_latent_phase = deepcopy(self.layers_latent)
+        self.layers_latent_phase = (
+            deepcopy(self.layers_latent) if len(self.dims) == 5 else None
+        )
         self.layers_decoder_phase = deepcopy(self.layers_decoder)
         self.output_layer_phase = deepcopy(self.output_layer)
 
@@ -1492,47 +1496,90 @@ class DualStreamInteractiveMambaUNet(MambaUNet):
         mag = self.patch_embed_mag(mag)
         phase = self.patch_embed_phase(phase)
         skip_connections.append((mag, phase))
-        # Encoders (zip is used to iterate over two lists at the same time)
-        for i, (encoder_mag, encoder_phase) in enumerate(
-            zip(self.layers_encoder_mag, self.layers_encoder_phase)
-        ):
-            mag = encoder_mag(mag)
-            phase = encoder_phase(phase)
-            skip_connections.append((mag, phase))
-            # Interacting
-            mag = mag + phase
-            phase = phase + mag
-        # Latent layer
-        for i, (latent_mag, latent_phase) in enumerate(
-            zip(self.layers_latent_mag, self.layers_latent_phase)
-        ):
-            mag = latent_mag(mag)
-            phase = latent_phase(phase)
-        # Decoders
-        for i, (decoder_mag, decoder_phase) in enumerate(
-            zip(self.layers_decoder_mag, self.layers_decoder_phase)
-        ):
-            # Concatenate or add skip connection
+        if len(self.dims) == 5:
+            # Encoders (zip is used to iterate over two lists at the same time)
+            for i, (encoder_mag, encoder_phase) in enumerate(
+                zip(self.layers_encoder_mag, self.layers_encoder_phase)
+            ):
+                mag = encoder_mag(mag)
+                phase = encoder_phase(phase)
+                skip_connections.append((mag, phase))
+                # Interacting
+                mag = mag + phase
+                phase = phase + mag
+            # Latent layer
+            for i, (latent_mag, latent_phase) in enumerate(
+                zip(self.layers_latent_mag, self.layers_latent_phase)
+            ):
+                mag = latent_mag(mag)
+                phase = latent_phase(phase)
+            # Decoders
+            for i, (decoder_mag, decoder_phase) in enumerate(
+                zip(self.layers_decoder_mag, self.layers_decoder_phase)
+            ):
+                # Concatenate or add skip connection
+                mag_skip, phase_skip = skip_connections.pop()
+                if self.concat_skip:
+                    mag = decoder_mag(torch.cat((mag, mag_skip), dim=-1))
+                    phase = decoder_mag(torch.cat((phase, phase_skip), dim=-1))
+                else:
+                    mag = decoder_mag(mag + mag_skip)
+                    phase = decoder_phase(phase + phase_skip)
+
+                # Interacting
+                mag = mag + phase
+                phase = phase + mag
+
+            # Concatenate or add skip connection for the output layer
             mag_skip, phase_skip = skip_connections.pop()
             if self.concat_skip:
-                mag = decoder_mag(torch.cat((mag, mag_skip), dim=-1))
-                phase = decoder_phase(torch.cat((phase, phase_skip), dim=-1))
+                mag = self.output_layer_mag(torch.cat((mag, mag_skip), dim=-1))
+                phase = self.output_layer_phase(torch.cat((phase, phase_skip), dim=-1))
             else:
-                mag = decoder_mag(mag + mag_skip)
-                phase = decoder_phase(phase + phase_skip)
-
-            # Interacting
-            mag = mag + phase
-            phase = phase + mag
-
-        # Concatenate or add skip connection for the output layer
-        mag_skip, phase_skip = skip_connections.pop()
-        if self.concat_skip:
-            mag = self.output_layer_mag(torch.cat((mag, mag_skip), dim=-1))
-            phase = self.output_layer_phase(torch.cat((phase, phase_skip), dim=-1))
+                mag = self.output_layer_mag(mag + mag_skip)
+                phase = self.output_layer_phase(phase + phase_skip)
         else:
-            mag = self.output_layer_mag(mag + mag_skip)
-            phase = self.output_layer_phase(phase + phase_skip)
+            # Encoders (zip is used to iterate over two lists at the same time)
+            for i, (encoder_mag, encoder_phase) in enumerate(
+                zip(self.layers_encoder_mag, self.layers_encoder_phase)
+            ):
+                mag = encoder_mag(mag)
+                phase = encoder_phase(phase)
+                if i < self.num_layers - 1:
+                    skip_connections.append((mag, phase))
+                # Interacting
+                mag = mag + phase
+                phase = phase + mag
+
+            # Decoders
+            for i, (decoder_mag, decoder_phase) in enumerate(
+                zip(self.layers_decoder_mag, self.layers_decoder_phase)
+            ):
+                if i != 0:
+                    # Concatenate or add skip connection
+                    mag_skip, phase_skip = skip_connections.pop()
+                    if self.concat_skip:
+                        mag = decoder_mag(torch.cat((mag, mag_skip), dim=-1))
+                        phase = decoder_mag(torch.cat((phase, phase_skip), dim=-1))
+                    else:
+                        mag = decoder_mag(mag + mag_skip)
+                        phase = decoder_phase(phase + phase_skip)
+                else:
+                    mag = decoder_mag(mag)
+                    phase = decoder_phase(phase)
+
+                # Interacting
+                mag = mag + phase
+                phase = phase + mag
+
+            # Concatenate or add skip connection for the output layer
+            mag_skip, phase_skip = skip_connections.pop()
+            if self.concat_skip:
+                mag = self.output_layer_mag(torch.cat((mag, mag_skip), dim=-1))
+                phase = self.output_layer_phase(torch.cat((phase, phase_skip), dim=-1))
+            else:
+                mag = self.output_layer_mag(mag + mag_skip)
+                phase = self.output_layer_phase(phase + phase_skip)
 
         # Residual connection
         return mag + residual_mag, phase + residual_phase
@@ -1724,8 +1771,30 @@ if __name__ == "__main__":
     from tqdm import tqdm
     import time
 
-    x = torch.rand(15, 2, 1, 512, 128).to("cuda")
-    model = MambaUNet(
+    # x = torch.rand(12, 2, 1, 512, 128).to("cuda")
+    # model = MambaUNet(
+    #     in_chans=1,
+    #     depths=[2, 2, 2, 2],
+    #     dims=[8, 16, 32, 64],
+    #     # dims=[32, 64, 128, 256],
+    #     ssm_d_state=1,
+    #     ssm_ratio=2.0,
+    #     ssm_dt_rank="auto",
+    #     ssm_conv=3,
+    #     ssm_conv_bias=False,
+    #     forward_type="v5",
+    #     mlp_ratio=4.0,
+    #     patchembed_version="v2",
+    #     downsample_version="v1",
+    #     upsample_version="v1",
+    #     output_version="v3",
+    #     concat_skip=False,
+    # ).to("cuda")
+
+    # print(model.flops())
+
+    x = torch.rand(12, 2, 1, 512, 128).to("cuda")
+    model = DualStreamInteractiveMambaUNet(
         in_chans=1,
         depths=[2, 2, 2, 2],
         dims=[8, 16, 32, 64],
