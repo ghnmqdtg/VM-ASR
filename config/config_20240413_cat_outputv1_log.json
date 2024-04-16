@@ -111,7 +111,7 @@
         "save_period": 1,
         "verbosity": 2,
         "monitor": "min val_total_loss",
-        "early_stop": 5,
+        "early_stop": 10,
         "amp": true,
         "gan": false,
         "tensorboard": true,
