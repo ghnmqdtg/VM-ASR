@@ -1,4 +1,5 @@
 import json
+import math
 import time
 import torch
 import torchaudio
@@ -213,45 +214,36 @@ def cut2chunks(
         torch.Tensor: A stack of chunks
         padding_length (int, optional): The length of the padding. Defaults to None.
     """
-    # Initialize the list of chunks
-    chunks = []
+    # Calculate total chunk size including buffer
+    total_chunk_size = chunk_size + 2 * chunk_buffer
+
     # Get the length of the waveform
     length = waveform.shape[-1]
-    # Step size
+
+    # Calculate the number of chunks by dividing the length by the step size
     step_size = chunk_size - overlap
+    num_chunks = max(1, math.ceil((length - chunk_buffer) / step_size))
 
-    start = 0
-    padding_length = 0
+    # Prepare padding for the last chunk
+    padding_needed = total_chunk_size * num_chunks - length
+    padding_length = padding_needed + chunk_buffer
 
-    # Cut the waveform into chunks, finish when the last chunk is smaller than chunk_size
-    # If chunk_buffer is specified, then the chunk size is chunk_buffer + chunk_size + chunk_buffer
-    # Which means we chunk the waveform with a buffer on each side (not the same idea as overlap)
-    if chunk_buffer:
-        # Chunk the first chunk, pad the beginning with zeros
-        first_chunk = waveform[..., start : start + chunk_size + chunk_buffer]
-        first_chunk = F.pad(first_chunk, (chunk_buffer, 0), "constant", 0)
-        chunks.append(first_chunk)
-        start += step_size
+    # Pad waveform at the end to accommodate even division into chunks
+    waveform = F.pad(waveform, (chunk_buffer, padding_length), "constant", 0)
 
-    while start + chunk_size <= length:
-        chunks.append(
-            waveform[..., start - chunk_buffer : start + chunk_size + chunk_buffer]
-        )
-        start += step_size
+    # Create chunks with overlap and buffer
+    chunks = []
+    for i in range(num_chunks):
+        start = i * step_size
+        chunks.append(waveform[..., start : start + total_chunk_size])
 
-    # Pad the last chunk with zeros
-    if start < length:
-        last_chunk = waveform[..., start - chunk_buffer :]
-        # If padding is required, pad the last chunk to the chunk_size
-        padding_length = (chunk_size + 2 * chunk_buffer) - last_chunk.size(-1)
-        # Pad the last chunk with zeros from the right
-        last_chunk = F.pad(last_chunk, (0, padding_length), "constant", 0)
-        chunks.append(last_chunk)
+    # Stack all chunks along a new dimension
+    stacked_chunks = torch.stack(chunks)
 
     if return_padding_length:
-        return torch.stack(chunks), padding_length
+        return stacked_chunks, padding_length
     else:
-        return torch.stack(chunks)
+        return stacked_chunks, 0
 
 
 def get_mag_phase(
@@ -583,7 +575,6 @@ if __name__ == "__main__":
             padding_length,
             batch_input=False,
             config_dataloader=config_dataloader,
-            scale="log",
         )
         # Plot the waveform, magnitude and phase
         plot_all(

@@ -71,7 +71,7 @@ class VCTKDataLoader(BaseDataLoader):
             shuffle,
             validation_split,
             num_workers,
-            # collate_fn=self._collate_fn,
+            collate_fn=self._collate_fn,
         )
 
     def _collate_fn(self, batch):
@@ -114,7 +114,7 @@ class VCTKDataLoader(BaseDataLoader):
         new_batch_x = torch.stack(new_batch_x)
         new_batch_y = torch.stack(new_batch_y)
 
-        return new_batch_x, new_batch_y
+        return new_batch_x, new_batch_y, torch.tensor(batch_split[2])
 
 
 class CustomVCTK_092(datasets.VCTK_092):
@@ -291,13 +291,13 @@ class CustomVCTK_092(datasets.VCTK_092):
         if self.stft_enabled:
             # Return the magnitude and phase of the audio in the time-frequency domain
             # Shape: (2 (mag and phase), num_chunks, num_frequencies, num_frames)
-            x = self._get_mag_phase(
+            x, padding_length = self._get_mag_phase(
                 waveform,
                 chunk_wave=self.chunking_enabled,
                 chunk_buffer=self.chunking_params["chunk_buffer"],
                 scale=self.scale,
             )
-            y = self._get_mag_phase(
+            y, padding_length = self._get_mag_phase(
                 waveform_org,
                 chunk_wave=self.chunking_enabled,
                 chunk_buffer=self.chunking_params["chunk_buffer"],
@@ -326,7 +326,7 @@ class CustomVCTK_092(datasets.VCTK_092):
                 x = waveform
                 y = waveform_org
 
-        return x, y
+        return x, y, padding_length
 
     def _get_mag_phase(
         self,
@@ -386,7 +386,7 @@ class CustomVCTK_092(datasets.VCTK_092):
             mag_phase_pair = torch.stack((mag, phase))
 
         # Return the magnitude and phase in tensors
-        return mag_phase_pair
+        return mag_phase_pair, padding_length
 
     def _load_audio(self, file_path) -> Tuple[torch.Tensor | int]:
         return super()._load_audio(file_path)
@@ -411,9 +411,9 @@ class CustomVCTK_092(datasets.VCTK_092):
         waveform, sr = self._load_audio(audio_path)
         # TODO: Return the padding length for post-processing
         # Process the waveform with the audio processing pipeline
-        x, y = self.get_io_pairs(waveform, sr)
+        x, y, padding_length = self.get_io_pairs(waveform, sr)
 
-        return x, y
+        return x, y, padding_length
 
     def __getitem__(self, n: int) -> Tuple[torch.Tensor, torch.Tensor]:
         """Load the n-th sample from the dataset.

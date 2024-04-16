@@ -165,7 +165,7 @@ class Trainer(BaseTrainer):
                     "mem": 0,
                 },
             ) as tepoch:
-                for batch_idx, (data, target) in enumerate(tepoch):
+                for batch_idx, (data, target, padding_length) in enumerate(tepoch):
                     # Set description for the progress bar
                     tepoch.set_description(
                         f"Epoch {epoch} [TRAIN] {self._progress(batch_idx, training=True)}"
@@ -175,8 +175,10 @@ class Trainer(BaseTrainer):
                     # Update step for the tensorboard
                     self.writer.set_step(epoch)
                     # Set non_blocking to True for faster data transfer
-                    data, target = data.to(self.device, non_blocking=True), target.to(
-                        self.device, non_blocking=True
+                    data, target, padding_length = (
+                        data.to(self.device, non_blocking=True),
+                        target.to(self.device, non_blocking=True),
+                        padding_length.to(self.device, non_blocking=True),
                     )
                     # Forward pass
                     (
@@ -185,7 +187,9 @@ class Trainer(BaseTrainer):
                         outputs_mag,
                         outputs_phase,
                         metrics_values,
-                    ) = self._runner(data, target, batch_idx, training=True)
+                    ) = self._runner(
+                        data, target, padding_length, batch_idx, training=True
+                    )
 
                     # Update the progress bar
                     self.update_progress_bar(tepoch, metrics_values)
@@ -239,7 +243,7 @@ class Trainer(BaseTrainer):
                 },
             ) as tepoch:
                 with torch.no_grad():
-                    for batch_idx, (data, target) in enumerate(tepoch):
+                    for batch_idx, (data, target, padding_length) in enumerate(tepoch):
                         # Set description for the progress bar
                         tepoch.set_description(
                             f"Epoch {epoch} [VALID] {self._progress(batch_idx, training=False)}"
@@ -249,9 +253,11 @@ class Trainer(BaseTrainer):
                         # Update step for the tensorboard
                         self.writer.set_step(epoch, "valid")
                         # Set non_blocking to True for faster data transfer
-                        data, target = data.to(
-                            self.device, non_blocking=True
-                        ), target.to(self.device, non_blocking=True)
+                        data, target, padding_length = (
+                            data.to(self.device, non_blocking=True),
+                            target.to(self.device, non_blocking=True),
+                            padding_length.to(self.device, non_blocking=True),
+                        )
                         # Forward pass
                         (
                             output_wave,
@@ -259,7 +265,9 @@ class Trainer(BaseTrainer):
                             outputs_mag,
                             outputs_phase,
                             metrics_values,
-                        ) = self._runner(data, target, batch_idx, training=False)
+                        ) = self._runner(
+                            data, target, padding_length, batch_idx, training=False
+                        )
 
                         # Update the progress bar
                         self.update_progress_bar(tepoch, metrics_values)
@@ -291,7 +299,9 @@ class Trainer(BaseTrainer):
                     # Log the progress bar to info.log after the epoch
                     self.logger.info(tepoch)
 
-    def process_stft_chunks(self, data, target, batch_idx, training=True):
+    def process_stft_chunks(
+        self, data, target, padding_length, batch_idx, training=True
+    ):
         """
         Update the model weights once after processing all the chunks.
         """
@@ -403,7 +413,9 @@ class Trainer(BaseTrainer):
             metrics_values,
         )
 
-    def process_stft_chunks_v2(self, data, target, batch_idx, training=True):
+    def process_stft_chunks_v2(
+        self, data, target, padding_length, batch_idx, training=True
+    ):
         """
         Update the model weights after processing each chunk.
         """
