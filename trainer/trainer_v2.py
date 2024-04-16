@@ -68,7 +68,7 @@ class Trainer(BaseTrainer):
             self.logger.info(model.flops())
 
         self.logger.info(
-            f'Training with scale: {self.config_dataloader["scale"]}, random LPS: {self.config_dataloader["random_lpf"]}, AMP: {self.amp}, GAN: {self.gan}\n'
+            f'Training with scale: {self.config_dataloader["scale"]}, random LPF: {self.config_dataloader["random_lpf"]}, AMP: {self.amp}, GAN: {self.gan}\n'
         )
 
     def init_gan(self):

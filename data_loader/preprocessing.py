@@ -91,18 +91,11 @@ def butter_lowpass_filter(
 
 
 def cheby1_lowpass_filter(
-    normalized_cutoff: float, waveform: torch.Tensor, randomize: bool = False
+    normalized_cutoff: float, waveform: torch.Tensor, order: int, ripple: float
 ) -> torch.Tensor:
     """
     Apply low pass filter to the waveform to remove the high frequency components.
     """
-    if randomize:
-        order = random.randint(1, 11)
-        ripple = random.choice([1e-9, 1e-6, 1e-3, 1, 5])
-    else:
-        order = 6
-        ripple = 1e-3
-
     # Create the filter coefficients
     sos = cheby1(order, ripple, normalized_cutoff, btype="lowpass", output="sos")
     # Apply the filter
@@ -114,7 +107,7 @@ def cheby1_lowpass_filter(
 
 
 def low_pass_filter(
-    waveform: torch.Tensor, sr_org: int, sr_new: int, randomize: bool
+    waveform: torch.Tensor, sr_org: int, sr_new: int, **kwargs
 ) -> torch.Tensor:
     """
     Apply low pass filter to the waveform to remove the high frequency components.
@@ -133,8 +126,10 @@ def low_pass_filter(
     nyquist = sr_org / 2
     highcut = sr_new // 2
     normalized_cutoff = highcut / nyquist
+    order = kwargs.get("order", 6)
+    ripple = kwargs.get("ripple", 1e-3)
     # Apply the low pass filter
-    waveform = cheby1_lowpass_filter(normalized_cutoff, waveform, randomize)
+    waveform = cheby1_lowpass_filter(normalized_cutoff, waveform, order=order, ripple=ripple)
 
     # Return the waveform
     return waveform

@@ -274,14 +274,25 @@ class CustomVCTK_092(datasets.VCTK_092):
         )
         if sr_new != sr_org:
             # Preprocess the audio
+            if self.random_lpf:
+                order = random.randint(1, 11)
+                ripple = random.choice([1e-9, 1e-6, 1e-3, 1, 5])
+            else:
+                order = 6
+                ripple = 1e-3
+
             # Apply low pass filter to avoid aliasing
             waveform = preprocessing.low_pass_filter(
-                waveform_org, sr_org, sr_new, self.random_lpf
+                waveform_org, sr_org, sr_new, order=order, ripple=ripple
             )
             # Downsample the audio to a lower sample rate
             waveform = preprocessing.resample_audio(waveform, sr_org, sr_new)
             # Upsample the audio to a higher sample rate
             waveform = preprocessing.resample_audio(waveform, sr_new, sr_org)
+            # Remove the artifacts from the resampling
+            waveform = preprocessing.low_pass_filter(
+                waveform, sr_org, sr_new, order=order, ripple=ripple
+            )
             # Align the length of the waveform
             waveform = preprocessing.align_waveform(waveform, waveform_org)
         else:
