@@ -407,7 +407,10 @@ def plot_chunks(sr_new, chunks, mag_chunks, mag_chunks_dB, phase_chunks):
     axs[3, 0].set_ylim(-1, 1)
     for i in range(mag_chunks.size(0)):
         axs[0, i].imshow(mag_chunks[i].numpy(), aspect="auto", origin="lower")
+        # Compute the average of the magnitude
+        axs[0, i].set_title(f"AVG: {torch.mean(mag_chunks[i]):0.2f}")
         axs[1, i].imshow(mag_chunks_dB[i].numpy(), aspect="auto", origin="lower")
+        axs[1, i].set_title(f"AVG: {torch.mean(mag_chunks_dB[i]):0.2f}")
         axs[2, i].imshow(phase_chunks[i].numpy(), aspect="auto", origin="lower")
         axs[3, i].plot(chunks[i].squeeze().numpy())
     plt.tight_layout()

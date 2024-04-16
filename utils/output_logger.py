@@ -301,15 +301,10 @@ def plot_spectrogram_from_chunks(names, chunk_list, title="Chunks (Magnitude)"):
         # Iterate over each chunk (column)
         for j, chunk in enumerate(chunks):
             # Set the title of the plot
-            axs[0, j].set_title(f"{j+1}")
+            axs[i, j].set_title(f"AVG: {torch.mean(chunk):0.2f}")
             # Plot the chunk
-            img = axs[i, j].pcolormesh(
-                # Clip the values
-                chunk.squeeze().detach().cpu().numpy(),
-                # vmax=7 if title == "Chunks (Magnitude)" else None,
-                # vmin=-15 if title == "Chunks (Magnitude)" else None,
-                cmap="viridis",
-                shading="auto",
+            img = axs[i, j].imshow(
+                chunk.squeeze().detach().cpu().numpy(), aspect="auto", origin="lower"
             )
     # Set layout to tight
     plt.tight_layout()
