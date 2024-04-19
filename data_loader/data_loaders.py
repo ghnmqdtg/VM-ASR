@@ -114,7 +114,12 @@ class VCTKDataLoader(BaseDataLoader):
         new_batch_x = torch.stack(new_batch_x)
         new_batch_y = torch.stack(new_batch_y)
 
-        return new_batch_x, new_batch_y, torch.tensor(batch_split[2])
+        return (
+            new_batch_x,
+            new_batch_y,
+            torch.tensor(batch_split[2]),
+            torch.tensor(batch_split[3]),
+        )
 
 
 class CustomVCTK_092(datasets.VCTK_092):
@@ -262,12 +267,17 @@ class CustomVCTK_092(datasets.VCTK_092):
             sr (int): The sample rate of the audio waveform
 
         Returns:
-            Tensor: The input-output pair of magnitude and phase
+            x (Tensor): The magnitude and phase of the input in the time-frequency domain
+            y (Tensor): The magnitude and phase of the original audio in the time-frequency domain
+            padding_length (int): The length of the padding for the last chunk
+            hf (int): The highcut frequency for the low pass filter
         """
         # List of target sample rates to choose from
         # sr_new = random.choice(self.random_resample)
         # * TEST: Uniformly choose an integer from min to max in the list
         sr_new = random.randint(self.random_resample[0], self.random_resample[-1])
+        # Highcut frequency
+        hf = int(1025 * (sr_new / sr_org))
         # Crop or pad the waveform to a fixed length
         waveform_org = preprocessing.crop_or_pad_waveform(
             waveform_org, {"length": self.length, "white_noise": self.white_noise}
@@ -337,7 +347,7 @@ class CustomVCTK_092(datasets.VCTK_092):
                 x = waveform
                 y = waveform_org
 
-        return x, y, padding_length
+        return x, y, padding_length, hf
 
     def _get_mag_phase(
         self,
@@ -422,9 +432,9 @@ class CustomVCTK_092(datasets.VCTK_092):
         waveform, sr = self._load_audio(audio_path)
         # TODO: Return the padding length for post-processing
         # Process the waveform with the audio processing pipeline
-        x, y, padding_length = self.get_io_pairs(waveform, sr)
+        x, y, padding_length, hf = self.get_io_pairs(waveform, sr)
 
-        return x, y, padding_length
+        return x, y, padding_length, hf
 
     def __getitem__(self, n: int) -> Tuple[torch.Tensor, torch.Tensor]:
         """Load the n-th sample from the dataset.

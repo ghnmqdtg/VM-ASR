@@ -2,46 +2,67 @@ import torch
 import torch.nn.functional as F
 
 
-def psnr(output, target, max_val=32767):
-    """
-    Compute the Peak Signal-to-Noise Ratio (PSNR) between the predicted and target waveforms.
+def stft(audio, n_fft=2048, hop_length=512):
+    hann_window = torch.hann_window(n_fft).to(audio.device)
+    stft_spec = torch.stft(
+        audio, n_fft, hop_length, window=hann_window, return_complex=True
+    )
+    mag = torch.abs(stft_spec)
+    phase = torch.angle(stft_spec)
 
-    Args:
-        output (torch.Tensor): The predicted waveform.
-        target (torch.Tensor): The target waveform.
-        max_val (float): The maximum value of the input waveforms (e.g., 32767 for 16-bit audio)
-
-    Returns:
-        torch.Tensor: The PSNR value for each example in the batch.
-    """
-    mse = F.mse_loss(output, target)
-    psnr = 20 * torch.log10(max_val / torch.sqrt(mse))
-    # Compute the mean PSNR for the whole batch and convert to float
-    psnr = psnr.item()
-    return psnr
+    return mag, phase
 
 
-def log_spectral_distance(output_mag, target_mag):
-    """
-    Compute the Log-Spectral Distance (LSD) between the predicted and target waveforms.
+def snr(output, target, **kwargs):
+    snr = (
+        20
+        * torch.log10(
+            torch.norm(target, dim=-1)
+            / torch.norm(output - target, dim=-1).clamp(min=1e-8)
+        )
+    ).mean()
+    return snr.item()
 
-    Args:
-        output_mag (torch.Tensor): The magnitude of the predicted waveform.
-        target_mag (torch.Tensor): The magnitude of the target waveform.
 
-    Returns:
-        torch.Tensor: The LSD value for each example in the batch.
-    """
-    # Add a small epsilon to avoid log of zero
-    epsilon = 1e-8
-    output_mag = torch.clamp(output_mag, min=epsilon)
-    target_mag = torch.clamp(target_mag, min=epsilon)
+def lsd(output, target, **kwargs):
+    sp = torch.log10(stft(output)[0].square().clamp(1e-8))
+    st = torch.log10(stft(target)[0].square().clamp(1e-8))
+    return (sp - st).square().mean(dim=1).sqrt().mean().item()
 
-    # Compute the log-spectral distance
-    log_diff = torch.log10(output_mag) - torch.log10(target_mag)
-    # Mean over frequency bins and then mean over time frames
-    lsd = torch.mean(torch.sqrt(torch.mean(log_diff**2, dim=-1)), dim=-1)
-    # Compute the mean LSD for the whole batch and convert to float
-    lsd = torch.mean(lsd).item()
 
-    return lsd
+def lsd_hf(output, target, hf):
+    sp = torch.log10(stft(output)[0].square().clamp(1e-8))
+    st = torch.log10(stft(target)[0].square().clamp(1e-8))
+    val = []
+    for i in range(output.size(0)):
+        hf_i = hf[i].item()
+        val.append(
+            (
+                (sp[i, hf_i:, :] - st[i, hf_i:, :])
+                .square()
+                .mean(dim=0)
+                .sqrt()
+                .mean()
+                .item()
+            )
+        )
+    return torch.tensor(val).mean().item()
+
+
+def lsd_lf(output, target, hf):
+    sp = torch.log10(stft(output)[0].square().clamp(1e-8))
+    st = torch.log10(stft(target)[0].square().clamp(1e-8))
+    val = []
+    for i in range(output.size(0)):
+        hf_i = hf[i].item()
+        val.append(
+            (
+                (sp[i, :hf_i, :] - st[i, :hf_i, :])
+                .square()
+                .mean(dim=0)
+                .sqrt()
+                .mean()
+                .item()
+            )
+        )
+    return torch.tensor(val).mean().item()

@@ -122,7 +122,10 @@ class Trainer(BaseTrainer):
             *[m.__name__ for m in self.metric_ftns],
             writer=self.writer,
         )
-        self.logger.info("Metrics: {}".format(self.metrics))
+        self.logger.info("Loss Metrics: {}".format(self.metrics))
+        self.logger.info(
+            "Metric Functions: {}".format([m.__name__ for m in self.metric_ftns])
+        )
 
     def init_runner(self, stft_enabled, chunking_enabled):
         # Define the runners for each combination of stft_enabled and chunking_enabled
@@ -162,10 +165,14 @@ class Trainer(BaseTrainer):
                     "total_loss": 0.0,
                     "global_loss": 0.0,
                     "local_loss": 0.0,
+                    "snr": 0.0,
+                    "lsd": 0.0,
+                    "lsd-hf": 0.0,
+                    "lsd-lf": 0.0,
                     "mem": 0,
                 },
             ) as tepoch:
-                for batch_idx, (data, target, padding_length) in enumerate(tepoch):
+                for batch_idx, (data, target, padding_length, hf) in enumerate(tepoch):
                     # Set description for the progress bar
                     tepoch.set_description(
                         f"Epoch {epoch} [TRAIN] {self._progress(batch_idx, training=True)}"
@@ -175,10 +182,11 @@ class Trainer(BaseTrainer):
                     # Update step for the tensorboard
                     self.writer.set_step(epoch)
                     # Set non_blocking to True for faster data transfer
-                    data, target, padding_length = (
+                    data, target, padding_length, hf = (
                         data.to(self.device, non_blocking=True),
                         target.to(self.device, non_blocking=True),
-                        padding_length.to(self.device, non_blocking=True),
+                        padding_length,
+                        hf,
                     )
                     # Forward pass
                     (
@@ -188,7 +196,7 @@ class Trainer(BaseTrainer):
                         outputs_phase,
                         metrics_values,
                     ) = self._runner(
-                        data, target, padding_length, batch_idx, training=True
+                        data, target, padding_length, hf, batch_idx, training=True
                     )
 
                     # Update the progress bar
@@ -243,7 +251,12 @@ class Trainer(BaseTrainer):
                 },
             ) as tepoch:
                 with torch.no_grad():
-                    for batch_idx, (data, target, padding_length) in enumerate(tepoch):
+                    for batch_idx, (
+                        data,
+                        target,
+                        padding_length,
+                        hf,
+                    ) in enumerate(tepoch):
                         # Set description for the progress bar
                         tepoch.set_description(
                             f"Epoch {epoch} [VALID] {self._progress(batch_idx, training=False)}"
@@ -253,10 +266,11 @@ class Trainer(BaseTrainer):
                         # Update step for the tensorboard
                         self.writer.set_step(epoch, "valid")
                         # Set non_blocking to True for faster data transfer
-                        data, target, padding_length = (
+                        data, target, padding_length, hf = (
                             data.to(self.device, non_blocking=True),
                             target.to(self.device, non_blocking=True),
-                            padding_length.to(self.device, non_blocking=True),
+                            padding_length,
+                            hf.to(self.device, non_blocking=True),
                         )
                         # Forward pass
                         (
@@ -266,7 +280,12 @@ class Trainer(BaseTrainer):
                             outputs_phase,
                             metrics_values,
                         ) = self._runner(
-                            data, target, padding_length, batch_idx, training=False
+                            data,
+                            target,
+                            padding_length,
+                            hf,
+                            batch_idx,
+                            training=False,
                         )
 
                         # Update the progress bar
@@ -300,7 +319,7 @@ class Trainer(BaseTrainer):
                     self.logger.info(tepoch)
 
     def process_stft_chunks(
-        self, data, target, padding_length, batch_idx, training=True
+        self, data, target, padding_length, hf, batch_idx, training=True
     ):
         """
         Update the model weights once after processing all the chunks.
@@ -357,14 +376,14 @@ class Trainer(BaseTrainer):
             chunk_wave=False,
             batch_input=True,
             stft_params=self.config_dataloader["stft_params"],
-            scale="dB"
+            scale="dB",
         )
         target_mag, target_phase = preprocessing.get_mag_phase(
             target_wave,
             chunk_wave=False,
             batch_input=True,
             stft_params=self.config_dataloader["stft_params"],
-            scale="dB"
+            scale="dB",
         )
         # Calculate the total loss
         local_mag_loss = torch.stack(chunk_losses["mag"]).mean()
@@ -401,7 +420,11 @@ class Trainer(BaseTrainer):
             "local_phase_loss": local_phase_loss.item(),
         }
         for met in self.metric_ftns:
-            metrics_values[met.__name__] = met(output_mag, target_mag)
+            metrics_values[met.__name__] = met(
+                output_wave.squeeze(1),
+                target_wave.squeeze(1),
+                hf=hf,
+            )
 
         # Update the metrics
         self.update_metrics(metrics_values, training=training)
@@ -416,7 +439,7 @@ class Trainer(BaseTrainer):
         )
 
     def process_stft_chunks_v2(
-        self, data, target, padding_length, batch_idx, training=True
+        self, data, target, padding_length, hf, batch_idx, training=True
     ):
         """
         Update the model weights after processing each chunk.
@@ -486,14 +509,14 @@ class Trainer(BaseTrainer):
             chunk_wave=False,
             batch_input=True,
             stft_params=self.config_dataloader["stft_params"],
-            scale="dB"
+            scale="dB",
         )
         target_mag, target_phase = preprocessing.get_mag_phase(
             target_wave,
             chunk_wave=False,
             batch_input=True,
             stft_params=self.config_dataloader["stft_params"],
-            scale="dB"
+            scale="dB",
         )
 
         # Calculate the global loss
@@ -516,7 +539,11 @@ class Trainer(BaseTrainer):
             "local_phase_loss": local_phase_loss.item(),
         }
         for met in self.metric_ftns:
-            metrics_values[met.__name__] = met(output_mag, target_mag)
+            metrics_values[met.__name__] = met(
+                output_wave.squeeze(1),
+                target_wave.squeeze(1),
+                hf=hf,
+            )
 
         # Update the metrics
         self.update_metrics(metrics_values, training=training)
@@ -611,7 +638,18 @@ class Trainer(BaseTrainer):
             k: v
             for k, v in metrics_values.items()
             if k
-            in ["total_loss", "global_loss", "local_loss", "loss_G", "loss_D", "loss_F"]
+            in [
+                "total_loss",
+                "global_loss",
+                "local_loss",
+                "loss_G",
+                "loss_D",
+                "loss_F",
+                "snr",
+                "lsd",
+                "lsd-hf",
+                "lsd-lf",
+            ]
         }
         # Add the memory usage to the progress bar
         progress_metrics["mem"] = (

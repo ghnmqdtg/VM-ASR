@@ -31,7 +31,11 @@
 # python train.py --config config/config_20240413_cat_outputv3_log.json
 # python train.py --config config/config_20240413_cat_outputv3_dB.json
 # python train.py --config config/config_20240413_cat_outputv3_log_randomlpf.json
-python train.py --config config/config_20240413_add_outputv3_log.json
-python train.py --config config/config_20240413_add_outputv3_log_randomlpf.json
+# python train.py --config config/config_20240413_add_outputv3_log.json
+# python train.py --config config/config_20240413_add_outputv3_log_randomlpf.json
+# python train.py --config config/config_20240416_cat_outputv3_log_light_model_deep_dim.json
+# python train.py --config config/config_20240416_cat_outputv3_log_light_model_light_dim.json
 
-
+# Update LSD and SNR
+python train.py --config config/config_20240419_cat_outputv3_log_light_model_light_dim.json
+python train.py --config config/config_20240419_cat_outputv3_log_light_model_deep_dim.json
