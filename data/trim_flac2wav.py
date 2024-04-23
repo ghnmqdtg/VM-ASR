@@ -56,17 +56,20 @@ if __name__ == "__main__":
         flac_name = f"{speaker_id}_{utterance_id}"
         # Get the if from the timestamps dataframe
         flac_timestamps = timestamps[timestamps["filename"] == flac_name]
-        # If the flac file is not in the timestamps, skip it
+        # Set the destination file path
+        dest_folder = os.path.join(dest_path, f"{speaker_id}")
+        # Make sure the output directory exists, if not, create it
+        ensure_dir(dest_folder)
+        # If the flac file is not in the timestamps, directly save the waveform
         if flac_timestamps.empty:
+            torchaudio.save(
+                os.path.join(dest_folder, f"{flac_name}.wav"), waveform, sample_rate
+            )
             continue
         # Trim the waveform tensor based on the start and end of timestamps
         start = flac_timestamps["start"].values[0]
         end = flac_timestamps["end"].values[0]
         trimmed_waveform = waveform[:, start:end]
-        # Set the destination file path
-        dest_folder = os.path.join(dest_path, f"{speaker_id}")
-        # Make sure the output directory exists, if not, create it
-        ensure_dir(dest_folder)
         # Save the trimmed waveform
         torchaudio.save(
             os.path.join(dest_folder, f"{flac_name}.wav"), trimmed_waveform, sample_rate
