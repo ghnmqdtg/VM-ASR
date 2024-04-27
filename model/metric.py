@@ -7,10 +7,9 @@ def stft(audio, n_fft=2048, hop_length=512):
     stft_spec = torch.stft(
         audio, n_fft, hop_length, window=hann_window, return_complex=True
     )
-    mag = torch.abs(stft_spec)
-    phase = torch.angle(stft_spec)
-
-    return mag, phase
+    # Compute the power of the complex STFT
+    spec = torch.sqrt(stft_spec.real.pow(2) + stft_spec.imag.pow(2))
+    return spec
 
 
 def snr(output, target, **kwargs):
@@ -25,14 +24,14 @@ def snr(output, target, **kwargs):
 
 
 def lsd(output, target, **kwargs):
-    sp = torch.log10(stft(output)[0].square().clamp(1e-8))
-    st = torch.log10(stft(target)[0].square().clamp(1e-8))
+    sp = torch.log10(stft(output).square().clamp(1e-8))
+    st = torch.log10(stft(target).square().clamp(1e-8))
     return (sp - st).square().mean(dim=1).sqrt().mean().item()
 
 
 def lsd_hf(output, target, hf):
-    sp = torch.log10(stft(output)[0].square().clamp(1e-8))
-    st = torch.log10(stft(target)[0].square().clamp(1e-8))
+    sp = torch.log10(stft(output).square().clamp(1e-8))
+    st = torch.log10(stft(target).square().clamp(1e-8))
     val = []
     for i in range(output.size(0)):
         hf_i = hf[i].item()
@@ -50,8 +49,8 @@ def lsd_hf(output, target, hf):
 
 
 def lsd_lf(output, target, hf):
-    sp = torch.log10(stft(output)[0].square().clamp(1e-8))
-    st = torch.log10(stft(target)[0].square().clamp(1e-8))
+    sp = torch.log10(stft(output).square().clamp(1e-8))
+    st = torch.log10(stft(target).square().clamp(1e-8))
     val = []
     for i in range(output.size(0)):
         hf_i = hf[i].item()
