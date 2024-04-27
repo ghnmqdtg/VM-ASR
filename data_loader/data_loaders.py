@@ -165,6 +165,7 @@ class CustomVCTK_092(datasets.VCTK_092):
         self.random_lpf = kwargs.get("random_lpf", False)
         self.scale = kwargs.get("scale", "log")
         self.chunking_params = kwargs.get("chunking_params", None)
+        self.stft_params = kwargs.get("stft_params", None)
         # Check if the trimmed wav files exist
         if not os.path.isdir(self._audio_dir):
             raise RuntimeError(
@@ -276,8 +277,9 @@ class CustomVCTK_092(datasets.VCTK_092):
         # sr_new = random.choice(self.random_resample)
         # * TEST: Uniformly choose an integer from min to max in the list
         sr_new = random.randint(self.random_resample[0], self.random_resample[-1])
-        # Highcut frequency
-        hf = int(1025 * (sr_new / sr_org))
+        # Highcut frequency = int((1 + n_fft // 2) * (sr_new // sr_org))
+        # We only use it for computing the LSD
+        hf = int(1 + (self.stft_params["full"]["n_fft"] // 2) * (sr_new / sr_org))
         # Crop or pad the waveform to a fixed length
         waveform_org = preprocessing.crop_or_pad_waveform(
             waveform_org, {"length": self.length, "white_noise": self.white_noise}
@@ -385,7 +387,11 @@ class CustomVCTK_092(datasets.VCTK_092):
             phase = []
             for chunk_y in chunks:
                 mag_chunk, phase_chunk = preprocessing.get_mag_phase(
-                    chunk_y, chunk_wave=True, chunk_buffer=chunk_buffer, scale=scale
+                    chunk_y,
+                    chunk_wave=True,
+                    chunk_buffer=chunk_buffer,
+                    scale=scale,
+                    stft_params=self.stft_params,
                 )
                 mag.append(mag_chunk)
                 phase.append(phase_chunk)
@@ -401,7 +407,10 @@ class CustomVCTK_092(datasets.VCTK_092):
         else:
             # Compute STFT for the whole waveform and convert to magnitude and phase
             mag, phase = preprocessing.get_mag_phase(
-                waveform, chunk_wave=False, scale=scale
+                waveform,
+                chunk_wave=False,
+                scale=scale,
+                stft_params=self.stft_params,
             )
             # Make mag and phase to a pair, shape (2, num_frequencies, num_frames)
             mag_phase_pair = torch.stack((mag, phase))
