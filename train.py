@@ -23,8 +23,7 @@ np.random.seed(SEED)
 
 
 def main(config):
-    run_id = str(config.log_dir).split("/")[-1]
-    run_name = f'{config["arch"]["type"]}-{run_id}'
+    run_name = config["arch"]["type"]
     # Check if wandb is enabled
     if config["trainer"]["sync_wandb"]:
         wandb.tensorboard.patch(
