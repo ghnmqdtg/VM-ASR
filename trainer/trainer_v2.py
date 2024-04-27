@@ -65,7 +65,10 @@ class Trainer(BaseTrainer):
             self.config_dataloader["stft_enabled"]
             and self.config_dataloader["chunking_enabled"]
         ):
-            self.logger.info(model.flops())
+            # Get the input shape of one batch and one chunk from the data_loader
+            input_shape = self.data_loader.dataset[0][0][:, 0, ...].unsqueeze(1).shape
+            # Log the model summary
+            self.logger.info(model.flops(input_shape))
 
         self.logger.info(
             f'Training with scale: {self.config_dataloader["scale"]}, random LPF: {self.config_dataloader["random_lpf"]}, AMP: {self.amp}, GAN: {self.gan}\n'
