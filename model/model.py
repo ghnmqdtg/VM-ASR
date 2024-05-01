@@ -13,6 +13,7 @@ from torchinfo import summary
 try:
     from base import BaseModel
     from .vmamba import VSSBlock, selective_scan_flop_jit
+    from .stft import wav2spectro, spectro2wav
 except:
     # Used for debugging data_loader
     # Add the project root directory to the Python path
@@ -25,6 +26,7 @@ except:
     # Now you can import BaseModel
     from base.base_model import BaseModel
     from vmamba import VSSBlock, selective_scan_flop_jit
+    from stft import wav2spectro, spectro2wav
 
 
 class LayerNorm2d(nn.LayerNorm):
@@ -152,6 +154,12 @@ class MambaUNet(BaseModel):
         output_version: str = "v2",  # "v1", "v2", "v3"
         concat_skip=False,
         use_checkpoint=False,
+        # =================
+        # FFT related parameters
+        nfft=512,
+        hop_length=64,
+        win_length=256,
+        spectro_scale="log2",
         **kwargs,
     ):
         # Initialize the BaseModel and VSSM
@@ -170,6 +178,11 @@ class MambaUNet(BaseModel):
             x.item() for x in torch.linspace(0, drop_path_rate, sum(depths))
         ]  # stochastic depth decay rule (dpr = drop path rate)
         self.concat_skip = concat_skip
+        # STFT parameters
+        self.nfft = nfft
+        self.hop_length = hop_length
+        self.win_length = win_length
+        self.spectro_scale = spectro_scale
 
         _NORMLAYERS = dict(
             ln=nn.LayerNorm,
@@ -412,13 +425,52 @@ class MambaUNet(BaseModel):
 
         self.apply(self._init_weights)
 
+    def _mag_phase(self, x):
+        if x.shape[-1] % self.hop_length:
+            x = F.pad(x, (0, self.hop_length - x.shape[-1] % self.hop_length))
+
+        mag, phase = wav2spectro(
+            x,
+            self.nfft,
+            self.hop_length,
+            self.win_length,
+            self.spectro_scale,
+        )
+
+        return mag[..., :-1, :], phase[..., :-1, :]
+
+    def _i_mag_phase(self, mag, phase):
+        mag = F.pad(mag, (0, 0, 0, 1))
+        phase = F.pad(phase, (0, 0, 0, 1))
+
+        wav = spectro2wav(
+            mag,
+            phase,
+            self.nfft,
+            self.hop_length,
+            self.win_length,
+            self.spectro_scale,
+        )
+
+        return wav
+
+    def _normalize(self, x):
+        mean = x.mean(dim=(1, 2, 3), keepdim=True)
+        std = x.std(dim=(1, 2, 3), keepdim=True)
+        x = (x - mean) / (1e-5 + std)
+        return x, mean, std
+
     def forward(self, x):
         verbose = True
-        mag = x[:, 0, :, :, :]
-        phase = x[:, 1, :, :, :]
+        length = x.shape[-1]
+        mag, phase = self._mag_phase(x)
         # Clone the input for residual connection
         if verbose:
             print(f"Input shape: {mag.shape}")
+
+        mag, mag_mean, mag_std = self._normalize(mag)
+        phase, phase_mean, phase_std = self._normalize(phase)
+
         residual_mag = mag.clone()
         # Skip connections
         skip_connections = []
@@ -509,7 +561,13 @@ class MambaUNet(BaseModel):
             if verbose:
                 print(f"Patch output shape: {mag.shape}")
 
-        return mag + residual_mag, phase
+        mag = (mag + residual_mag) * mag_std + mag_mean
+        phase = phase * phase_std + phase_mean
+        # Inverse STFT
+        wav = self._i_mag_phase(mag, phase)
+        wav = wav[..., :length]
+
+        return wav
 
     @staticmethod
     def _make_patch_embed_v1(
@@ -1041,9 +1099,11 @@ class DualStreamInteractiveMambaUNet(MambaUNet):
         self.apply(self._init_weights)
 
     def forward(self, x):
-        # Loop through the magnitude and phase streams
-        mag = x[:, 0, :, :, :]
-        phase = x[:, 1, :, :, :]
+        length = x.shape[-1]
+        mag, phase = self._mag_phase(x)
+        # Normalize the magnitude and phase
+        mag, mag_mean, mag_std = self._normalize(mag)
+        phase, phase_mean, phase_std = self._normalize(phase)
         # Clone the input for residual connection
         residual_mag = mag.clone()
         residual_phase = phase.clone()
@@ -1139,7 +1199,17 @@ class DualStreamInteractiveMambaUNet(MambaUNet):
                 phase = self.output_layer_phase(phase + phase_skip)
 
         # Residual connection
-        return mag + residual_mag, phase + residual_phase
+        mag = mag + residual_mag
+        phase = phase + residual_phase
+        # Recover the magnitude and phase
+        mag = mag * mag_std + mag_mean
+        phase = phase * phase_std + phase_mean
+        # Inverse STFT
+        wav = self._i_mag_phase(mag, phase)
+        # Truncate the output to the original length
+        wav = wav[..., :length]
+
+        return wav
 
     @torch.no_grad()
     def flops(self, shape=(2, 1, 512, 128)):
@@ -1328,8 +1398,42 @@ if __name__ == "__main__":
     from tqdm import tqdm
     import time
 
+    length = int(48000 * 1.705)
+    # length = int(16000 * 2.555)
+    nfft = 512
+    hop_length = 80
+    win_length = 512
+    spectro_scale = "log2"
+
+    x = torch.rand(24, 1, length).to("cuda")
+    model = MambaUNet(
+        in_chans=1,
+        depths=[2, 2, 2, 2],
+        dims=[8, 16, 32, 64],
+        # dims=[32, 64, 128, 256],
+        ssm_d_state=1,
+        ssm_ratio=2.0,
+        ssm_dt_rank="auto",
+        ssm_conv=3,
+        ssm_conv_bias=False,
+        forward_type="v5",
+        mlp_ratio=4.0,
+        patchembed_version="v2",
+        downsample_version="v1",
+        upsample_version="v1",
+        output_version="v3",
+        concat_skip=False,
+        # FFT related parameters
+        nfft=nfft,
+        hop_length=hop_length,
+        win_length=win_length,
+        spectro_scale=spectro_scale,
+    ).to("cuda")
+
+    print(model.flops(shape=(1, length)))
+
     # x = torch.rand(12, 2, 1, 512, 128).to("cuda")
-    # model = MambaUNet(
+    # model = DualStreamInteractiveMambaUNet(
     #     in_chans=1,
     #     depths=[2, 2, 2, 2],
     #     dims=[8, 16, 32, 64],
@@ -1347,27 +1451,3 @@ if __name__ == "__main__":
     #     output_version="v3",
     #     concat_skip=False,
     # ).to("cuda")
-
-    # print(model.flops())
-
-    x = torch.rand(12, 2, 1, 512, 128).to("cuda")
-    model = DualStreamInteractiveMambaUNet(
-        in_chans=1,
-        depths=[2, 2, 2, 2],
-        dims=[8, 16, 32, 64],
-        # dims=[32, 64, 128, 256],
-        ssm_d_state=1,
-        ssm_ratio=2.0,
-        ssm_dt_rank="auto",
-        ssm_conv=3,
-        ssm_conv_bias=False,
-        forward_type="v5",
-        mlp_ratio=4.0,
-        patchembed_version="v2",
-        downsample_version="v1",
-        upsample_version="v1",
-        output_version="v3",
-        concat_skip=False,
-    ).to("cuda")
-
-    print(model.flops())
