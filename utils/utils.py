@@ -1,9 +1,11 @@
 import json
+import wandb
 import torch
 import pandas as pd
 from pathlib import Path
 from itertools import repeat
 from collections import OrderedDict
+from torch import distributed as dist
 
 
 def ensure_dir(dirname):
@@ -79,3 +81,47 @@ class MetricTracker:
 
     def result(self):
         return dict(self._data.average)
+
+
+def _get_wandb_config(config):
+    wandb_config = {}
+    for k, v in config.items():
+        if isinstance(v, dict):
+            for kk, vv in v.items():
+                wandb_config[f"{k}.{kk}"] = vv
+        else:
+            wandb_config[k] = v
+    return wandb_config
+
+
+def init_wandb_run(config):
+    # Check if the distributed environment is available
+    if dist.is_available() and dist.is_initialized():
+        rank = dist.get_rank()
+        world_size = dist.get_world_size()
+    else:
+        rank = -1
+        world_size = -1
+
+    # Initialize wandb
+    # Logging multiple GPUs training is not supported yet
+    if rank == 0 or not dist.is_available():
+        experiment_name = f"{config.MODEL.TYPE}/{config.MODEL.NAME}"
+        if config.TENSORBOARD.ENABLE:
+            wandb.tensorboard.patch(root_logdir=config.OUTPUT, pytorch=True)
+
+        wandb.init(
+            project=config.WANDB.PROJECT,
+            entity=config.WANDB.ENTITY,
+            name=experiment_name,
+            group=config.TAG,
+            config=_get_wandb_config(config),
+            dir=config.OUTPUT,
+            resume=config.MODEL.RESUME,
+            # Set id with the world size and rank
+            id=f"{world_size}_{rank}",
+            mode=config.WANDB.MODE,
+            tags=config.WANDB.TAGS,
+        )
+    else:
+        wandb.init(mode="disabled")
