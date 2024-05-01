@@ -11,8 +11,11 @@ import torch
 import torchaudio
 import torchaudio.datasets as datasets
 import torch.distributed as dist
+from torch.nn import functional as F
 from torch.utils.data import random_split
 from torch.utils.data.distributed import DistributedSampler
+
+from utils.utils import align_waveform
 
 
 def get_loader(config, logger):
@@ -135,6 +138,16 @@ class CustomVCTK_092(datasets.VCTK_092):
             if not self.config.EVAL_MODE
             else 1.0
         )
+
+        # The number of time frames in a segment
+        # If the length of the audio is more than the segment length, it will be trimmed
+        # else, we will pad the audio with zeros
+        self.num_frames = (
+            int(self.config.DATA.SEGMENT * self.config.DATA.TARGET_SR)
+            if not self.config.EVAL_MODE
+            else -1
+        )
+
         self.training = training
         # Initialize the sample IDs
         self._sample_ids = []
@@ -297,23 +310,29 @@ class CustomVCTK_092(datasets.VCTK_092):
             # Load the specified quantity of the sample IDs
             self._sample_ids = self._sample_ids[:loaded_samples]
 
-    def _load_audio(self, file_path) -> Tuple[torch.Tensor | int]:
-        return super()._load_audio(file_path)
+    def _load_audio(self, file_path, num_frames) -> Tuple[torch.Tensor | int]:
+        audio, sr = torchaudio.load(file_path, num_frames=num_frames)
+        # Check if the sample rate of the original audio is the same as the target sample rate
+        if sr != self.config.DATA.TARGET_SR:
+            # Resample the audio
+            audio = resample_audio(audio, sr, self.config.DATA.TARGET_SR)
+            sr = self.config.DATA.TARGET_SR
+        # Check if the audio is stereo, convert it to mono
+        if audio.shape[0] == 2:
+            audio = torch.mean(audio, dim=0, keepdim=True)
+        # Pad the audio if the length is less than the specified number of frames
+        if self.num_frames:
+            # ? Why not trim it? Because we've set num_frames while loading the audio with torchaudio.load
+            audio = F.pad(audio, (0, self.num_frames - audio.shape[-1]))
+        return audio, sr
 
     def _get_io_pair(
-        self, waveform_target: torch.Tensor, sr: int
+        self, output: torch.Tensor, sr: int
     ) -> Tuple[torch.Tensor, torch.Tensor]:
         # Uniformly choose an integer from min to max in the list
         sr_input = random.randint(
             self.config.DATA.RANDOM_RESAMPLE[0], self.config.DATA.RANDOM_RESAMPLE[-1]
         )
-        # Check if the sample rate of the original audio is the same as the target sample rate
-        if sr != self.config.DATA.TARGET_SR:
-            # Resample the audio
-            waveform_target = resample_audio(
-                waveform_target, sr, self.config.DATA.TARGET_SR
-            )
-
         # Highcut frequency = int((1 + n_fft // 2) * (sr_input // sr_target))
         highcut = int(
             (1 + self.config.DATA.STFT.N_FFT // 2)
@@ -325,13 +344,13 @@ class CustomVCTK_092(datasets.VCTK_092):
         else:
             pass
         # Downsample the audio
-        waveform_input = resample_audio(waveform_target, sr, sr_input)
+        input = resample_audio(output, sr, sr_input)
         # Upsample the audio
-        waveform_input = resample_audio(waveform_input, sr_input, sr)
+        input = resample_audio(input, sr_input, sr)
         # Align the waveform length
-        waveform_input = align_waveform(waveform_input, waveform_target)
+        input = align_waveform(input, output)
 
-        return waveform_input, waveform_target, highcut
+        return input, output, highcut
 
     def _load_sample(
         self, speaker_id: str, utterance_id: str
@@ -345,17 +364,15 @@ class CustomVCTK_092(datasets.VCTK_092):
             f"{speaker_id}_{utterance_id}{self._audio_ext}",
         )
         # Read audio file
-        input, output, highcut = self._get_io_pair(*self._load_audio(audio_path))
+        audio, sr = self._load_audio(audio_path, num_frames=self.num_frames or -1)
+        input, output, highcut = self._get_io_pair(audio, sr)
 
-        if self.config.EVAL_MODE and self.config.TEST.SAVE_RESULT:
-            return (
-                input,
-                output,
-                highcut,
-                f"{speaker_id}_{utterance_id}{self._audio_ext}",
-            )
-        else:
-            return input, output, highcut, None
+        return (
+            input,
+            output,
+            highcut,
+            f"{speaker_id}_{utterance_id}{self._audio_ext}",
+        )
 
     def __getitem__(self, n: int) -> Tuple[torch.Tensor, torch.Tensor]:
         speaker_id, utterance_id = self._sample_ids[n]
@@ -380,23 +397,6 @@ def resample_audio(waveform: torch.Tensor, sr_org: int, sr_new: int) -> torch.Te
     # waveform_resampled = T.Resample(sr_org, sr_new)(waveform)
     waveform_resampled = resample_poly(waveform, sr_new, sr_org, axis=-1)
     return torch.tensor(waveform_resampled, dtype=torch.float32)
-
-
-def align_waveform(
-    waveform_resampled: torch.Tensor, waveform: torch.Tensor
-) -> torch.Tensor:
-    # Make sure the waveform has the same length
-    if waveform_resampled.shape[1] < waveform.shape[1]:
-        waveform_resampled = F.pad(
-            waveform_resampled,
-            (0, waveform.shape[1] - waveform_resampled.shape[1]),
-            mode="constant",
-            value=0,
-        )
-    elif waveform_resampled.shape[1] > waveform.shape[1]:
-        waveform_resampled = waveform_resampled[: waveform.shape[1]]
-
-    return waveform_resampled
 
 
 # A class that provides many different low pass filters like Butterworth, Chebyshev, Bessel, etc.

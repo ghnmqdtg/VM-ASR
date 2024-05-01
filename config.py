@@ -34,10 +34,8 @@ _C.DATA.VALID_SPLIT = 0.1
 _C.DATA.TARGET_SR = 48000
 # Random resampling
 _C.DATA.RANDOM_RESAMPLE = [8000, 48000]
-# Chunk size
-_C.DATA.CHUNK_SIZE = 10160
-# Chunk buffer
-_C.DATA.CHUNK_BUFFER = 240
+# Length of audio clip
+_C.DATA.SEGMENT = 2.0
 # STFT parameters
 _C.DATA.STFT = CN()
 _C.DATA.STFT.N_FFT = 512

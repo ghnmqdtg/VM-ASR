@@ -1,11 +1,7 @@
-import json
 import wandb
 import torch
 import pandas as pd
-from pathlib import Path
 from itertools import repeat
-from collections import OrderedDict
-from torch import distributed as dist
 
 
 def ensure_dir(dirname):
@@ -20,10 +16,8 @@ def read_json(fname):
         return json.load(handle, object_hook=OrderedDict)
 
 
-def write_json(content, fname):
-    fname = Path(fname)
-    with fname.open("wt") as handle:
-        json.dump(content, handle, indent=4, sort_keys=False)
+import torch.nn.functional as F
+from torch import distributed as dist
 
 
 def inf_loop(data_loader):
@@ -54,6 +48,23 @@ def prepare_device(n_gpu_use):
     return device, list_ids
 
 
+def align_waveform(
+    waveform_resampled: torch.Tensor, waveform: torch.Tensor
+) -> torch.Tensor:
+    # Make sure the waveform has the same length
+    if waveform_resampled.shape[1] < waveform.shape[1]:
+        waveform_resampled = F.pad(
+            waveform_resampled,
+            (0, waveform.shape[1] - waveform_resampled.shape[1]),
+            mode="constant",
+            value=0,
+        )
+    elif waveform_resampled.shape[1] > waveform.shape[1]:
+        waveform_resampled = waveform_resampled[: waveform.shape[1]]
+
+    return waveform_resampled
+
+
 class MetricTracker:
     def __init__(self, *keys, writer=None):
         self.writer = writer
@@ -81,6 +92,9 @@ class MetricTracker:
 
     def result(self):
         return dict(self._data.average)
+
+    def get_keys(self):
+        return self._data.index.tolist()
 
 
 def _get_wandb_config(config):
