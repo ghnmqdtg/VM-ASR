@@ -10,19 +10,17 @@ class BaseTrainer:
     Base class for all trainers
     """
 
-    def __init__(self, model, criterion, metric_ftns, optimizer, config):
+    def __init__(self, model, metric_ftns, optimizer, config, logger):
         self.config = config
-        self.logger = config.get_logger("trainer", config["trainer"]["verbosity"])
+        self.logger = logger
 
         self.model = model
-        self.criterion = criterion
         self.metric_ftns = metric_ftns
         self.optimizer = optimizer
 
-        cfg_trainer = config["trainer"]
-        self.epochs = cfg_trainer["epochs"]
-        self.save_period = cfg_trainer["save_period"]
-        self.monitor = cfg_trainer.get("monitor", "off")
+        self.epochs = config.TRAIN.EPOCHS
+        self.save_period = config.SAVE_FREQ
+        self.monitor = config.MONITOR
 
         # configuration to monitor model performance and save best
         if self.monitor == "off":
@@ -33,21 +31,21 @@ class BaseTrainer:
             assert self.mnt_mode in ["min", "max"]
 
             self.mnt_best = inf if self.mnt_mode == "min" else -inf
-            self.early_stop = cfg_trainer.get("early_stop", inf)
+            self.early_stop = config.TRAIN.EARLY_STOPPING
             if self.early_stop <= 0:
                 self.early_stop = inf
 
         self.start_epoch = 1
 
-        self.log_dir = config.log_dir
+        self.log_dir = config.OUTPUT
 
         # setup visualization writer instance
         self.writer = TensorboardWriter(
-            self.log_dir, self.logger, cfg_trainer["tensorboard"]
+            self.log_dir, self.logger, config.TENSORBOARD.ENABLE
         )
 
-        if config.resume is not None:
-            self._resume_checkpoint(config.resume)
+        if config.TRAIN.USE_CHECKPOINT is not None:
+            self._resume_checkpoint(config.TRAIN.USE_CHECKPOINT)
 
     @abstractmethod
     def _train_epoch(self, epoch):
@@ -132,9 +130,9 @@ class BaseTrainer:
         :param log: logging information of the epoch
         :param save_best: if True, rename the saved checkpoint to 'model_best.pth'
         """
-        arch = type(self.model).__name__
+        model_name = self.config.MODEL.NAME
         state = {
-            "arch": arch,
+            "name": model_name,
             "epoch": epoch,
             "state_dict": self.model.state_dict(),
             "optimizer": self.optimizer.state_dict(),
@@ -155,6 +153,8 @@ class BaseTrainer:
 
         :param resume_path: Checkpoint path to be resumed
         """
+        # TODO: Add resume from the best model
+        return NotImplementedError
         resume_path = str(resume_path)
         self.logger.info("Loading checkpoint: {} ...".format(resume_path))
         checkpoint = torch.load(resume_path)
@@ -162,7 +162,7 @@ class BaseTrainer:
         self.mnt_best = checkpoint["monitor_best"]
 
         # load architecture params from checkpoint.
-        if checkpoint["config"]["arch"] != self.config["arch"]:
+        if checkpoint["config"]["name"] != self.config.MODEL.NAME:
             self.logger.warning(
                 "Warning: Architecture configuration given in config file is different from that of "
                 "checkpoint. This may yield an exception while state_dict is being loaded."
