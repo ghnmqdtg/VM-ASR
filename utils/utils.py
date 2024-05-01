@@ -4,7 +4,6 @@ import pandas as pd
 from itertools import repeat
 
 import torch.nn.functional as F
-from torch import distributed as dist
 
 
 def inf_loop(data_loader):
@@ -96,33 +95,19 @@ def _get_wandb_config(config):
 
 
 def init_wandb_run(config):
-    # Check if the distributed environment is available
-    if dist.is_available() and dist.is_initialized():
-        rank = dist.get_rank()
-        world_size = dist.get_world_size()
-    else:
-        rank = -1
-        world_size = -1
 
-    # Initialize wandb
-    # Logging multiple GPUs training is not supported yet
-    if rank == 0 or not dist.is_available():
-        experiment_name = f"{config.MODEL.TYPE}/{config.MODEL.NAME}"
-        if config.TENSORBOARD.ENABLE:
-            wandb.tensorboard.patch(root_logdir=config.OUTPUT, pytorch=True)
+    experiment_name = f"{config.MODEL.TYPE}/{config.MODEL.NAME}"
+    if config.TENSORBOARD.ENABLE:
+        wandb.tensorboard.patch(root_logdir=config.OUTPUT, pytorch=True)
 
-        wandb.init(
-            project=config.WANDB.PROJECT,
-            entity=config.WANDB.ENTITY,
-            name=experiment_name,
-            group=config.TAG,
-            config=_get_wandb_config(config),
-            dir=config.OUTPUT,
-            resume=config.MODEL.RESUME,
-            # Set id with the world size and rank
-            id=f"{world_size}_{rank}",
-            mode=config.WANDB.MODE,
-            tags=config.WANDB.TAGS,
-        )
-    else:
-        wandb.init(mode="disabled")
+    wandb.init(
+        project=config.WANDB.PROJECT,
+        entity=config.WANDB.ENTITY,
+        name=experiment_name,
+        group=config.TAG,
+        config=_get_wandb_config(config),
+        dir=config.OUTPUT,
+        resume=config.MODEL.RESUME,
+        mode=config.WANDB.MODE,
+        tags=config.WANDB.TAGS,
+    )

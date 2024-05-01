@@ -10,23 +10,13 @@ from scipy.signal import butter, butter, cheby1, cheby2, ellip, bessel
 import torch
 import torchaudio
 import torchaudio.datasets as datasets
-import torch.distributed as dist
 from torch.nn import functional as F
 from torch.utils.data import random_split
-from torch.utils.data.distributed import DistributedSampler
 
 from utils.utils import align_waveform
 
 
 def get_loader(config, logger):
-    # Setup the distributed environment
-    if dist.is_available() and dist.is_initialized():
-        rank = dist.get_rank()
-        world_size = dist.get_world_size()
-    else:
-        rank = -1
-        world_size = -1
-
     # Check if the dataset is VCTK_092
     if config.DATA.DATASET == "VCTK_092":
         if not config.EVAL_MODE:
@@ -40,19 +30,11 @@ def get_loader(config, logger):
                 [train_size, val_size],
                 generator=torch.Generator().manual_seed(42),
             )
-            # Create the distributed sampler
-            train_sampler = DistributedSampler(
-                train_dataset, num_replicas=world_size, rank=rank
-            )
-            val_sampler = DistributedSampler(
-                val_dataset, num_replicas=world_size, rank=rank
-            )
             # Create the data loaders
             train_loader = torch.utils.data.DataLoader(
                 train_dataset,
                 batch_size=config.DATA.BATCH_SIZE,
                 shuffle=False,
-                sampler=train_sampler,
                 num_workers=config.DATA.NUM_WORKERS,
                 pin_memory=True,
             )
@@ -60,7 +42,6 @@ def get_loader(config, logger):
                 val_dataset,
                 batch_size=config.DATA.BATCH_SIZE,
                 shuffle=False,
-                sampler=val_sampler,
                 num_workers=config.DATA.NUM_WORKERS,
                 pin_memory=True,
             )

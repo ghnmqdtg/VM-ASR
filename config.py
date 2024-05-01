@@ -163,6 +163,8 @@ _C.TEST.SAVE_RESULT = True
 # -----------------------------------------------------------------------------
 # Misc
 # -----------------------------------------------------------------------------
+# Number of GPUs to use
+_C.N_GPU = 1
 # Enable Pytorch automatic mixed precision (amp).
 _C.AMP_ENABLE = True
 # Path to output folder, overwritten by command line argument

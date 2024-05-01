@@ -12,8 +12,6 @@ from logger.logger import create_logger
 
 import torch
 import torch.backends.cudnn as cudnn
-import torch.distributed as dist
-import torch.multiprocessing as mp
 
 from model import get_model
 import model.metric as module_metric
@@ -98,49 +96,10 @@ def parse_option():
     return args, config
 
 
-def setup_dist():
-    if "RANK" in os.environ and "WORLD_SIZE" in os.environ:
-        rank = int(os.environ["RANK"])
-        world_size = int(os.environ["WORLD_SIZE"])
-        print(f"RANK and WORLD_SIZE in environ: {rank}/{world_size}")
-    else:
-        rank = -1
-        world_size = -1
-
-    torch.cuda.set_device(rank)
-    dist.init_process_group(
-        backend="nccl", init_method="env://", world_size=world_size, rank=rank
-    )
-    dist.barrier()
-
-    # To make sure all the config.OUTPUT are the same
-    config.defrost()
-    if dist.get_rank() == 0:
-        obj = [config.OUTPUT]
-        # obj = [str(random.randint(0, 100))] # for test
-    else:
-        obj = [None]
-    dist.broadcast_object_list(obj)
-    dist.barrier()
-    config.OUTPUT = obj[0]
-    print(config.OUTPUT, flush=True)
-    config.freeze()
-    # Create output folder
-    os.makedirs(config.OUTPUT, exist_ok=True)
-
-
-def close_dist():
-    if dist.is_initialized():
-        dist.destroy_process_group()
-    logger.info(
-        f"Distributed environment destroyed, world_size: {dist.get_world_size()}, rank: {dist.get_rank()}"
-    )
-
-
 def main(config):
     logger.info(f"Creating model:{config.MODEL.TYPE}/{config.MODEL.NAME}")
     # Setup device with single/multiple GPUs
-    device, device_ids = prepare_device(dist.get_rank())
+    device, device_ids = prepare_device(config.N_GPU)
     # Get the model
     models = get_model(config)
     # Set the models to device
@@ -216,22 +175,18 @@ def main(config):
 if __name__ == "__main__":
     args, config = parse_option()
 
-    # Init distributed env first
-    setup_dist()
+    # Create output folder
+    os.makedirs(config.OUTPUT, exist_ok=True)
     # Set the random seed for reproducibility
-    seed = config.SEED + dist.get_rank()
+    seed = config.SEED
     torch.manual_seed(seed)
     torch.cuda.manual_seed(seed)
     np.random.seed(seed)
     random.seed(seed)
     cudnn.benchmark = True
 
-    logger = create_logger(
-        output_dir=config.OUTPUT, dist_rank=dist.get_rank(), name=f"{config.MODEL.NAME}"
-    )
+    logger = create_logger(output_dir=config.OUTPUT, name=f"{config.MODEL.NAME}")
     logger.info(config.dump())
     logger.info(json.dumps(vars(args)))
 
     main(config)
-
-    close_dist()
