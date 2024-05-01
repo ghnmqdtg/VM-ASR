@@ -4,7 +4,6 @@ import time
 import wandb
 import random
 import argparse
-import itertools
 import numpy as np
 from data_loader.data_loaders import get_loader
 
@@ -130,6 +129,14 @@ def setup_dist():
     os.makedirs(config.OUTPUT, exist_ok=True)
 
 
+def close_dist():
+    if dist.is_initialized():
+        dist.destroy_process_group()
+    logger.info(
+        f"Distributed environment destroyed, world_size: {dist.get_world_size()}, rank: {dist.get_rank()}"
+    )
+
+
 def main(config):
     logger.info(f"Creating model:{config.MODEL.TYPE}/{config.MODEL.NAME}")
     # Setup device with single/multiple GPUs
@@ -182,14 +189,14 @@ def main(config):
                 )
 
         trainer = Trainer(
-            model=models,
+            models=models,
             metric_ftns=metrics,
-            optimizer=optimizers,
+            optimizers=optimizers,
             config=config,
-            device=device,
+            device=(device, device_ids),
             data_loader_train=data_loader_train,
             data_loader_val=data_loader_val,
-            lr_scheduler=lr_schedulers,
+            lr_schedulers=lr_schedulers,
             amp=config.AMP_ENABLE,
             gan=config.TRAIN.ADVERSARIAL.ENABLE,
             logger=logger,
@@ -226,3 +233,5 @@ if __name__ == "__main__":
     logger.info(json.dumps(vars(args)))
 
     main(config)
+
+    close_dist()
