@@ -134,7 +134,11 @@ def main(config):
     logger.info(f"Creating model:{config.MODEL.TYPE}/{config.MODEL.NAME}")
     # Setup device with single/multiple GPUs
     device, device_ids = prepare_device(dist.get_rank())
-    model = get_model(config)
+    # Get the model
+    models = get_model(config)
+    # Set the models to device
+    models = {k: v.to(device) for k, v in models.items()}
+    # Get the metrics
     metrics = [getattr(module_metric, met) for met in config.TRAIN.METRICS]
 
     if config.WANDB.ENABLE:
@@ -147,7 +151,7 @@ def main(config):
         optimizers = {"generator": None, "discriminator": None}
         lr_schedulers = {"generator": None, "discriminator": None}
         # Get the optimizer and lr_scheduler for the generator
-        optimizers["generator"] = get_optimizer(config, model["generator"], logger)
+        optimizers["generator"] = get_optimizer(config, models["generator"], logger)
         lr_schedulers["generator"] = get_scheduler(
             config,
             optimizers["generator"],
@@ -155,23 +159,30 @@ def main(config):
         )
         # Get the optimizer and lr_scheduler for the discriminator
         if config.TRAIN.ADVERSARIAL.ENABLE:
-            # There would be more than one discriminators if specified
-            optimizers["discriminator"] = get_optimizer(
-                config, itertools.chain(*model["discriminator"].parameters()), logger
-            )
-            lr_schedulers["discriminator"] = get_scheduler(
-                config,
-                optimizers["discriminator"],
-                len(data_loader_train) // config.TRAIN.ACCUMULATION_STEPS,
-            )
-
-        # Log the model, optimizer and lr_scheduler
-        logger.info(f"Model: {model}")
-        logger.info(f"Optimizer: {optimizers}")
-        logger.info(f"LR Scheduler: {lr_schedulers}")
+            if config.TRAIN.ADVERSARIAL.DISCRIMINATORS is not None:
+                # There would be more than one discriminators if specified
+                # models["discriminator"] is a dict with keys as discriminator names, we need to iterate over them
+                optimizers["discriminator"] = get_optimizer(
+                    config,
+                    [
+                        models[disc_name]
+                        for disc_name in config.TRAIN.ADVERSARIAL.DISCRIMINATORS
+                    ],
+                    logger,
+                )
+                lr_schedulers["discriminator"] = get_scheduler(
+                    config,
+                    optimizers["discriminator"],
+                    len(data_loader_train) // config.TRAIN.ACCUMULATION_STEPS,
+                )
+            else:
+                # Log an error if the discriminator is not specified
+                logger.error(
+                    "Adversarial training is enabled but the discriminator is not specified in the config file. Please specify the discriminator in the config file."
+                )
 
         trainer = Trainer(
-            model=model,
+            model=models,
             metric_ftns=metrics,
             optimizer=optimizers,
             config=config,

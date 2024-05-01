@@ -3,7 +3,7 @@ from .vmamba import *
 
 
 def get_model(config):
-    models = {"generator": None, "discriminator": None}
+    models = {"generator": None}
 
     if config.MODEL.NAME == "DualStreamInteractiveMambaUNet":
         generator = DualStreamInteractiveMambaUNet(
@@ -46,6 +46,6 @@ def get_model(config):
     if config.TRAIN.ADVERSARIAL:
         if "mpd" in config.TRAIN.ADVERSARIAL.DISCRIMINATORS:
             discriminator = MultiPeriodDiscriminator()
-            models["discriminator"].update({"mpd": discriminator})
+            models["mpd"] = discriminator
 
     return models

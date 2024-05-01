@@ -16,7 +16,8 @@ MODEL:
 
 TRAIN:
   ADVERSARIAL:
-    ENABLE: False
+    ENABLE: True
+    DISCRIMINATORS: ["mpd"]
 
 DATA:
   USE_QUANTITY: 0.1

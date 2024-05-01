@@ -1,36 +1,39 @@
-# --------------------------------------------------------
-# Modified by Mzero
-# --------------------------------------------------------
-# Swin Transformer
-# Copyright (c) 2021 Microsoft
-# Licensed under The MIT License [see LICENSE for details]
-# Written by Ze Liu
-# --------------------------------------------------------
-
-from torch import optim as optim
+from torch import optim
+import itertools
 
 
-def get_optimizer(config, model, logger, **kwargs):
+def get_optimizer(config, models, logger, **kwargs):
     """
-    Build optimizer, set weight decay of normalization to 0 by default.
+    Build optimizer, setting weight decay of normalization to 0 by default for multiple models.
     """
     logger.info(
         f"==============> building optimizer {config.TRAIN.OPTIMIZER.NAME}...................."
     )
-    skip = {}
-    skip_keywords = {}
-    if hasattr(model, "no_weight_decay"):
-        skip = model.no_weight_decay()
-    if hasattr(model, "no_weight_decay_keywords"):
-        skip_keywords = model.no_weight_decay_keywords()
-    parameters, no_decay_names = set_weight_decay(model, skip, skip_keywords)
+
+    # Convert single model to list if not already a list
+    if not isinstance(models, (list, tuple)):
+        models = [models]
+    # Check is model is itertools.chain object
+    if isinstance(models, itertools.chain):
+        models = list(models)
+
+    skip_list = []
+    skip_keywords = []
+    for model in models:
+        if hasattr(model, "no_weight_decay"):
+            skip_list.extend(model.no_weight_decay())
+        if hasattr(model, "no_weight_decay_keywords"):
+            skip_keywords.extend(model.no_weight_decay_keywords())
+
+    # Get all parameters from all models
+    all_parameters, no_decay_names = set_weight_decay(models, skip_list, skip_keywords)
     logger.info(f"No weight decay list: {no_decay_names}")
 
+    # Select optimizer
     opt_lower = config.TRAIN.OPTIMIZER.NAME.lower()
-    optimizer = None
     if opt_lower == "sgd":
         optimizer = optim.SGD(
-            parameters,
+            all_parameters,
             momentum=config.TRAIN.OPTIMIZER.MOMENTUM,
             nesterov=True,
             lr=config.TRAIN.BASE_LR,
@@ -38,7 +41,7 @@ def get_optimizer(config, model, logger, **kwargs):
         )
     elif opt_lower == "adamw":
         optimizer = optim.AdamW(
-            parameters,
+            all_parameters,
             eps=config.TRAIN.OPTIMIZER.EPS,
             betas=config.TRAIN.OPTIMIZER.BETAS,
             lr=config.TRAIN.BASE_LR,
@@ -50,25 +53,27 @@ def get_optimizer(config, model, logger, **kwargs):
     return optimizer
 
 
-def set_weight_decay(model, skip_list=(), skip_keywords=()):
+def set_weight_decay(models, skip_list=(), skip_keywords=()):
     has_decay = []
     no_decay = []
     no_decay_names = []
 
-    for name, param in model.named_parameters():
-        if not param.requires_grad:
-            continue  # frozen weights
-        if (
-            len(param.shape) == 1
-            or name.endswith(".bias")
-            or (name in skip_list)
-            or check_keywords_in_name(name, skip_keywords)
-        ):
-            no_decay.append(param)
-            no_decay_names.append(name)
-            # print(f"{name} has no weight decay")
-        else:
-            has_decay.append(param)
+    # Iterate over all models
+    for model in models:
+        for name, param in model.named_parameters():
+            if not param.requires_grad:
+                continue  # skip frozen weights
+            if (
+                len(param.shape) == 1
+                or name.endswith(".bias")
+                or name in skip_list
+                or check_keywords_in_name(name, skip_keywords)
+            ):
+                no_decay.append(param)
+                no_decay_names.append(name)
+            else:
+                has_decay.append(param)
+
     return [
         {"params": has_decay},
         {"params": no_decay, "weight_decay": 0.0},
@@ -76,8 +81,4 @@ def set_weight_decay(model, skip_list=(), skip_keywords=()):
 
 
 def check_keywords_in_name(name, keywords=()):
-    isin = False
-    for keyword in keywords:
-        if keyword in name:
-            isin = True
-    return isin
+    return any(keyword in name for keyword in keywords)
