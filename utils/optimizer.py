@@ -13,9 +13,6 @@ def get_optimizer(config, models, logger, **kwargs):
     # Convert single model to list if not already a list
     if not isinstance(models, (list, tuple)):
         models = [models]
-    # Check is model is itertools.chain object
-    if isinstance(models, itertools.chain):
-        models = list(models)
 
     skip_list = []
     skip_keywords = []

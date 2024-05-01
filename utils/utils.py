@@ -3,19 +3,6 @@ import torch
 import pandas as pd
 from itertools import repeat
 
-
-def ensure_dir(dirname):
-    dirname = Path(dirname)
-    if not dirname.is_dir():
-        dirname.mkdir(parents=True, exist_ok=False)
-
-
-def read_json(fname):
-    fname = Path(fname)
-    with fname.open("rt") as handle:
-        return json.load(handle, object_hook=OrderedDict)
-
-
 import torch.nn.functional as F
 from torch import distributed as dist
 
