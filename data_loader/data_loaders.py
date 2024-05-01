@@ -1,182 +1,222 @@
 from typing import Tuple
-import torch
-import torchaudio.datasets as datasets
-import random
-import json
 import os
-import sys
+import json
+import random
+import pandas as pd
 from tqdm import tqdm
+from scipy.signal import resample_poly
+from scipy.signal import butter, butter, cheby1, cheby2, ellip, bessel
 
-try:
-    from base import BaseDataLoader
-    import data_loader.preprocessing as preprocessing
-except:
-    # Used for debugging data_loader
-    # Add the project root directory to the Python path
-    project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    sys.path.append(project_root)
-
-    from utils import ensure_dir
-    from base.base_data_loader import BaseDataLoader
-    import data_loader.preprocessing as preprocessing
-    import data_loader.postprocessing as postprocessing
+import torch
+import torchaudio
+import torchaudio.datasets as datasets
+import torch.distributed as dist
+from torch.utils.data import random_split
+from torch.utils.data.distributed import DistributedSampler
 
 
-class VCTKDataLoader(BaseDataLoader):
-    """
-    VCTK_092 data loading
-    """
+def get_loader(config, logger):
+    # Setup the distributed environment
+    if dist.is_available() and dist.is_initialized():
+        rank = dist.get_rank()
+        world_size = dist.get_world_size()
+    else:
+        rank = -1
+        world_size = -1
 
-    def __init__(
-        self,
-        data_dir,
-        batch_size,
-        shuffle=True,
-        num_workers=1,
-        quantity=1.0,
-        training_test_split=[100, 8],
-        validation_split=0.0,
-        training=True,
-        **kwargs,
-    ):
-        # Set up data directory
-        quantity = (
-            quantity
-            if quantity > 0.0 and quantity <= 1.0
-            else sys.exit("quantity of loading data should be in the range of (0, 1].")
-        )
-        # Download VCTK_092 dataset
-        # The data returns a tuple of the form: waveform, sample rate, transcript, speaker id and utterance id
-        self.dataset = CustomVCTK_092(
-            root=data_dir,
-            training_test_split=training_test_split,
-            training=training,
-            quantity=quantity,
-            **kwargs,
-        )
+    # Check if the dataset is VCTK_092
+    if config.DATA.DATASET == "VCTK_092":
+        if not config.EVAL_MODE:
+            # Load the whole dataset for training and validation
+            dataset = CustomVCTK_092(config, training=True, logger=logger)
+            # Split the dataset into training and validation
+            train_size = int(len(dataset) * (1 - config.DATA.VALID_SPLIT))
+            val_size = len(dataset) - train_size
+            train_dataset, val_dataset = random_split(
+                dataset,
+                [train_size, val_size],
+                generator=torch.Generator().manual_seed(42),
+            )
+            # Create the distributed sampler
+            train_sampler = DistributedSampler(
+                train_dataset, num_replicas=world_size, rank=rank
+            )
+            val_sampler = DistributedSampler(
+                val_dataset, num_replicas=world_size, rank=rank
+            )
+            # Create the data loaders
+            train_loader = torch.utils.data.DataLoader(
+                train_dataset,
+                batch_size=config.DATA.BATCH_SIZE,
+                shuffle=False,
+                sampler=train_sampler,
+                num_workers=config.DATA.NUM_WORKERS,
+                pin_memory=True,
+            )
+            val_loader = torch.utils.data.DataLoader(
+                val_dataset,
+                batch_size=config.DATA.BATCH_SIZE,
+                shuffle=False,
+                sampler=val_sampler,
+                num_workers=config.DATA.NUM_WORKERS,
+                pin_memory=True,
+            )
 
-        # Data shape is used for model summary
-        shape = [int(x) for x in self.dataset[0][0].shape]
-        # Get only one chunk
-        shape[1] = 1
-        # Set the data shape
-        self.data_shape = tuple(shape)
+            # # Get the number of samples in each split
+            # split_sample_num = {
+            #     "train": len(train_sampler) if train_sampler is not None else 0,
+            #     "valid": len(val_sampler) if val_sampler is not None else 0,
+            # }
 
-        # Print the total number of samples
-        print(f"Total number of samples: {len(self.dataset)}")
-        # Set up the data loader
-        super().__init__(
-            self.dataset,
-            batch_size,
-            shuffle,
-            validation_split,
-            num_workers,
-            collate_fn=self._collate_fn,
-        )
+            # print(
+            #     f"Number of samples in each split: {split_sample_num['train']} training, {split_sample_num['valid']} validation"
+            # )
 
-    def _collate_fn(self, batch):
-        """
-        Custom collate function to deal with the audio data with different lengths.
+            return train_loader, val_loader
+        else:
+            # Load the testing dataset
+            test_dataset = CustomVCTK_092(config, training=False, logger=logger)
+            test_loader = torch.utils.data.DataLoader(
+                test_dataset,
+                batch_size=1,
+                shuffle=False,
+                num_workers=config.DATA.NUM_WORKERS,
+                pin_memory=True,
+            )
+            return test_loader
 
-        Args:
-            batch (list): List of tensors of in the shape of (batch_size, 2 (mag or phase), num_chunks, num_frequencies, num_frames)
-        """
-        # Get the batch size
-        batch_size = len(batch)
-        # Split the batches into x and y
-        batch_split = list(zip(*batch))
-        # Initialize tensor to store the new batches for x and y
-        new_batch_x = []
-        new_batch_y = []
-        # Get the max length of chunks
-        max_chunk_length = max([x.size(1) for x in batch_split[0]])
-        # Loop over the batch and pad the chunks
-        for i in range(batch_size):
-            # Get the shape of the chunk (x and y are the same shape)
-            data_shape = batch_split[0][i].shape
-
-            if data_shape[1] < max_chunk_length:
-                # Chunk of zeros for padding
-                padding_chunk = torch.zeros(
-                    2,
-                    max_chunk_length - data_shape[1],
-                    data_shape[2],
-                    data_shape[3],
-                )
-                # Concatenate the padding chunk to new batch for x and y
-                new_batch_x.append(torch.cat((batch_split[0][i], padding_chunk), dim=1))
-                new_batch_y.append(torch.cat((batch_split[1][i], padding_chunk), dim=1))
-            else:
-                new_batch_x.append(batch_split[0][i])
-                new_batch_y.append(batch_split[1][i])
-
-        # Stack the new batch for x and y
-        new_batch_x = torch.stack(new_batch_x)
-        new_batch_y = torch.stack(new_batch_y)
-
-        return (
-            new_batch_x,
-            new_batch_y,
-            torch.tensor(batch_split[2]),
-            torch.tensor(batch_split[3]),
-        )
+    else:
+        raise NotImplementedError(f"Dataset {config.DATA.DATASET} not implemented")
 
 
 class CustomVCTK_092(datasets.VCTK_092):
-    """
-    Inherit the VCTK_092 dataset and make custom data processing pipeline.
-
-    1. Assume you've run the `trim_flac2wav.py` script to trim the silence and save the trimmed wav files.
-    2. The trimmed wav files are in the `./data/VCTK-Corpus-0.92/wav48_silence_trimmed_wav` directory.
-    3. Since we only use mic2, the file name is in the format of `p225_001.wav` without the mic_id.
-
-    So, we modify the self._audio_dir and remove self._mic_id = mic_id.
-
-    Args:
-        root (str): Root directory of dataset where `VCTK-Corpus-0.92` folder exists.
-        audio_ext (str, optional): The extension of the audio files. Defaults to ".wav".
-        random_resample (list, optional): List of target sample rates to choose from. Defaults to [8000].
-        **kwargs: Additional arguments for the VCTK_092 class.
-    """
-
     def __init__(
         self,
-        root,
+        config,
         audio_ext=".wav",
-        training_test_split=[100, 8],
         training=True,
-        quantity=1.0,
+        logger=None,
         **kwargs,
     ):
-        super().__init__(root)
-        self._path = os.path.join(root, "VCTK-Corpus-0.92")
-        self._txt_dir = os.path.join(self._path, "txt")
-        self._audio_dir = os.path.join(self._path, "wav48_silence_trimmed_wav")
-        self._audio_ext = audio_ext
-        self.training_test_split = training_test_split
-        self.training = training
-        self.quantity = quantity
-        self._sample_ids = []
-        self.random_resample = kwargs.get("random_resample", [8000])
-        self.length = kwargs.get("length", 121890)
-        self.white_noise = kwargs.get("white_noise", 0)
-        self.stft_enabled = kwargs.get("stft_enabled", True)
-        self.chunking_enabled = kwargs.get("chunking_enabled", True)
-        self.random_lpf = kwargs.get("random_lpf", False)
-        self.scale = kwargs.get("scale", "log")
-        self.chunking_params = kwargs.get("chunking_params", None)
-        self.stft_params = kwargs.get("stft_params", None)
+        self.config = config
+        self.logger = logger
         # Check if the trimmed wav files exist
-        if not os.path.isdir(self._audio_dir):
-            raise RuntimeError(
-                "Dataset not found. Please run data/trim_flac2wav.py to download and trim the silence first."
+        if not os.path.isdir(
+            os.path.join(self.config.DATA.DATA_PATH, self.config.DATA.FLAC2WAV.DST_PATH)
+        ):
+            # Print the message
+            self.logger.info(
+                "Trimmed wav files not found. Download and Convert flac to wav..."
+            )
+            # Convert flac to wav
+            self._flac2wav()
+            super().__init__(
+                root=self.config.DATA.DATA_PATH, mic_id=self.config.DATA.MIC_ID
+            )
+        else:
+            super().__init__(
+                root=self.config.DATA.DATA_PATH, mic_id=self.config.DATA.MIC_ID
             )
 
+        self._path = os.path.join(self.config.DATA.DATA_PATH, "VCTK-Corpus-0.92")
+        self._txt_dir = os.path.join(self._path, "txt")
+        self._audio_dir = os.path.join(
+            self.config.DATA.DATA_PATH, self.config.DATA.FLAC2WAV.DST_PATH
+        )
+        self._audio_ext = audio_ext
+        self.training_test_split = self.config.DATA.TRAIN_SPLIT
+        self.quantity = (
+            (
+                self.config.DATA.USE_QUANTITY
+                if self.config.DATA.USE_QUANTITY > 0.0
+                and self.config.DATA.USE_QUANTITY <= 1.0
+                else ValueError("Quantity should be between 0 and 1")
+            )
+            if not self.config.EVAL_MODE
+            else 1.0
+        )
+        self.training = training
+        # Initialize the sample IDs
+        self._sample_ids = []
+        # Set the sample IDs file path
         self.sample_ids_file = os.path.join(
             self._path, f"sample_ids_{'train' if self.training else 'test'}.json"
         )
         # Load the sample IDs
         self._load_sample_ids()
+
+    def _flac2wav(self):
+        """
+        As the dataset is downloaded in flac format, we need to convert it to wav.
+        """
+        dataset = datasets.VCTK_092(
+            root=self.config.DATA.DATA_PATH,
+            mic_id=self.config.DATA.MIC_ID,
+            download=True,
+        )
+
+        # Check if the timestamps file exists
+        if not os.path.isfile(self.config.DATA.FLAC2WAV.TIMESTAMPS):
+
+            raise RuntimeError(
+                "Timestamps file not found. Please run the `git submodule update --init --recursive` command to download the timestamps file."
+            )
+
+        # Print the message
+        self.logger.info("Converting flac to wav...")
+        trimmed_folder = os.path.join(
+            self.config.DATA.DATA_PATH, self.config.DATA.FLAC2WAV.DST_PATH
+        )
+        # Read the timestamps txt as pandas dataframe
+        timestamps = pd.read_csv(
+            self.config.DATA.FLAC2WAV.TIMESTAMPS, sep=" ", header=None
+        )
+        # Set the column names
+        timestamps.columns = ["filename", "start", "end"]
+        # Convert seconds to samples with the sample rate
+        timestamps["start"] = timestamps["start"] * self.config.DATA.FLAC2WAV.SRC_SR
+        timestamps["end"] = timestamps["end"] * self.config.DATA.FLAC2WAV.SRC_SR
+        # Change the type to int
+        timestamps["start"] = timestamps["start"].astype(int)
+        timestamps["end"] = timestamps["end"].astype(int)
+
+        # Iterate over the dataset
+        for waveform, sample_rate, transcript, speaker_id, utterance_id in tqdm(
+            dataset, desc="Converting flac to wav"
+        ):
+            # Skip the speaker_id p280 and p315
+            if speaker_id == "p280" or speaker_id == "p315":
+                continue
+            # Combine speaker_id and utterance_id, use it to match the timestamps
+            flac_name = f"{speaker_id}_{utterance_id}"
+            # Get the if from the timestamps dataframe
+            flac_timestamps = timestamps[timestamps["filename"] == flac_name]
+            # Set the destination file folder
+            dest_folder = os.path.join(trimmed_folder, f"{speaker_id}")
+            # Set the destination file path
+            dest_path = os.path.join(dest_folder, f"{flac_name}.wav")
+            # Make sure the output directory exists, if not, create it
+            os.makedirs(dest_folder, exist_ok=True)
+            # Check if the destination file already exists
+            if os.path.exists(dest_path):
+                continue
+            # If the flac file is not in the timestamps, directly save the waveform
+            if flac_timestamps.empty:
+                torchaudio.save(dest_path, waveform, sample_rate)
+                continue
+            # Trim the waveform tensor based on the start and end of timestamps
+            start = flac_timestamps["start"].values[0]
+            end = flac_timestamps["end"].values[0]
+            trimmed_waveform = waveform[:, start:end]
+            # Save the trimmed waveform
+            torchaudio.save(dest_path, trimmed_waveform, sample_rate)
+
+        # Print the message
+        self.logger.info(
+            f"Finished converting flac to ({len(dataset)}) wav files to {trimmed_folder}."
+        )
+        # Delete the dataset
+        del dataset
 
     def _load_sample_ids(self):
         """
@@ -184,12 +224,16 @@ class CustomVCTK_092(datasets.VCTK_092):
         """
         if os.path.isfile(self.sample_ids_file):
             # Print the message
-            print("Loading sample IDs from file...")
+            self.logger.info(
+                f"Loading {'training' if self.training else 'testing'} sample IDs..."
+            )
             # Load the sample IDs from the file
             self._load_sample_ids_from_file()
         else:
             # Print the message
-            print("Can't find sample IDs file. Parsing the folder structure...")
+            self.logger.info(
+                "Can't find sample IDs file. Parsing the folder structure..."
+            )
             # Parse the folder structure and create the sample IDs
             self._parse_folder_and_create_sample_ids()
             # Load the sample IDs from the file
@@ -200,15 +244,16 @@ class CustomVCTK_092(datasets.VCTK_092):
         Parse the folder structure and create the sample IDs.
         """
         # Extracting speaker IDs from the folder structure
-        # Note: Some of speakers has been removed by VCTK_092 class while running `trim_flac2wav.py`
         self._speaker_ids = sorted(os.listdir(self._audio_dir))
         # Split the training and test speakers
         if self.training:
             self._speaker_ids = self._speaker_ids[: self.training_test_split[0]]
-            print(f"Number of speakers: {len(self._speaker_ids)}")
         else:
             self._speaker_ids = self._speaker_ids[self.training_test_split[0] :]
-            print(f"Number of speakers: {len(self._speaker_ids)}")
+
+        self.logger.info(
+            f"Number of speakers for {'training' if self.training else 'testing'}: {len(self._speaker_ids)}"
+        )
 
         # Get _sample_ids
         for speaker_id in self._speaker_ids:
@@ -223,9 +268,12 @@ class CustomVCTK_092(datasets.VCTK_092):
                     speaker_id,
                     f"{utterance_id}{self._audio_ext}",
                 )
+                # Skip txt file that doesn't have the corresponding audio file
                 if not os.path.isfile(audio_path):
                     continue
                 self._sample_ids.append(utterance_id.split("_"))
+
+        self.logger.info(f"Number of samples: {len(self._sample_ids)}")
 
         # Save the generated sample IDs
         with open(self.sample_ids_file, "w") as f:
@@ -239,187 +287,51 @@ class CustomVCTK_092(datasets.VCTK_092):
             self._sample_ids = json.load(f)
             num_smaples = len(self._sample_ids)
             loaded_samples = int(num_smaples * self.quantity)
-            print(
+
+            self.logger.info(
                 f"Loading {self.quantity}% of the sample IDs ({loaded_samples} of {num_smaples})..."
             )
-            # Set the seed on data loading for reproducibility
-            random.seed(9527)
+
             # Randomly shuffle the sample IDs
             random.shuffle(self._sample_ids)
             # Load the specified quantity of the sample IDs
             self._sample_ids = self._sample_ids[:loaded_samples]
 
-    def get_io_pairs(self, waveform_org: torch.Tensor, sr_org: int) -> torch.Tensor:
-        """
-        Get the input-output pairs for the audio processing pipeline.
-        1. Crop or pad the waveform to a fixed length (consistent shapes within batches for efficient computation)
-        2. Get magnitude and phase of the original audio
-        3. Normalize the audio (Optional)
-        4. Apply low pass filter to avoid aliasing
-        5. Downsample the audio to a lower sample rate (simulating a low resolution audio)
-        6. Upsample the audio to a higher sample rate (unifying the input shape)
-        7. Apply low pass filter to remove the artifacts from the resampling
-        8. Chunk the audio into smaller fixed-length segments (to fit the model input shape)
-        9. Get magnitude and phase of the chunked low resolution audio
-        10. Return the x-y pair of magnitude and phase
-
-        Args:
-            waveform_org (Tensor): The input audio waveform
-            sr (int): The sample rate of the audio waveform
-
-        Returns:
-            x (Tensor): The magnitude and phase of the input in the time-frequency domain
-            y (Tensor): The magnitude and phase of the original audio in the time-frequency domain
-            padding_length (int): The length of the padding for the last chunk
-            hf (int): The highcut frequency for the low pass filter
-        """
-        # List of target sample rates to choose from
-        # sr_new = random.choice(self.random_resample)
-        # * TEST: Uniformly choose an integer from min to max in the list
-        sr_new = random.randint(self.random_resample[0], self.random_resample[-1])
-        # Highcut frequency = int((1 + n_fft // 2) * (sr_new // sr_org))
-        # We only use it for computing the LSD
-        hf = int(1 + (self.stft_params["full"]["n_fft"] // 2) * (sr_new / sr_org))
-        # Crop or pad the waveform to a fixed length
-        waveform_org = preprocessing.crop_or_pad_waveform(
-            waveform_org, {"length": self.length, "white_noise": self.white_noise}
-        )
-        if sr_new != sr_org:
-            # Preprocess the audio
-            if self.random_lpf:
-                order = random.randint(1, 11)
-                ripple = random.choice([1e-9, 1e-6, 1e-3, 1, 5])
-            else:
-                order = 6
-                ripple = 1e-3
-
-            # Apply low pass filter to avoid aliasing
-            waveform = preprocessing.low_pass_filter(
-                waveform_org, sr_org, sr_new, order=order, ripple=ripple
-            )
-            # Downsample the audio to a lower sample rate
-            waveform = preprocessing.resample_audio(waveform, sr_org, sr_new)
-            # Upsample the audio to a higher sample rate
-            waveform = preprocessing.resample_audio(waveform, sr_new, sr_org)
-            # Remove the artifacts from the resampling
-            waveform = preprocessing.low_pass_filter(
-                waveform, sr_org, sr_new, order=order, ripple=ripple
-            )
-            # Align the length of the waveform
-            waveform = preprocessing.align_waveform(waveform, waveform_org)
-        else:
-            waveform = waveform_org
-
-        # Get data and target pairs
-        if self.stft_enabled:
-            # Return the magnitude and phase of the audio in the time-frequency domain
-            # Shape: (2 (mag and phase), num_chunks, num_frequencies, num_frames)
-            x, padding_length = self._get_mag_phase(
-                waveform,
-                chunk_wave=self.chunking_enabled,
-                chunk_buffer=self.chunking_params["chunk_buffer"],
-                scale=self.scale,
-            )
-            y, padding_length = self._get_mag_phase(
-                waveform_org,
-                chunk_wave=self.chunking_enabled,
-                chunk_buffer=self.chunking_params["chunk_buffer"],
-                scale=self.scale,
-            )
-        else:
-            if self.chunking_enabled:
-                # Return the chunked waveform
-                # Shape: (num_chunks, channel (mono: 1), chunk_size + 2 * chunk_buffer)
-                x = preprocessing.cut2chunks(
-                    waveform=waveform,
-                    chunk_size=self.chunking_params["chunk_size"],
-                    overlap=self.chunking_params["overlap"],
-                    chunk_buffer=self.chunking_params["chunk_buffer"],
-                )
-                y = preprocessing.cut2chunks(
-                    waveform=waveform_org,
-                    chunk_size=self.chunking_params["chunk_size"],
-                    overlap=self.chunking_params["overlap"],
-                    chunk_buffer=self.chunking_params["chunk_buffer"],
-                )
-                # print(x.shape, y.shape)
-            else:
-                # Return the waveform
-                # Shape: (1, self.length)
-                x = waveform
-                y = waveform_org
-
-        return x, y, padding_length, hf
-
-    def _get_mag_phase(
-        self,
-        waveform: torch.Tensor,
-        chunk_wave: bool = True,
-        chunk_buffer: int = 0,
-        scale: str = "log",
-    ) -> torch.Tensor:
-        """
-        Compute the magnitude and phase of the audio in the time-frequency domain.
-
-        Args:
-            waveform (Tensor): The input audio waveform
-            chunk_wave (bool): Whether to chunk the audio into smaller fixed-length segments
-
-        Returns:
-            Tensor: The magnitude and phase of the audio in the time-frequency domain
-        """
-        if chunk_wave:
-            # Size of each audio chunk
-            chunk_size = self.chunking_params["chunk_size"]
-            # Overlap size between chunks
-            overlap = int(chunk_size * self.chunking_params["overlap"])
-            # Chunk the audio into smaller fixed-length segments
-            # chunks is torch.stack() with shape (num_chunks, chunk_size)
-            chunks, padding_length = preprocessing.cut2chunks(
-                waveform=waveform,
-                chunk_size=chunk_size,
-                overlap=overlap,
-                chunk_buffer=chunk_buffer,
-                return_padding_length=True,
-            )
-            # Compute STFT for each segment and convert to magnitude and phase
-            mag = []
-            phase = []
-            for chunk_y in chunks:
-                mag_chunk, phase_chunk = preprocessing.get_mag_phase(
-                    chunk_y,
-                    chunk_wave=True,
-                    chunk_buffer=chunk_buffer,
-                    scale=scale,
-                    stft_params=self.stft_params,
-                )
-                mag.append(mag_chunk)
-                phase.append(phase_chunk)
-
-            # Make mag and phase to tensors, shape (num_chunks, 1, num_frequencies, num_frames)
-            mag = torch.stack(mag)
-            phase = torch.stack(phase)
-            # Remove the dimension of 1
-            mag = mag.squeeze(1)
-            phase = phase.squeeze(1)
-            # Make mag and phase to a pair, shape (2, num_chunks, num_frequencies, num_frames)
-            mag_phase_pair = torch.stack((mag, phase))
-        else:
-            # Compute STFT for the whole waveform and convert to magnitude and phase
-            mag, phase = preprocessing.get_mag_phase(
-                waveform,
-                chunk_wave=False,
-                scale=scale,
-                stft_params=self.stft_params,
-            )
-            # Make mag and phase to a pair, shape (2, num_frequencies, num_frames)
-            mag_phase_pair = torch.stack((mag, phase))
-
-        # Return the magnitude and phase in tensors
-        return mag_phase_pair, padding_length
-
     def _load_audio(self, file_path) -> Tuple[torch.Tensor | int]:
         return super()._load_audio(file_path)
+
+    def _get_io_pair(
+        self, waveform_target: torch.Tensor, sr: int
+    ) -> Tuple[torch.Tensor, torch.Tensor]:
+        # Uniformly choose an integer from min to max in the list
+        sr_input = random.randint(
+            self.config.DATA.RANDOM_RESAMPLE[0], self.config.DATA.RANDOM_RESAMPLE[-1]
+        )
+        # Check if the sample rate of the original audio is the same as the target sample rate
+        if sr != self.config.DATA.TARGET_SR:
+            # Resample the audio
+            waveform_target = resample_audio(
+                waveform_target, sr, self.config.DATA.TARGET_SR
+            )
+
+        # Highcut frequency = int((1 + n_fft // 2) * (sr_input // sr_target))
+        highcut = int(
+            (1 + self.config.DATA.STFT.N_FFT // 2)
+            * (sr_input / self.config.DATA.TARGET_SR)
+        )
+        # TODO: Apply low pass filter
+        if self.config.DATA.RANDOM_LPF:
+            pass
+        else:
+            pass
+        # Downsample the audio
+        waveform_input = resample_audio(waveform_target, sr, sr_input)
+        # Upsample the audio
+        waveform_input = resample_audio(waveform_input, sr_input, sr)
+        # Align the waveform length
+        waveform_input = align_waveform(waveform_input, waveform_target)
+
+        return waveform_input, waveform_target, highcut
 
     def _load_sample(
         self, speaker_id: str, utterance_id: str
@@ -427,38 +339,25 @@ class CustomVCTK_092(datasets.VCTK_092):
         """
         Load and preprocess the audio and transcript for a given speaker and utterance ID.
         """
-        # Get the transcript and audio file path
-        # transcript_path = os.path.join(
-        #     self._txt_dir, speaker_id, f"{speaker_id}_{utterance_id}.txt")
         audio_path = os.path.join(
             self._audio_dir,
             speaker_id,
             f"{speaker_id}_{utterance_id}{self._audio_ext}",
         )
-        # Read text (Optional)
-        # transcript = self._load_text(transcript_path)
         # Read audio file
-        waveform, sr = self._load_audio(audio_path)
-        # TODO: Return the padding length for post-processing
-        # Process the waveform with the audio processing pipeline
-        x, y, padding_length, hf = self.get_io_pairs(waveform, sr)
+        input, output, highcut = self._get_io_pair(*self._load_audio(audio_path))
 
-        return x, y, padding_length, hf
+        if self.config.EVAL_MODE and self.config.TEST.SAVE_RESULT:
+            return (
+                input,
+                output,
+                highcut,
+                f"{speaker_id}_{utterance_id}{self._audio_ext}",
+            )
+        else:
+            return input, output, highcut, None
 
     def __getitem__(self, n: int) -> Tuple[torch.Tensor, torch.Tensor]:
-        """Load the n-th sample from the dataset.
-
-        Args:
-            n (int): The index of the sample to be loaded
-
-        Returns:
-            Tuple of the following items;
-
-            Tensor:
-                Magnitude of the audio in the time-frequency domain
-            Tensor:
-                Phase of the audio in the time-frequency domain
-        """
         speaker_id, utterance_id = self._sample_ids[n]
         return self._load_sample(speaker_id, utterance_id)
 
@@ -466,77 +365,60 @@ class CustomVCTK_092(datasets.VCTK_092):
         return len(self._sample_ids)
 
 
-# Debugging
-if __name__ == "__main__":
-    # Load packages that only used for debugging
-    import time
-    import torchaudio
+def resample_audio(waveform: torch.Tensor, sr_org: int, sr_new: int) -> torch.Tensor:
+    """
+    Resample the waveform to the new sample rate
 
-    timestr = time.strftime("%Y%m%d-%H%M%S")
+    Args:
+        waveform (torch.Tensor): The input waveform
+        sr_org (int): The original sample rate
+        sr_new (int): The new sample rate
 
-    with open("./config/config.json") as f:
-        config = json.load(f)
+    Returns:
+        torch.Tensor: The resampled waveform
+    """
+    # waveform_resampled = T.Resample(sr_org, sr_new)(waveform)
+    waveform_resampled = resample_poly(waveform, sr_new, sr_org, axis=-1)
+    return torch.tensor(waveform_resampled, dtype=torch.float32)
 
-    # Ensure the output directory exists
-    output_dir = "./output/dev/data_loader"
-    ensure_dir(output_dir)
 
-    print("Loading the VCTK_092 dataset...")
-
-    # Set up the data loader
-    data_loader = VCTKDataLoader(
-        data_dir=config["data_loader"]["args"]["data_dir"],
-        quantity=0.001,
-        batch_size=4,
-        num_workers=0,
-        validation_split=0.1,
-        chunking_params={"chunk_size": 10160, "overlap": 0, "chunk_buffer": 240},
-    )
-
-    # Iterate over the data loader with tqdm
-    for batch_idx, data in enumerate(tqdm(data_loader)):
-        # Print the batch index and the data
-        print(
-            f"batch_idx: {batch_idx}, len(data): {len(data)}, data[0].shape (x): {data[0].shape}, data[1].shape (y): {data[1].shape}"
+def align_waveform(
+    waveform_resampled: torch.Tensor, waveform: torch.Tensor
+) -> torch.Tensor:
+    # Make sure the waveform has the same length
+    if waveform_resampled.shape[1] < waveform.shape[1]:
+        waveform_resampled = F.pad(
+            waveform_resampled,
+            (0, waveform.shape[1] - waveform_resampled.shape[1]),
+            mode="constant",
+            value=0,
         )
-        # Check the data
-        # The shape of x is torch.Size([128 (batch_size), 2 (mag and phase), 15 (chunks), 513 (frequency bins), 101 (frames)])
-        # The shape of chunked y is torch.Size([128 (batch_size), 2 (mag and phase), 15 (chunks), 513 (frequency bins), 101 (frames)])
-        # The shape of not chunked y is torch.Size([128 (batch_size), 2 (mag and phase), 513 (frequency bins), 256 (frames)])
-        x, y = data
-        x_mag, x_phase = x[0]
-        y_mag, y_phase = y[0]
-        print(f"x_mag.shape: {x_mag.shape}, x_phase.shape: {x_phase.shape}")
-        print(f"y_mag.shape: {y_mag.shape}, y_phase.shape: {y_phase.shape}")
+    elif waveform_resampled.shape[1] > waveform.shape[1]:
+        waveform_resampled = waveform_resampled[: waveform.shape[1]]
 
-        # Post-processing
-        # Reconstruct the chunked waveform of magnitude and phase spectrograms
-        reconstructed_waveform_x = postprocessing.reconstruct_from_stft_chunks(
-            mag=x_mag.unsqueeze(0), phase=x_phase.unsqueeze(0), crop=True
-        )
-        # Save the reconstructed waveform
-        torchaudio.save(
-            f"{output_dir}/reconstructed_waveform_x_{timestr}.wav",
-            reconstructed_waveform_x,
-            48000,
-        )
-        # Print the reconstructed waveform shape
-        print(f"Reconstructed waveform x shape: {reconstructed_waveform_x.shape}")
+    return waveform_resampled
 
-        # Reconstruct the full waveform of magnitude and phase spectrograms
-        # Test for not chunked original waveform
-        # reconstructed_waveform_y = postprocessing.reconstruct_from_stft(
-        #     mag=y_mag, phase=y_phase)
-        # Test for chunked original waveform
-        reconstructed_waveform_y = postprocessing.reconstruct_from_stft_chunks(
-            mag=y_mag.unsqueeze(0), phase=y_phase.unsqueeze(0), crop=True
-        )
-        # Save the reconstructed waveform
-        torchaudio.save(
-            f"{output_dir}/reconstructed_waveform_y_{timestr}.wav",
-            reconstructed_waveform_y,
-            48000,
-        )
-        # Print the reconstructed waveform shape
-        print(f"Reconstructed waveform y shape: {reconstructed_waveform_y.shape}")
-        break
+
+# A class that provides many different low pass filters like Butterworth, Chebyshev, Bessel, etc.
+class LowPassFilter:
+    def __init__(self, filter_type, cutoff_freq, order, sampling_freq):
+        self.filter_type = filter_type
+        self.cutoff_freq = cutoff_freq
+        self.order = order
+        self.sampling_freq = sampling_freq
+        self.nyquist_freq = 0.5 * sampling_freq
+        self.cutoff_freq = self.cutoff_freq / self.nyquist_freq
+
+    def get_filter(self):
+        if self.filter_type == "butter":
+            return butter(self.order, self.cutoff_freq, btype="low")
+        elif self.filter_type == "cheby1":
+            return cheby1(self.order, 0.5, self.cutoff_freq, btype="low")
+        elif self.filter_type == "cheby2":
+            return cheby2(self.order, 30, self.cutoff_freq, btype="low")
+        elif self.filter_type == "ellip":
+            return ellip(self.order, 0.5, 30, self.cutoff_freq, btype="low")
+        elif self.filter_type == "bessel":
+            return bessel(self.order, self.cutoff_freq, btype="low")
+        else:
+            raise ValueError("Filter type not supported")
