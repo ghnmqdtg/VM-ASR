@@ -1,3 +1,4 @@
+import os
 import torch
 from abc import abstractmethod
 from numpy import inf
@@ -10,11 +11,11 @@ class BaseTrainer:
     Base class for all trainers
     """
 
-    def __init__(self, model, metric_ftns, optimizer, config, logger):
+    def __init__(self, models, metric_ftns, optimizer, config, logger):
         self.config = config
         self.logger = logger
 
-        self.model = model
+        self.models = models
         self.metric_ftns = metric_ftns
         self.optimizer = optimizer
 
@@ -130,22 +131,31 @@ class BaseTrainer:
         :param log: logging information of the epoch
         :param save_best: if True, rename the saved checkpoint to 'model_best.pth'
         """
-        model_name = self.config.MODEL.NAME
-        state = {
-            "name": model_name,
-            "epoch": epoch,
-            "state_dict": self.model.state_dict(),
-            "optimizer": self.optimizer.state_dict(),
-            "monitor_best": self.mnt_best,
-            "config": self.config,
-        }
-        filename = str(self.log_dir / "checkpoint-epoch{}.pth".format(epoch))
-        torch.save(state, filename)
-        self.logger.info("Saving checkpoint: {} ...".format(filename))
-        if save_best:
-            best_path = str(self.log_dir / "model_best.pth")
-            torch.save(state, best_path)
-            self.logger.info("Saving current best: model_best.pth ...")
+        for key in self.models.keys():
+            # The key would be either "generator" or names of the discriminators
+            model = self.models[key]
+            model_name = "G" if key == "generator" else "D"
+            model_type = "generator" if key == "generator" else "discriminator"
+            state = {
+                "name": model_name,
+                "epoch": epoch,
+                "state_dict": model.state_dict(),
+                "optimizer": self.optimizer[model_type].state_dict(),
+                "monitor_best": self.mnt_best,
+                "config": self.config,
+            }
+            filename = os.path.join(
+                self.log_dir, f"checkpoint-epoch-{epoch}-{model_name}.pth"
+            )
+            torch.save(state, filename)
+            self.logger.info("Saving checkpoint: {} ...".format(filename))
+
+            if save_best:
+                best_path = os.path.join(self.log_dir, f"model_best_{model_name}.pth")
+                torch.save(state, best_path)
+                self.logger.info(
+                    f"Saving current best: model_best_{model_name}.pth ..."
+                )
 
     def _resume_checkpoint(self, resume_path):
         """
@@ -167,7 +177,7 @@ class BaseTrainer:
                 "Warning: Architecture configuration given in config file is different from that of "
                 "checkpoint. This may yield an exception while state_dict is being loaded."
             )
-        self.model.load_state_dict(checkpoint["state_dict"])
+        self.models.load_state_dict(checkpoint["state_dict"])
 
         # load optimizer state from checkpoint only when optimizer type is not changed.
         if (
