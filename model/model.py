@@ -1257,7 +1257,9 @@ class PeriodDiscriminator(torch.nn.Module):
         use_spectral_norm (bool): Whether to use spectral normalization on the layers.
     """
 
-    def __init__(self, period, kernel_size=5, stride=3, use_spectral_norm=False):
+    def __init__(
+        self, period, kernel_size=5, stride=3, use_spectral_norm=False, hidden=32
+    ):
         super(PeriodDiscriminator, self).__init__()
         self.period = period
         self.norm_layer = weight_norm if use_spectral_norm else spectral_norm
@@ -1269,7 +1271,7 @@ class PeriodDiscriminator(torch.nn.Module):
                 self.norm_layer(
                     nn.Conv2d(
                         1,
-                        32,
+                        hidden,
                         (kernel_size, 1),
                         (stride, 1),
                         padding=(self.get_padding(5, 1), 0),
@@ -1277,8 +1279,8 @@ class PeriodDiscriminator(torch.nn.Module):
                 ),
                 self.norm_layer(
                     nn.Conv2d(
-                        32,
-                        128,
+                        hidden,
+                        hidden * 4,
                         (kernel_size, 1),
                         (stride, 1),
                         padding=(self.get_padding(5, 1), 0),
@@ -1286,8 +1288,8 @@ class PeriodDiscriminator(torch.nn.Module):
                 ),
                 self.norm_layer(
                     nn.Conv2d(
-                        128,
-                        512,
+                        hidden * 4,
+                        hidden * 16,
                         (kernel_size, 1),
                         (stride, 1),
                         padding=(self.get_padding(5, 1), 0),
@@ -1295,19 +1297,23 @@ class PeriodDiscriminator(torch.nn.Module):
                 ),
                 self.norm_layer(
                     nn.Conv2d(
-                        512,
-                        1024,
+                        hidden * 16,
+                        hidden * 32,
                         (kernel_size, 1),
                         (stride, 1),
                         padding=(self.get_padding(5, 1), 0),
                     )
                 ),
                 self.norm_layer(
-                    nn.Conv2d(1024, 1024, (kernel_size, 1), 1, padding=(2, 0))
+                    nn.Conv2d(
+                        hidden * 32, hidden * 32, (kernel_size, 1), 1, padding=(2, 0)
+                    )
                 ),
             ]
         )
-        self.conv_post = self.norm_layer(nn.Conv2d(1024, 1, (3, 1), 1, padding=(1, 0)))
+        self.conv_post = self.norm_layer(
+            nn.Conv2d(hidden * 32, 1, (3, 1), 1, padding=(1, 0))
+        )
 
     def forward(self, x):
         feature_map = []
@@ -1341,16 +1347,11 @@ class PeriodDiscriminator(torch.nn.Module):
 
 
 class MultiPeriodDiscriminator(torch.nn.Module):
-    def __init__(self):
+
+    def __init__(self, hidden=32, periods=[2, 3, 5, 7, 11]):
         super(MultiPeriodDiscriminator, self).__init__()
         self.discriminators = nn.ModuleList(
-            [
-                PeriodDiscriminator(2),
-                PeriodDiscriminator(3),
-                PeriodDiscriminator(5),
-                PeriodDiscriminator(7),
-                PeriodDiscriminator(11),
-            ]
+            [PeriodDiscriminator(period, hidden=hidden) for period in periods]
         )
 
     def forward(self, y, y_hat):
@@ -1392,6 +1393,36 @@ class MultiPeriodDiscriminator(torch.nn.Module):
         return (
             f"{statics}\nparams {params/1e6:.2f}M, GFLOPs {sum(Gflops.values()):.2f}\n"
         )
+
+
+def feature_loss(fmap_r, fmap_g):
+    loss = 0
+    total_n_layers = 0
+    for dr, dg in zip(fmap_r, fmap_g):
+        for rl, gl in zip(dr, dg):
+            total_n_layers += 1
+            loss += torch.mean(torch.abs(rl - gl))
+
+    return loss / total_n_layers
+
+
+def discriminator_loss(disc_real_outputs, disc_generated_outputs):
+    loss = 0
+    for dr, dg in zip(disc_real_outputs, disc_generated_outputs):
+        r_loss = torch.mean((1 - dr) ** 2)
+        g_loss = torch.mean(dg**2)
+        loss += r_loss + g_loss
+
+    return loss
+
+
+def generator_loss(disc_outputs):
+    loss = 0
+    for dg in disc_outputs:
+        l = torch.mean((1 - dg) ** 2)
+        loss += l
+
+    return loss
 
 
 if __name__ == "__main__":
