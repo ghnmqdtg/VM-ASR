@@ -111,8 +111,7 @@ _C.TRAIN.MIN_LR = 1e-5
 _C.TRAIN.CYCLE_MULT = 1.0
 _C.TRAIN.ENABLE_GAN = False
 _C.TRAIN.LOSSES = CN()
-_C.TRAIN.LOSSES.GEN = ["mse"]
-_C.TRAIN.LOSSES.DIS = ["mse"]
+_C.TRAIN.LOSSES.GEN = ["l1", "l2"]
 _C.TRAIN.METRICS = ["snr", "lsd", "lsd_hf", "lsd_lf"]
 
 # Auto resume from latest checkpoint
@@ -152,6 +151,11 @@ _C.TRAIN.OPTIMIZER.MOMENTUM = 0.9
 _C.TRAIN.ADVERSARIAL = CN()
 _C.TRAIN.ADVERSARIAL.ENABLE = False
 _C.TRAIN.ADVERSARIAL.DISCRIMINATORS = [""]
+# The feature loss lambda controls how much the similarity between the
+# generated and the original features should be enforced.
+_C.TRAIN.ADVERSARIAL.FEATURE_LOSS_LAMBDA = 100
+_C.TRAIN.ADVERSARIAL.ONLY_FEATURE_LOSS = False
+_C.TRAIN.ADVERSARIAL.ONLY_ADVERSARIAL_LOSS = False
 
 # -----------------------------------------------------------------------------
 # Testing settings
