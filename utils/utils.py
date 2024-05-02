@@ -59,11 +59,19 @@ class MetricTracker:
         self._data = self._data.astype("float")
         self.reset()
 
+        # # TESTING: Save or update the metric to ./metric.csv
+        # self._data.to_csv("./metric.csv")
+
     def reset(self):
         for col in self._data.columns:
             self._data[col].values[:] = 0
 
     def update(self, key, value, n=1):
+        # If the key is not in the index, add it
+        if key not in self._data.index:
+            # Initialize new row for the new key
+            self._data.loc[key] = [0, 0, 0]
+
         if self.writer is not None:
             self.writer.add_scalar(key, value)
 
@@ -72,6 +80,9 @@ class MetricTracker:
         self._data.loc[key, "average"] = (
             self._data.loc[key, "total"] / self._data.loc[key, "counts"]
         )
+
+        # # TESTING: Save or update the metric to ./metric.csv
+        # self._data.to_csv("./metric.csv")
 
     def avg(self, key):
         return self._data.average[key]
