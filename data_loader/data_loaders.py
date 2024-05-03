@@ -124,8 +124,11 @@ class CustomVCTK_092(datasets.VCTK_092):
         # The number of time frames in a segment
         # If the length of the audio is more than the segment length, it will be trimmed
         # else, we will pad the audio with zeros
+        # The number of frames is calculated as the segment length * original `.wav` sample rate
+        # For 48kHz target: 1.705 * 48000 = 81840 samples
+        # For 16kHz target: 2.555 * 48000 * (16000 / 48000) = 40880 samples, downsample is applied after loading the audio
         self.num_frames = (
-            int(self.config.DATA.SEGMENT * self.config.DATA.TARGET_SR)
+            int(self.config.DATA.SEGMENT * self.config.DATA.FLAC2WAV.SRC_SR)
             if not self.config.EVAL_MODE
             else -1
         )
@@ -299,6 +302,12 @@ class CustomVCTK_092(datasets.VCTK_092):
             # Resample the audio
             audio = resample_audio(audio, sr, self.config.DATA.TARGET_SR)
             sr = self.config.DATA.TARGET_SR
+            # Update the num_frames based on the ratio of TARGET_SR and SRC_SR
+            num_frames = int(
+                num_frames
+                * self.config.DATA.TARGET_SR
+                / self.config.DATA.FLAC2WAV.SRC_SR
+            )
         # Check if the audio is stereo, convert it to mono
         if audio.shape[0] == 2:
             audio = torch.mean(audio, dim=0, keepdim=True)
