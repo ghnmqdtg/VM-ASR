@@ -3,7 +3,13 @@ from tqdm import tqdm
 from base import BaseTrainer
 from utils import inf_loop, MetricTracker
 from tqdm.contrib.logging import logging_redirect_tqdm
-from model import discriminator_loss, generator_loss, feature_loss
+from model.loss import (
+    mse_loss,
+    mae_loss,
+    discriminator_loss,
+    generator_loss,
+    feature_loss,
+)
 from logger.visualization import log_audio, log_waveform, log_spectrogram
 
 import torch.nn.functional as F
@@ -296,9 +302,9 @@ class Trainer(BaseTrainer):
         with torch.autograd.set_detect_anomaly(True):
             # Generator loss
             if "l1" in self.config.TRAIN.LOSSES.GEN:
-                losses["generator"].update({"l1": F.l1_loss(wave_out, wave_target)})
+                losses["generator"].update({"l1": mae_loss(wave_out, wave_target)})
             if "l2" in self.config.TRAIN.LOSSES.GEN:
-                losses["generator"].update({"l2": F.mse_loss(wave_out, wave_target)})
+                losses["generator"].update({"l2": mse_loss(wave_out, wave_target)})
 
             # Discriminator loss
             if self.gan:

@@ -2,47 +2,39 @@ import torch
 import torch.nn.functional as F
 
 
-def nll_loss(output, target):
-    return F.nll_loss(output, target)
+def mae_loss(output, target):
+    return F.l1_loss(output, target)
 
 
 def mse_loss(output, target):
     return F.mse_loss(output, target)
 
 
-def mae_loss(output, target):
-    return F.l1_loss(output, target)
-
-
-def generator_loss(disc_outputs):
+def feature_loss(fmap_r, fmap_g):
     loss = 0
-    gen_losses = []
-    for dg in disc_outputs:
-        l = torch.mean((1 - dg) ** 2)
-        gen_losses.append(l)
-        loss += l
+    total_n_layers = 0
+    for dr, dg in zip(fmap_r, fmap_g):
+        for rl, gl in zip(dr, dg):
+            total_n_layers += 1
+            loss += torch.mean(torch.abs(rl - gl))
 
-    return loss, gen_losses
+    return loss / total_n_layers
 
 
 def discriminator_loss(disc_real_outputs, disc_generated_outputs):
     loss = 0
-    r_losses = []
-    g_losses = []
     for dr, dg in zip(disc_real_outputs, disc_generated_outputs):
         r_loss = torch.mean((1 - dr) ** 2)
         g_loss = torch.mean(dg**2)
         loss += r_loss + g_loss
-        r_losses.append(r_loss.item())
-        g_losses.append(g_loss.item())
 
-    return loss, r_losses, g_losses
+    return loss
 
 
-def feature_loss(fmap_r, fmap_g):
+def generator_loss(disc_outputs):
     loss = 0
-    for dr, dg in zip(fmap_r, fmap_g):
-        for rl, gl in zip(dr, dg):
-            loss += torch.mean(torch.abs(rl - gl))
+    for dg in disc_outputs:
+        l = torch.mean((1 - dg) ** 2)
+        loss += l
 
-    return loss * 2
+    return loss
