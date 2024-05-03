@@ -6,6 +6,7 @@ from tqdm.contrib.logging import logging_redirect_tqdm
 from model.loss import (
     mse_loss,
     mae_loss,
+    MultiResolutionSTFTLoss,
     discriminator_loss,
     generator_loss,
     feature_loss,
@@ -60,6 +61,7 @@ class Trainer(BaseTrainer):
             self.lr_scheduler_D = lr_schedulers["discriminator"]
 
         self._init_metrics()
+        self._init_losses()
 
         # Set models to device
         for model in self.models.values():
@@ -92,6 +94,13 @@ class Trainer(BaseTrainer):
             writer=self.writer,
         )
         self.logger.info(f"Train metrics: {self.train_metrics.get_keys()}")
+
+    def _init_losses(self):
+        # Initialize the losses
+        self.multi_resolution_stft = MultiResolutionSTFTLoss(
+            factor_sc=self.config.TRAIN.ADVERSARIAL.STFT_LOSS.SC_FACTOR,
+            factor_mag=self.config.TRAIN.ADVERSARIAL.STFT_LOSS.MAG_FACTOR,
+        )
 
     def _train_epoch(self, epoch):
         # Set the model to training mode
@@ -305,13 +314,19 @@ class Trainer(BaseTrainer):
                 losses["generator"].update({"l1": mae_loss(wave_out, wave_target)})
             if "l2" in self.config.TRAIN.LOSSES.GEN:
                 losses["generator"].update({"l2": mse_loss(wave_out, wave_target)})
+            if "multi_resolution_stft" in self.config.TRAIN.LOSSES.GEN:
+                losses["generator"].update(
+                    {
+                        "multi_resolution_stft": self._get_stft_loss(
+                            wave_out, wave_target
+                        )
+                    }
+                )
 
             # Discriminator loss
             if self.gan:
                 if "mpd" in self.config.TRAIN.ADVERSARIAL.DISCRIMINATORS:
-                    gen_losses, disc_loss = self._get_mpd_adversarial_loss(
-                        wave_out, wave_target
-                    )
+                    gen_losses, disc_loss = self._get_mpd_loss(wave_out, wave_target)
                     if not self.config.TRAIN.ADVERSARIAL.ONLY_FEATURE_LOSS:
                         losses["generator"].update(
                             {"adversarial_mpd": gen_losses["adversarial"]}
@@ -324,7 +339,14 @@ class Trainer(BaseTrainer):
 
         return losses
 
-    def _get_mpd_adversarial_loss(self, wave_out, wave_target):
+    def _get_stft_loss(self, wave_out, wave_target):
+        # Squeeze the channel dimension for the torch.stft
+        sc_loss, mag_loss = self.multi_resolution_stft(
+            wave_out.squeeze(1), wave_target.squeeze(1)
+        )
+        return sc_loss + mag_loss
+
+    def _get_mpd_loss(self, wave_out, wave_target):
         # Discriminator loss
         y_df_hat_r, y_df_hat_g, _, _ = self.models["mpd"](
             wave_target, wave_out.detach()
