@@ -199,6 +199,7 @@ _C.WANDB.TAGS = []
 # Tensorboard settings
 _C.TENSORBOARD = CN()
 _C.TENSORBOARD.ENABLE = True
+_C.TENSORBOARD.LOG_ITEMS = ["audio", "waveform", "spectogram"]
 
 
 def _update_config_from_file(config, cfg_file):

@@ -4,6 +4,7 @@ from base import BaseTrainer
 from utils import inf_loop, MetricTracker
 from tqdm.contrib.logging import logging_redirect_tqdm
 from model import discriminator_loss, generator_loss, feature_loss
+from logger.visualization import log_audio, log_waveform, log_spectrogram
 
 import torch.nn.functional as F
 
@@ -170,7 +171,8 @@ class Trainer(BaseTrainer):
                     self.update_progress_bar(tepoch, metrics_values)
 
                     if batch_idx == (self.len_epoch - 1):
-                        # TODO: Log the outputs to tensorboard or wandb
+                        # Log the outputs to tensorboard or wandb
+                        self.log_outputs(wave_input[0], wave_out[0], wave_target[0])
                         # Set description for the progress bar after the last batch
                         tepoch.set_description(
                             f"Epoch {epoch} [TRAIN] {self._progress(-1, training=True)}"
@@ -276,8 +278,8 @@ class Trainer(BaseTrainer):
                     self.update_progress_bar(tepoch, metrics_values)
 
                     if batch_idx == (self.len_epoch - 1):
-                        # TODO: Log the outputs to tensorboard or wandb
-                        # TODO: Save the output waveforms
+                        # Log the outputs to tensorboard or wandb
+                        self.log_outputs(wave_input[0], wave_out[0], wave_target[0])
                         # Set description for the progress bar after the last batch
                         tepoch.set_description(
                             f"Epoch {epoch} [VALID] {self._progress(-1, training=False)}"
@@ -364,8 +366,16 @@ class Trainer(BaseTrainer):
             else:
                 self.valid_metrics.update(key, value)
 
-    def log_outputs(self, wave_out, wave_target):
-        raise NotImplementedError
+    def log_outputs(self, wave_in, wave_out, wave_target):
+        log_functions = {
+            "audio": log_audio,
+            "waveform": log_waveform,
+            "spectogram": log_spectrogram,
+        }
+
+        for item, func in log_functions.items():
+            if item in self.config.TENSORBOARD.LOG_ITEMS:
+                func(self.writer, wave_in, wave_out, wave_target, self.config)
 
     @staticmethod
     def update_progress_bar(tepoch, metrics_values):
