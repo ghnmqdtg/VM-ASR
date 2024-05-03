@@ -105,7 +105,7 @@ _C.TRAIN.EPOCHS = 50
 _C.TRAIN.WARMUP_EPOCHS = 10
 _C.TRAIN.EARLY_STOPPING = 10
 _C.TRAIN.WEIGHT_DECAY = 0.0
-_C.TRAIN.BASE_LR = 5e-4
+_C.TRAIN.BASE_LR = 1e-3
 _C.TRAIN.MAX_LR = 1e-3
 _C.TRAIN.MIN_LR = 1e-5
 _C.TRAIN.CYCLE_MULT = 1.0
@@ -123,6 +123,16 @@ _C.TRAIN.ACCUMULATION_STEPS = 1
 # could be overwritten by command line argument
 _C.TRAIN.USE_CHECKPOINT = False
 
+# Optimizer
+_C.TRAIN.OPTIMIZER = CN()
+_C.TRAIN.OPTIMIZER.NAME = "adamw"
+# Optimizer Epsilon
+_C.TRAIN.OPTIMIZER.EPS = 1e-8
+# Optimizer Betas
+_C.TRAIN.OPTIMIZER.BETAS = (0.9, 0.999)
+# SGD momentum
+_C.TRAIN.OPTIMIZER.MOMENTUM = 0.9
+
 # LR scheduler
 _C.TRAIN.LR_SCHEDULER = CN()
 _C.TRAIN.LR_SCHEDULER.NAME = "cosine"
@@ -136,16 +146,6 @@ _C.TRAIN.LR_SCHEDULER.WARMUP_PREFIX = True
 _C.TRAIN.LR_SCHEDULER.GAMMA = 0.1
 # Multi steps value, used in MultiStepLRScheduler
 _C.TRAIN.LR_SCHEDULER.MULTISTEPS = []
-
-# Optimizer
-_C.TRAIN.OPTIMIZER = CN()
-_C.TRAIN.OPTIMIZER.NAME = "adamw"
-# Optimizer Epsilon
-_C.TRAIN.OPTIMIZER.EPS = 1e-8
-# Optimizer Betas
-_C.TRAIN.OPTIMIZER.BETAS = (0.9, 0.999)
-# SGD momentum
-_C.TRAIN.OPTIMIZER.MOMENTUM = 0.9
 
 # Adversarial training
 _C.TRAIN.ADVERSARIAL = CN()
@@ -182,7 +182,7 @@ _C.SAVE_FREQ = 1
 # Frequency to logging info
 _C.PRINT_FREQ = 10
 # Fixed random seed
-_C.SEED = 9527
+_C.SEED = 123
 # Perform evaluation only, overwritten by command line argument
 _C.EVAL_MODE = False
 # Test throughput only, overwritten by command line argument
