@@ -289,16 +289,16 @@ class Trainer(BaseTrainer):
                         # Update the batch metrics
                         self.update_metrics(metrics_values, training=False)
 
-                    # Update the progress bar
-                    self.update_progress_bar(tepoch, metrics_values)
+                        # Update the progress bar
+                        self.update_progress_bar(tepoch, metrics_values)
 
-                    if batch_idx == (self.len_epoch - 1):
-                        # Log the outputs to tensorboard or wandb
-                        self.log_outputs(wave_input[0], wave_out[0], wave_target[0])
-                        # Set description for the progress bar after the last batch
-                        tepoch.set_description(
-                            f"Epoch {epoch} [VALID] {self._progress(-1, training=False)}"
-                        )
+                        if batch_idx == (self.len_epoch - 1):
+                            # Log the outputs to tensorboard or wandb
+                            self.log_outputs(wave_input[0], wave_out[0], wave_target[0])
+                            # Set description for the progress bar after the last batch
+                            tepoch.set_description(
+                                f"Epoch {epoch} [VALID] {self._progress(-1, training=False)}"
+                            )
 
             # Save the log of the epoch into dict
             val_log = self.valid_metrics.result()
