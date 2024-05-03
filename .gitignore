@@ -122,6 +122,6 @@ __MACOSX/
 *.out
 
 # Ignore the output folder
-output/
 sinc/
 logs/
+debug/

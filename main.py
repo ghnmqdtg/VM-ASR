@@ -186,6 +186,7 @@ if __name__ == "__main__":
 
     # Create output folder
     os.makedirs(config.OUTPUT, exist_ok=True)
+    os.makedirs(config.DEBUG_OUTPUT, exist_ok=True)
     # Set the random seed for reproducibility
     seed = config.SEED
     torch.manual_seed(seed)

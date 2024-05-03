@@ -12,8 +12,9 @@ import torchaudio
 import torchaudio.datasets as datasets
 from torch.nn import functional as F
 from torch.utils.data import random_split
-
 from utils.utils import align_waveform
+from utils.stft import wav2spectro
+import matplotlib.pyplot as plt
 
 
 def get_loader(config, logger):
@@ -302,9 +303,46 @@ class CustomVCTK_092(datasets.VCTK_092):
         if audio.shape[0] == 2:
             audio = torch.mean(audio, dim=0, keepdim=True)
         # Pad the audio if the length is less than the specified number of frames
-        if self.num_frames:
-            # ? Why not trim it? Because we've set num_frames while loading the audio with torchaudio.load
-            audio = F.pad(audio, (0, self.num_frames - audio.shape[-1]))
+        if audio.shape[-1] < num_frames:
+            # Generate white noise
+            white_noise = (
+                torch.randn((num_frames - audio.shape[-1]))
+                * self.config.DATA.PAD_WHITENOISE
+            ).unsqueeze(0)
+            # Pad the audio with white noise
+            audio = torch.cat((audio, white_noise), dim=-1)
+
+        if self.config.DEBUG:
+            # Save the spectrogram of the audio
+            mag, phase = wav2spectro(
+                audio,
+                n_fft=self.config.DATA.STFT.N_FFT,
+                hop_length=self.config.DATA.STFT.HOP_LENGTH,
+                win_length=self.config.DATA.STFT.WIN_LENGTH,
+                spectro_scale="log2",
+            )
+            # Save the spectrogram
+            fig, axs = plt.subplots(1, 2, figsize=(16, 6))
+            img = axs[0].imshow(
+                mag.squeeze(0).detach().cpu().numpy(),
+                aspect="auto",
+                origin="lower",
+                interpolation="none",
+                cmap="viridis",
+                vmin=-15,
+            )
+            plt.colorbar(img, ax=axs[0])
+            img = axs[1].imshow(
+                phase.squeeze(0).detach().cpu().numpy(),
+                aspect="auto",
+                origin="lower",
+                interpolation="none",
+                cmap="viridis",
+            )
+            plt.colorbar(img, ax=axs[1])
+            plt.savefig("./debug/spectrogram.png")
+            plt.close()
+
         return audio, sr
 
     def _get_io_pair(

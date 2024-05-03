@@ -36,6 +36,8 @@ _C.DATA.TARGET_SR = 48000
 _C.DATA.RANDOM_RESAMPLE = [8000, 48000]
 # Length of audio clip
 _C.DATA.SEGMENT = 1.705 if _C.DATA.TARGET_SR == 48000 else 2.555
+# White noise to pad to the short audio
+_C.DATA.PAD_WHITENOISE = 1e-32
 # STFT parameters
 _C.DATA.STFT = CN()
 _C.DATA.STFT.N_FFT = 512
@@ -173,6 +175,8 @@ _C.TEST.SAVE_RESULT = True
 # -----------------------------------------------------------------------------
 # Misc
 # -----------------------------------------------------------------------------
+_C.DEBUG = False
+_C.DEBUG_OUTPUT = "./debug"
 # Number of GPUs to use
 _C.N_GPU = 1
 # Enable Pytorch automatic mixed precision (amp).
