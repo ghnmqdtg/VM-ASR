@@ -1,5 +1,7 @@
 from .model import *
 from .vmamba import *
+from .discriminator import *
+
 from utils.stft import *
 
 
