@@ -112,16 +112,19 @@ def main(config):
 
     if not config.EVAL_MODE:
         data_loader_train, data_loader_val = get_loader(config, logger)
-
         # Initialize the optimizer and learning rate scheduler
         optimizers = {"generator": None, "discriminator": None}
         lr_schedulers = {"generator": None, "discriminator": None}
         # Get the optimizer and lr_scheduler for the generator
         optimizers["generator"] = get_optimizer(config, models["generator"], logger)
-        lr_schedulers["generator"] = get_scheduler(
-            config,
-            optimizers["generator"],
-            len(data_loader_train) // config.TRAIN.ACCUMULATION_STEPS,
+        lr_schedulers["generator"] = (
+            get_scheduler(
+                config,
+                optimizers["generator"],
+                len(data_loader_train) // config.TRAIN.ACCUMULATION_STEPS,
+            )
+            if config.TRAIN.ACCUMULATION_STEPS > 1
+            else get_scheduler(config, optimizers["generator"], len(data_loader_train))
         )
         # Get the optimizer and lr_scheduler for the discriminator
         if config.TRAIN.ADVERSARIAL.ENABLE:
@@ -136,10 +139,16 @@ def main(config):
                     ],
                     logger,
                 )
-                lr_schedulers["discriminator"] = get_scheduler(
-                    config,
-                    optimizers["discriminator"],
-                    len(data_loader_train) // config.TRAIN.ACCUMULATION_STEPS,
+                lr_schedulers["discriminator"] = (
+                    get_scheduler(
+                        config,
+                        optimizers["discriminator"],
+                        len(data_loader_train) // config.TRAIN.ACCUMULATION_STEPS,
+                    )
+                    if config.TRAIN.ACCUMULATION_STEPS > 1
+                    else get_scheduler(
+                        config, optimizers["discriminator"], len(data_loader_train)
+                    )
                 )
             else:
                 # Log an error if the discriminator is not specified
