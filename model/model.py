@@ -13,7 +13,7 @@ from torchinfo import summary
 try:
     from base import BaseModel
     from .vmamba import VSSBlock, selective_scan_flop_jit
-    from .stft import wav2spectro, spectro2wav
+    from utils.stft import wav2spectro, spectro2wav
 except:
     # Used for debugging data_loader
     # Add the project root directory to the Python path
@@ -26,7 +26,7 @@ except:
     # Now you can import BaseModel
     from base.base_model import BaseModel
     from vmamba import VSSBlock, selective_scan_flop_jit
-    from stft import wav2spectro, spectro2wav
+    from utils.stft import wav2spectro, spectro2wav
 
 
 class LayerNorm2d(nn.LayerNorm):
@@ -156,7 +156,7 @@ class MambaUNet(BaseModel):
         use_checkpoint=False,
         # =================
         # FFT related parameters
-        nfft=512,
+        n_fft=512,
         hop_length=64,
         win_length=256,
         spectro_scale="log2",
@@ -179,7 +179,7 @@ class MambaUNet(BaseModel):
         ]  # stochastic depth decay rule (dpr = drop path rate)
         self.concat_skip = concat_skip
         # STFT parameters
-        self.nfft = nfft
+        self.n_fft = n_fft
         self.hop_length = hop_length
         self.win_length = win_length
         self.spectro_scale = spectro_scale
@@ -431,7 +431,7 @@ class MambaUNet(BaseModel):
 
         mag, phase = wav2spectro(
             x,
-            self.nfft,
+            self.n_fft,
             self.hop_length,
             self.win_length,
             self.spectro_scale,
@@ -446,7 +446,7 @@ class MambaUNet(BaseModel):
         wav = spectro2wav(
             mag,
             phase,
-            self.nfft,
+            self.n_fft,
             self.hop_length,
             self.win_length,
             self.spectro_scale,
@@ -1431,7 +1431,7 @@ if __name__ == "__main__":
 
     length = int(48000 * 1.705)
     # length = int(16000 * 2.555)
-    nfft = 512
+    n_fft = 512
     hop_length = 80
     win_length = 512
     spectro_scale = "log2"
@@ -1455,7 +1455,7 @@ if __name__ == "__main__":
         output_version="v3",
         concat_skip=False,
         # FFT related parameters
-        nfft=nfft,
+        n_fft=n_fft,
         hop_length=hop_length,
         win_length=win_length,
         spectro_scale=spectro_scale,

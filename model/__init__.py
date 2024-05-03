@@ -1,6 +1,6 @@
 from .model import *
 from .vmamba import *
-from .stft import *
+from utils.stft import *
 
 
 def get_model(config):
@@ -43,7 +43,7 @@ def get_model(config):
             use_checkpoint=config.TRAIN.USE_CHECKPOINT,
             # =========================
             # FFT related parameters
-            nfft=config.DATA.STFT.N_FFT,
+            n_fft=config.DATA.STFT.N_FFT,
             hop_length=config.DATA.STFT.HOP_LENGTH,
             win_length=config.DATA.STFT.WIN_LENGTH,
             spectro_scale=config.DATA.STFT.SCALE,
