@@ -426,7 +426,6 @@ class MambaUNet(BaseModel):
     def _mag_phase(self, x):
         if x.shape[-1] % self.hop_length:
             x = F.pad(x, (0, self.hop_length - x.shape[-1] % self.hop_length))
-
         mag, phase = wav2spectro(
             x,
             self.n_fft,
@@ -434,13 +433,9 @@ class MambaUNet(BaseModel):
             self.win_length,
             self.spectro_scale,
         )
-
-        return mag[..., :-1, :], phase[..., :-1, :]
+        return mag, phase
 
     def _i_mag_phase(self, mag, phase):
-        mag = F.pad(mag, (0, 0, 0, 1))
-        phase = F.pad(phase, (0, 0, 0, 1))
-
         wav = spectro2wav(
             mag,
             phase,
@@ -449,7 +444,6 @@ class MambaUNet(BaseModel):
             self.win_length,
             self.spectro_scale,
         )
-
         return wav
 
     def _normalize(self, x):
@@ -462,6 +456,12 @@ class MambaUNet(BaseModel):
         verbose = True
         length = x.shape[-1]
         mag, phase = self._mag_phase(x)
+        mag_first_freq = mag[..., :1, :].clone()
+        phase_first_freq = phase[..., :1, :].clone()
+        # Remove the first freq to make the shape even
+        # We will concatenate it back with the residual mag and phase after the model
+        mag = mag[..., 1:, :]
+        phase = phase[..., 1:, :]
         # Clone the input for residual connection
         if verbose:
             print(f"Input shape: {mag.shape}")
@@ -470,6 +470,7 @@ class MambaUNet(BaseModel):
         phase, phase_mean, phase_std = self._normalize(phase)
 
         residual_mag = mag.clone()
+        residual_phase = phase.clone()
         # Skip connections
         skip_connections = []
         # Patch embedding
@@ -561,6 +562,10 @@ class MambaUNet(BaseModel):
 
         mag = (mag + residual_mag) * mag_std + mag_mean
         phase = phase * phase_std + phase_mean
+        # Concatenate the first freq back
+        mag = torch.cat([mag_first_freq, mag], dim=-2)
+        phase = torch.cat([phase_first_freq, phase], dim=-2)
+
         # Inverse STFT
         wav = self._i_mag_phase(mag, phase)
         wav = wav[..., :length]
@@ -1099,6 +1104,12 @@ class DualStreamInteractiveMambaUNet(MambaUNet):
     def forward(self, x):
         length = x.shape[-1]
         mag, phase = self._mag_phase(x)
+        mag_first_freq = mag[..., :1, :].clone()
+        phase_first_freq = phase[..., :1, :].clone()
+        # Remove the first freq to make the shape even
+        # We will concatenate it back with the residual mag and phase after the model
+        mag = mag[..., 1:, :]
+        phase = phase[..., 1:, :]
         # Normalize the magnitude and phase
         mag, mag_mean, mag_std = self._normalize(mag)
         phase, phase_mean, phase_std = self._normalize(phase)
@@ -1198,50 +1209,19 @@ class DualStreamInteractiveMambaUNet(MambaUNet):
 
         # Residual connection
         mag = mag + residual_mag
-        phase = phase + residual_phase
+        # phase = phase + residual_phase
         # Recover the magnitude and phase
         mag = mag * mag_std + mag_mean
         phase = phase * phase_std + phase_mean
+        # Concatenate the first freq back
+        mag = torch.cat([mag_first_freq, mag], dim=-2)
+        phase = torch.cat([phase_first_freq, phase], dim=-2)
         # Inverse STFT
         wav = self._i_mag_phase(mag, phase)
         # Truncate the output to the original length
         wav = wav[..., :length]
 
         return wav
-
-    @torch.no_grad()
-    def flops(self, shape=(2, 1, 512, 128)):
-        # shape = self.__input_shape__[1:]
-        supported_ops = {
-            "aten::silu": None,  # as relu is in _IGNORED_OPS
-            "aten::gelu": None,  # as relu is in _IGNORED_OPS
-            "aten::neg": None,  # as relu is in _IGNORED_OPS
-            "aten::exp": None,  # as relu is in _IGNORED_OPS
-            "aten::flip": None,  # as permute is in _IGNORED_OPS
-            # "prim::PythonOp.CrossScan": None,
-            # "prim::PythonOp.CrossMerge": None,
-            "prim::PythonOp.SelectiveScanMamba": selective_scan_flop_jit,
-            "prim::PythonOp.SelectiveScanOflex": selective_scan_flop_jit,
-            "prim::PythonOp.SelectiveScanCore": selective_scan_flop_jit,
-            "prim::PythonOp.SelectiveScanNRow": selective_scan_flop_jit,
-        }
-
-        model = deepcopy(self)
-        model.cuda().eval()
-
-        input = torch.randn((1, *shape), device=next(model.parameters()).device)
-        params = parameter_count(model)[""]
-        Gflops, unsupported = flop_count(
-            model=model, inputs=(input,), supported_ops=supported_ops
-        )
-        statics = summary(model, input_size=input.shape, verbose=0)
-        del model, input
-        torch.cuda.empty_cache()
-
-        # Return the number of parameters and FLOPs
-        return (
-            f"{statics}\nparams {params/1e6:.2f}M, GFLOPs {sum(Gflops.values()):.2f}\n"
-        )
 
 
 if __name__ == "__main__":
