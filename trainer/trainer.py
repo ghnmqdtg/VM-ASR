@@ -292,7 +292,7 @@ class Trainer(BaseTrainer):
                         # Update the progress bar
                         self.update_progress_bar(tepoch, metrics_values)
 
-                        if batch_idx == (self.len_epoch - 1):
+                        if batch_idx == (len(self.data_loader_val) - 1):
                             # Log the outputs to tensorboard or wandb
                             self.log_outputs(wave_input[0], wave_out[0], wave_target[0])
                             # Set description for the progress bar after the last batch
