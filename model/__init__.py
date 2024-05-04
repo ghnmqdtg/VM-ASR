@@ -49,6 +49,8 @@ def get_model(config):
             hop_length=config.DATA.STFT.HOP_LENGTH,
             win_length=config.DATA.STFT.WIN_LENGTH,
             spectro_scale=config.DATA.STFT.SCALE,
+            # =========================
+            low_freq_replacement=config.TRAIN.LOW_FREQ_REPLACEMENT,
         )
         models["generator"] = generator
 

@@ -158,6 +158,8 @@ class MambaUNet(BaseModel):
         hop_length=64,
         win_length=256,
         spectro_scale="log2",
+        # =================
+        low_freq_replacement=False,
         **kwargs,
     ):
         # Initialize the BaseModel and VSSM
@@ -181,6 +183,7 @@ class MambaUNet(BaseModel):
         self.hop_length = hop_length
         self.win_length = win_length
         self.spectro_scale = spectro_scale
+        self.low_freq_replacement = low_freq_replacement
 
         _NORMLAYERS = dict(
             ln=nn.LayerNorm,
@@ -446,13 +449,19 @@ class MambaUNet(BaseModel):
         )
         return wav
 
+    def _low_freq_replacement(self, x, y, hf):
+        batch_size = x.shape[0]
+        for i in range(batch_size):
+            y[i, : hf[i], :] = x[i, : hf[i], :]
+        return y
+
     def _normalize(self, x):
         mean = x.mean(dim=(1, 2, 3), keepdim=True)
         std = x.std(dim=(1, 2, 3), keepdim=True)
         x = (x - mean) / (1e-5 + std)
         return x, mean, std
 
-    def forward(self, x):
+    def forward(self, x, hf):
         verbose = True
         length = x.shape[-1]
         mag, phase = self._mag_phase(x)
@@ -972,7 +981,7 @@ class MambaUNet(BaseModel):
             nn.init.constant_(m.weight, 1.0)
 
     @torch.no_grad()
-    def flops(self, shape=(2, 1, 512, 128)):
+    def flops(self, shape=(1, 40880)):
         # shape = self.__input_shape__[1:]
         supported_ops = {
             "aten::silu": None,  # as relu is in _IGNORED_OPS
@@ -992,11 +1001,13 @@ class MambaUNet(BaseModel):
         model.cuda().eval()
 
         input = torch.randn((1, *shape), device=next(model.parameters()).device)
+        # hf is a random number between 0 and 512
+        hf = torch.randint(0, 512, (1,), device=next(model.parameters()).device)
         params = parameter_count(model)[""]
         Gflops, unsupported = flop_count(
-            model=model, inputs=(input,), supported_ops=supported_ops
+            model=model, inputs=(input, hf), supported_ops=supported_ops
         )
-        statics = summary(model, input_size=input.shape, verbose=0)
+        statics = summary(model, input_data=[input, hf], verbose=0)
         del model, input
         torch.cuda.empty_cache()
 
@@ -1101,7 +1112,7 @@ class DualStreamInteractiveMambaUNet(MambaUNet):
 
         self.apply(self._init_weights)
 
-    def forward(self, x):
+    def forward(self, x, hf):
         length = x.shape[-1]
         mag, phase = self._mag_phase(x)
         mag_first_freq = mag[..., :1, :].clone()
@@ -1110,9 +1121,9 @@ class DualStreamInteractiveMambaUNet(MambaUNet):
         # We will concatenate it back with the residual mag and phase after the model
         mag = mag[..., 1:, :]
         phase = phase[..., 1:, :]
-        # Normalize the magnitude and phase
-        mag, mag_mean, mag_std = self._normalize(mag)
-        phase, phase_mean, phase_std = self._normalize(phase)
+        # # Normalize the magnitude and phase
+        # mag, mag_mean, mag_std = self._normalize(mag)
+        # phase, phase_mean, phase_std = self._normalize(phase)
         # Clone the input for residual connection
         residual_mag = mag.clone()
         residual_phase = phase.clone()
@@ -1209,13 +1220,18 @@ class DualStreamInteractiveMambaUNet(MambaUNet):
 
         # Residual connection
         mag = mag + residual_mag
-        # phase = phase + residual_phase
         # Recover the magnitude and phase
-        mag = mag * mag_std + mag_mean
-        phase = phase * phase_std + phase_mean
+        # mag = mag * mag_std + mag_mean
+        # phase = phase * phase_std + phase_mean
         # Concatenate the first freq back
         mag = torch.cat([mag_first_freq, mag], dim=-2)
         phase = torch.cat([phase_first_freq, phase], dim=-2)
+        # Replace the output low frequency band with the input's
+        if self.low_freq_replacement:
+            mag_org, phase_org = self._mag_phase(x)
+            # Replace the output low frequency band with the input's
+            mag = self._low_freq_replacement(mag, mag_org, hf)
+            phase = self._low_freq_replacement(phase, phase_org, hf)
         # Inverse STFT
         wav = self._i_mag_phase(mag, phase)
         # Truncate the output to the original length
@@ -1258,6 +1274,7 @@ if __name__ == "__main__":
         hop_length=hop_length,
         win_length=win_length,
         spectro_scale=spectro_scale,
+        low_freq_replacement=True,
     ).to("cuda")
 
     print(model.flops(shape=(1, length)))

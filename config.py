@@ -40,9 +40,9 @@ _C.DATA.SEGMENT = 1.705 if _C.DATA.TARGET_SR == 48000 else 2.555
 _C.DATA.PAD_WHITENOISE = 1e-32
 # STFT parameters
 _C.DATA.STFT = CN()
-_C.DATA.STFT.N_FFT = 512
+_C.DATA.STFT.N_FFT = 1024
 _C.DATA.STFT.HOP_LENGTH = 80
-_C.DATA.STFT.WIN_LENGTH = 256
+_C.DATA.STFT.WIN_LENGTH = 1024
 _C.DATA.STFT.SCALE = "log2"
 # Random low pass filter
 _C.DATA.RANDOM_LPF = False
@@ -115,6 +115,7 @@ _C.TRAIN.ENABLE_GAN = False
 _C.TRAIN.LOSSES = CN()
 _C.TRAIN.LOSSES.GEN = ["multi_resolution_stft"]
 _C.TRAIN.METRICS = ["snr", "lsd", "lsd_hf", "lsd_lf"]
+_C.TRAIN.LOW_FREQ_REPLACEMENT = False
 
 # Auto resume from latest checkpoint
 _C.TRAIN.AUTO_RESUME = True
@@ -176,7 +177,7 @@ _C.TEST.SAVE_RESULT = True
 # Misc
 # -----------------------------------------------------------------------------
 _C.DEBUG = False
-_C.DEBUG_OUTPUT = "./debug"
+_C.DEBUG_OUTPUT = "debug"
 # Number of GPUs to use
 _C.N_GPU = 1
 # Enable Pytorch automatic mixed precision (amp).

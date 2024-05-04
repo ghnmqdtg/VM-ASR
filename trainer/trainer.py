@@ -142,7 +142,7 @@ class Trainer(BaseTrainer):
 
                     # Forward pass
                     with torch.cuda.amp.autocast(enabled=self.amp):
-                        wave_out = self.models["generator"](wave_input)
+                        wave_out = self.models["generator"](wave_input, highcut)
 
                     # Calculate the losses
                     losses = self._get_losses(wave_out, wave_target)
@@ -255,7 +255,7 @@ class Trainer(BaseTrainer):
 
                         # Forward pass
                         with torch.cuda.amp.autocast(enabled=self.amp):
-                            wave_out = self.models["generator"](wave_input)
+                            wave_out = self.models["generator"](wave_input, highcut)
 
                         # Calculate the losses
                         losses = self._get_losses(wave_out, wave_target)
