@@ -37,16 +37,14 @@ def prepare_device(n_gpu_use):
 def align_waveform(
     waveform_resampled: torch.Tensor, waveform: torch.Tensor
 ) -> torch.Tensor:
-    # Make sure the waveform has the same length
     if waveform_resampled.shape[1] < waveform.shape[1]:
+        # Pad the resampled waveform if it is shorter than the original waveform
         waveform_resampled = F.pad(
-            waveform_resampled,
-            (0, waveform.shape[1] - waveform_resampled.shape[1]),
-            mode="constant",
-            value=0,
+            waveform_resampled, (0, waveform.shape[1] - waveform_resampled.shape[1])
         )
     elif waveform_resampled.shape[1] > waveform.shape[1]:
-        waveform_resampled = waveform_resampled[: waveform.shape[1]]
+        # Trim the resampled waveform if it is longer than the original waveform
+        waveform_resampled = waveform_resampled[:, : waveform.shape[1]]
 
     return waveform_resampled
 
