@@ -5,6 +5,8 @@ from numpy import inf
 from logger import TensorboardWriter
 from prettytable import PrettyTable
 
+from utils import load_from_path
+
 
 class BaseTrainer:
     """
@@ -44,8 +46,11 @@ class BaseTrainer:
             self.log_dir, self.logger, config.TENSORBOARD.ENABLE
         )
 
-        if config.TRAIN.USE_CHECKPOINT is not None:
-            self._resume_checkpoint(config.TRAIN.USE_CHECKPOINT)
+        if self.config.MODEL.RESUME_PATH is not None:
+            self._resume_checkpoint()
+        else:
+            # Log info to indicate that the model is loaded. The training will start from scratch
+            self.logger.info("Resume is not enabled. Training from scratch ...")
 
     @abstractmethod
     def _train_epoch(self, epoch):
@@ -170,42 +175,16 @@ class BaseTrainer:
                 torch.save(state, filename)
                 self.logger.info(f"Saving best {model_type}: {filename} ...")
 
-    def _resume_checkpoint(self, resume_path):
-        """
-        Resume from saved checkpoints
-
-        :param resume_path: Checkpoint path to be resumed
-        """
-        # TODO: Add resume from the best model
-        return NotImplementedError
-        resume_path = str(resume_path)
-        self.logger.info("Loading checkpoint: {} ...".format(resume_path))
-        checkpoint = torch.load(resume_path)
-        self.start_epoch = checkpoint["epoch"] + 1
-        self.mnt_best = checkpoint["monitor_best"]
-
-        # load architecture params from checkpoint.
-        if checkpoint["config"]["name"] != self.config.MODEL.NAME:
-            self.logger.warning(
-                "Warning: Architecture configuration given in config file is different from that of "
-                "checkpoint. This may yield an exception while state_dict is being loaded."
-            )
-        self.models.load_state_dict(checkpoint["state_dict"])
-
-        # load optimizer state from checkpoint only when optimizer type is not changed.
-        if (
-            checkpoint["config"]["optimizer"]["type"]
-            != self.config["optimizer"]["type"]
-        ):
-            self.logger.warning(
-                "Warning: Optimizer type given in config file is different from that of checkpoint. "
-                "Optimizer parameters not being resumed."
-            )
-        else:
-            self.optimizer.load_state_dict(checkpoint["optimizer"])
-
+    def _resume_checkpoint(self):
+        # Check if the path exists
+        self.models, self.optimizer, self.config, self.start_epoch = load_from_path(
+            self.models, self.optimizer, self.config, self.logger
+        )
         self.logger.info(
-            "Checkpoint loaded. Resume training from epoch {}".format(self.start_epoch)
+            f"Checkpoint loaded successfully from {self.config.MODEL.RESUME_PATH}"
+        )
+        self.logger.info(
+            f"Resuming training from epoch {self.start_epoch} / {self.epochs} ..."
         )
 
     def _log_epoch(self, logs):

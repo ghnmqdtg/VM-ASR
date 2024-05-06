@@ -1,3 +1,4 @@
+import os
 import wandb
 import torch
 import pandas as pd
@@ -120,3 +121,39 @@ def init_wandb_run(config):
         mode=config.WANDB.MODE,
         tags=config.WANDB.TAGS,
     )
+
+
+def load_from_path(models, optimizer, config, logger):
+    """
+    Load best models from the specified folder.
+    """
+    start_epoch = 1
+    resume_path = config.MODEL.RESUME_PATH
+
+    logger.info(f"Loading checkpoint from folder: {resume_path}")
+    # Find all the checkpoint files containing the "best"
+    for file in os.listdir(resume_path):
+        if "best" in file:
+            try:
+                model_path = os.path.join(resume_path, file)
+                checkpoint = torch.load(model_path)
+                # Get the model type
+                model_type = file.split("-")[2].split(".")[0]
+                key = "generator" if model_type == "G" else model_type
+                optimizer_key = "generator" if model_type == "G" else "discriminator"
+                # Load the model, optimizer and current epoch
+                models[key].load_state_dict(checkpoint["state_dict"])
+                optimizer[optimizer_key].load_state_dict(checkpoint["optimizer"])
+                start_epoch = checkpoint["epoch"]
+                # Update the configurations
+                if key == "generator":
+                    # Update the generator config
+                    config = checkpoint["config"]
+                # Log the loaded model
+                logger.info(f"Loaded {key} from {model_path}")
+            except:
+                logger.error(
+                    f"Error loading {model_path}, the .pth file might be corrupted"
+                )
+                exit(1)
+    return (models, optimizer, config, start_epoch)

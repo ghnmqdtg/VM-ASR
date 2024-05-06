@@ -37,4 +37,4 @@ DATA:
 DEBUG: False
 
 WANDB:
-  ENABLE: FalseSAVE_FREQ: 50
+  ENABLE: False

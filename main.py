@@ -1,6 +1,7 @@
 import os
 import json
 import time
+import glob
 import wandb
 import random
 import argparse
@@ -41,7 +42,7 @@ def parse_option():
     )
     # easy config modification
     parser.add_argument("--batch-size", type=int, help="batch size for single GPU")
-    parser.add_argument("--data-path", type=str, help="path to dataset")
+    parser.add_argument("--resume", type=str, help="path to checkpoint for models")
     parser.add_argument(
         "--zip",
         action="store_true",
@@ -195,8 +196,22 @@ if __name__ == "__main__":
     random.seed(seed)
     cudnn.benchmark = True
 
-    logger = create_logger(output_dir=config.OUTPUT, name=f"{config.MODEL.NAME}")
-    logger.info(config.dump())
-    logger.info(json.dumps(vars(args)))
+    if config.MODEL.RESUME_PATH is not None:
+        assert os.path.exists(
+            config.MODEL.RESUME_PATH
+        ), f"Folder not found, please check the path: {config.MODEL.RESUME_PATH}"
+        assert (
+            glob.glob(os.path.join(config.MODEL.RESUME_PATH, "*.pth")) != []
+        ), f"No checkpoint found in the folder. Please check the path: {config.MODEL.RESUME_PATH}"
+        logger = create_logger(
+            output_dir=config.MODEL.RESUME_PATH,
+            name=f"{config.MODEL.NAME}",
+            load_existing=True,
+        )
+        logger.info(f"Resume training from {config.MODEL.RESUME_PATH}")
+    else:
+        logger = create_logger(output_dir=config.OUTPUT, name=f"{config.MODEL.NAME}")
+        logger.info(config.dump())
+        logger.info(json.dumps(vars(args)))
 
     main(config)

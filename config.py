@@ -78,7 +78,7 @@ _C.MODEL.NAME = "VM_ASR_BASIC"
 # could be overwritten by command line argument
 _C.MODEL.PRETRAINED = ""
 # Checkpoint to resume, could be overwritten by command line argument
-_C.MODEL.RESUME = ""
+_C.MODEL.RESUME_PATH = None
 # Dropout rate
 _C.MODEL.DROP_RATE = 0.0
 
@@ -260,7 +260,9 @@ def update_config(config, args):
     if _check_args("pretrained"):
         config.MODEL.PRETRAINED = args.pretrained
     if _check_args("resume"):
-        config.MODEL.RESUME = args.resume
+        config.MODEL.RESUME_PATH = args.resume
+        if config.MODEL.RESUME_PATH is not None and not config.EVAL_MODE:
+            config.WANDB.RESUME = True
     if _check_args("accumulation_steps"):
         config.TRAIN.ACCUMULATION_STEPS = args.accumulation_steps
     if _check_args("use_checkpoint"):
@@ -278,8 +280,11 @@ def update_config(config, args):
     if _check_args("optim"):
         config.TRAIN.OPTIMIZER.NAME = args.optim
 
-    # output folder
-    config.OUTPUT = os.path.join(config.OUTPUT, config.MODEL.NAME, config.TAG)
+    # Output folder
+    if config.MODEL.RESUME_PATH is None:
+        config.OUTPUT = os.path.join(config.OUTPUT, config.MODEL.NAME, config.TAG)
+    else:
+        config.OUTPUT = config.MODEL.RESUME_PATH
 
     # Update SEGMENT according to TARGET_SR
     config.DATA.SEGMENT = 1.705 if config.DATA.TARGET_SR == 48000 else 2.555
