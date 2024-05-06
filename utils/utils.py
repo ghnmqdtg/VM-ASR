@@ -102,7 +102,7 @@ def init_wandb_run(config):
         group=config.TAG,
         config=_get_wandb_config(config),
         dir=config.OUTPUT,
-        resume=config.MODEL.RESUME,
+        resume=True if config.MODEL.RESUME_PATH else False,
         mode=config.WANDB.MODE,
         tags=config.WANDB.TAGS,
     )
