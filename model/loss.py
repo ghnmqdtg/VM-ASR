@@ -11,7 +11,7 @@ def mse_loss(output, target):
 
 
 # ==================== MultiResolutionSTFTLoss ==================== #
-# Source: Parallel WaveGAN
+# REF: Parallel WaveGAN
 # URL: https://github.com/kan-bayashi/ParallelWaveGAN/blob/master/parallel_wavegan/losses/stft_loss.py
 # ================================================================= #
 def stft(x, fft_size, hop_size, win_length, window):

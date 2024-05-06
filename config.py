@@ -45,7 +45,19 @@ _C.DATA.STFT.HOP_LENGTH = 80
 _C.DATA.STFT.WIN_LENGTH = 1024
 _C.DATA.STFT.SCALE = "log2"
 # Random low pass filter
-_C.DATA.RANDOM_LPF = False
+_C.DATA.LPF = CN()
+_C.DATA.LPF.MULTIFILTER = False
+_C.DATA.LPF.LPF_TRAIN = [
+    ("cheby1", 6),
+    ("cheby1", 8),
+    ("cheby1", 10),
+    ("cheby1", 12),
+    ("bessel", 6),
+    ("bessel", 12),
+    ("ellip", 6),
+    ("ellip", 12),
+]
+_C.DATA.LPF.LPF_TEST = [("cheby1", 6)]
 
 # Flac to wav
 _C.DATA.FLAC2WAV = CN()
@@ -271,6 +283,11 @@ def update_config(config, args):
 
     # Update SEGMENT according to TARGET_SR
     config.DATA.SEGMENT = 1.705 if config.DATA.TARGET_SR == 48000 else 2.555
+
+    # Update low pass filter config
+    if not config.EVAL_MODE:
+        if not config.DATA.LPF.MULTIFILTER:
+            config.DATA.LPF.LPF_TRAIN = [config.DATA.LPF.LPF_TRAIN[0]]
 
     config.freeze()
 

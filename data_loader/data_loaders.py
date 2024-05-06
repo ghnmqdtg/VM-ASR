@@ -4,17 +4,21 @@ import json
 import random
 import pandas as pd
 from tqdm import tqdm
+import matplotlib.pyplot as plt
+
+# Resample and filter the audio
 from scipy.signal import resample_poly
-from scipy.signal import butter, butter, cheby1, cheby2, ellip, bessel
+from scipy.signal import sosfiltfilt
+from scipy.signal import butter, butter, cheby1, ellip, bessel
 
 import torch
 import torchaudio
 import torchaudio.datasets as datasets
 from torch.nn import functional as F
 from torch.utils.data import random_split
+
 from utils.utils import align_waveform
 from utils.stft import wav2spectro
-import matplotlib.pyplot as plt
 
 
 def get_loader(config, logger):
@@ -357,28 +361,52 @@ class CustomVCTK_092(datasets.VCTK_092):
     def _get_io_pair(
         self, output: torch.Tensor, sr: int
     ) -> Tuple[torch.Tensor, torch.Tensor]:
+        """
+        Get the input and output pair for the model
+
+        Args:
+            output (torch.Tensor): The output waveform (target waveform)
+            sr (int): The sample rate of the output waveform
+
+        Returns:
+            input (torch.Tensor): The waveform to be used as input
+            output (torch.Tensor): The target waveform
+            highcut_in_stft (int): The highcut frequency in the STFT for operating low-frequency replacement and calculating the LSD-HF and LSD-LF
+        """
         # Uniformly choose an integer from min to max in the list
         sr_input = random.randint(
             self.config.DATA.RANDOM_RESAMPLE[0], self.config.DATA.RANDOM_RESAMPLE[-1]
         )
+        if sr_input != sr:
+            if not self.config.EVAL_MODE:
+                # Random choose the low pass filter
+                filter_ = random.choice(self.config.DATA.LPF.LPF_TRAIN)
+                # Apply the low pass filter
+                input = lowpass(
+                    output, int(sr_input * 0.5), filter_, self.config.DATA.TARGET_SR
+                )
+            else:
+                filter_ = self.config.DATA.LPF.LPF_TEST[0]
+                # Apply the low pass filter
+                input = lowpass(
+                    output, int(sr_input * 0.5), filter_, self.config.DATA.TARGET_SR
+                )
+            # Downsample the audio
+            input = resample_audio(output, sr, sr_input)
+            # Upsample the audio
+            input = resample_audio(input, sr_input, sr)
+            # Align the waveform length
+            input = align_waveform(input, output)
+        else:
+            input = output
+
         # Highcut frequency = int((1 + n_fft // 2) * (sr_input // sr_target))
-        highcut = int(
+        highcut_in_stft = int(
             (1 + self.config.DATA.STFT.N_FFT // 2)
             * (sr_input / self.config.DATA.TARGET_SR)
         )
-        # TODO: Apply low pass filter
-        if self.config.DATA.RANDOM_LPF:
-            pass
-        else:
-            pass
-        # Downsample the audio
-        input = resample_audio(output, sr, sr_input)
-        # Upsample the audio
-        input = resample_audio(input, sr_input, sr)
-        # Align the waveform length
-        input = align_waveform(input, output)
 
-        return input, output, highcut
+        return input, output, highcut_in_stft
 
     def _load_sample(
         self, speaker_id: str, utterance_id: str
@@ -422,31 +450,36 @@ def resample_audio(waveform: torch.Tensor, sr_org: int, sr_new: int) -> torch.Te
     Returns:
         torch.Tensor: The resampled waveform
     """
-    # waveform_resampled = T.Resample(sr_org, sr_new)(waveform)
     waveform_resampled = resample_poly(waveform, sr_new, sr_org, axis=-1)
     return torch.tensor(waveform_resampled, dtype=torch.float32)
 
 
-# A class that provides many different low pass filters like Butterworth, Chebyshev, Bessel, etc.
-class LowPassFilter:
-    def __init__(self, filter_type, cutoff_freq, order, sampling_freq):
-        self.filter_type = filter_type
-        self.cutoff_freq = cutoff_freq
-        self.order = order
-        self.sampling_freq = sampling_freq
-        self.nyquist_freq = 0.5 * sampling_freq
-        self.cutoff_freq = self.cutoff_freq / self.nyquist_freq
+def lowpass(audio, highcut, filter_=("cheby1", 8), sr=48000):
+    """
+    Apply low pass filter to the audio.
 
-    def get_filter(self):
-        if self.filter_type == "butter":
-            return butter(self.order, self.cutoff_freq, btype="low")
-        elif self.filter_type == "cheby1":
-            return cheby1(self.order, 0.5, self.cutoff_freq, btype="low")
-        elif self.filter_type == "cheby2":
-            return cheby2(self.order, 30, self.cutoff_freq, btype="low")
-        elif self.filter_type == "ellip":
-            return ellip(self.order, 0.5, 30, self.cutoff_freq, btype="low")
-        elif self.filter_type == "bessel":
-            return bessel(self.order, self.cutoff_freq, btype="low")
-        else:
-            raise ValueError("Filter type not supported")
+    REF: On Filter Generalization for Music Bandwidth Extension Using Deep Neural Networks
+    URL: https://github.com/serkansulun/deep-music-enhancer/blob/master/src/utils.py
+
+    Args:
+        audio (torch.Tensor): The input audio
+        highcut (int): The cutoff frequency (it's half of the input sample rate)
+        filter_ (tuple, optional): The filter type and order. Defaults to ("cheby1", 8).
+        sr (int, optional): The target sample rate. Defaults to 48000.
+    """
+    nyq = sr / 2
+    highcut /= nyq
+
+    if filter_[0] == "butter":
+        sos = butter(filter_[1], highcut, btype="lowpass", output="sos")
+    elif filter_[0] == "cheby1":
+        sos = cheby1(filter_[1], 0.05, highcut, btype="lowpass", output="sos")
+    elif filter_[0] == "bessel":
+        sos = bessel(filter_[1], highcut, norm="mag", btype="lowpass", output="sos")
+    elif filter_[0] == "ellip":
+        sos = ellip(filter_[1], 0.05, 20, highcut, btype="lowpass", output="sos")
+
+    # Apply the filter
+    input = sosfiltfilt(sos, audio)
+
+    return torch.tensor(input.copy(), dtype=torch.float32)
