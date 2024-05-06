@@ -17,7 +17,6 @@ import torchaudio.datasets as datasets
 from torch.nn import functional as F
 from torch.utils.data import random_split
 
-from utils.utils import align_waveform
 from utils.stft import wav2spectro
 
 
@@ -436,6 +435,21 @@ class CustomVCTK_092(datasets.VCTK_092):
 
     def __len__(self) -> int:
         return len(self._sample_ids)
+
+
+def align_waveform(
+    waveform_resampled: torch.Tensor, waveform: torch.Tensor
+) -> torch.Tensor:
+    if waveform_resampled.shape[1] < waveform.shape[1]:
+        # Pad the resampled waveform if it is shorter than the original waveform
+        waveform_resampled = F.pad(
+            waveform_resampled, (0, waveform.shape[1] - waveform_resampled.shape[1])
+        )
+    elif waveform_resampled.shape[1] > waveform.shape[1]:
+        # Trim the resampled waveform if it is longer than the original waveform
+        waveform_resampled = waveform_resampled[:, : waveform.shape[1]]
+
+    return waveform_resampled
 
 
 def resample_audio(waveform: torch.Tensor, sr_org: int, sr_new: int) -> torch.Tensor:
