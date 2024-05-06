@@ -20,7 +20,6 @@ class BaseTrainer:
         self.optimizer = optimizer
 
         self.epochs = config.TRAIN.EPOCHS
-        self.save_period = config.SAVE_FREQ
         self.monitor = config.MONITOR
 
         # configuration to monitor model performance and save best
@@ -120,8 +119,7 @@ class BaseTrainer:
                     )
                     break
 
-            if epoch % self.save_period == 0:
-                self._save_checkpoint(epoch, save_best=best)
+            self._save_checkpoint(epoch, save_best=best)
 
     def _save_checkpoint(self, epoch, save_best=False):
         """
@@ -134,7 +132,7 @@ class BaseTrainer:
         for key in self.models.keys():
             # The key would be either "generator" or names of the discriminators
             model = self.models[key]
-            model_name = "G" if key == "generator" else "D"
+            model_name = "G" if key == "generator" else key
             model_type = "generator" if key == "generator" else "discriminator"
             state = {
                 "name": model_name,
@@ -144,18 +142,33 @@ class BaseTrainer:
                 "monitor_best": self.mnt_best,
                 "config": self.config,
             }
-            filename = os.path.join(
-                self.log_dir, f"checkpoint-epoch-{epoch}-{model_name}.pth"
-            )
+            # Save the latest checkpoint
+            filename = os.path.join(self.log_dir, f"checkpoint-latest-{model_name}.pth")
             torch.save(state, filename)
-            self.logger.info("Saving checkpoint: {} ...".format(filename))
+            self.logger.info(
+                f"Saving the latest {model_type} on epoch {epoch}: {filename} ..."
+            )
 
-            if save_best:
-                best_path = os.path.join(self.log_dir, f"model_best_{model_name}.pth")
-                torch.save(state, best_path)
-                self.logger.info(
-                    f"Saving current best: model_best_{model_name}.pth ..."
+            # Save the checkpoint with epoch number if SAVE_EPOCH is True
+            if (
+                self.config.SAVE_EPOCH_FREQ != -1
+                and epoch % self.config.SAVE_EPOCH_FREQ == 0
+            ):
+                filename = os.path.join(
+                    self.log_dir, f"checkpoint-epoch-{epoch}-{model_name}.pth"
                 )
+                torch.save(state, filename)
+                self.logger.info(
+                    f"Saving {model_type} on epoch {epoch}: {filename} ..."
+                )
+
+            # Save the best checkpoint
+            if save_best:
+                filename = os.path.join(
+                    self.log_dir, f"checkpoint-best-{model_name}.pth"
+                )
+                torch.save(state, filename)
+                self.logger.info(f"Saving best {model_type}: {filename} ...")
 
     def _resume_checkpoint(self, resume_path):
         """

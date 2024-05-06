@@ -199,9 +199,9 @@ _C.OUTPUT = "logs"
 # Tag of experiment, overwritten by command line argument
 _C.TAG = "default"
 # Monitor mode for model performance, set to "off" to disable
-_C.MONITOR = "min val_total_loss"
-# Frequency to save checkpoint
-_C.SAVE_FREQ = 1
+_C.MONITOR = "min lsd"
+# Frequency to save checkpoint in epoch (-1 for disabled)
+_C.SAVE_EPOCH_FREQ = -1
 # Frequency to logging info
 _C.PRINT_FREQ = 10
 # Fixed random seed
