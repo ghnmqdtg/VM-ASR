@@ -44,31 +44,7 @@ def parse_option():
     parser.add_argument("--batch-size", type=int, help="batch size for single GPU")
     parser.add_argument("--resume", type=str, help="path to checkpoint for models")
     parser.add_argument(
-        "--zip",
-        action="store_true",
-        help="use zipped dataset instead of folder dataset",
-    )
-    parser.add_argument(
-        "--cache-mode",
-        type=str,
-        default="part",
-        choices=["no", "full", "part"],
-        help="no: no cache, "
-        "full: cache all data, "
-        "part: sharding the dataset into nonoverlapping pieces and only cache one piece",
-    )
-    parser.add_argument(
-        "--pretrained",
-        help="pretrained weight from checkpoint, could be imagenet22k pretrained weight",
-    )
-    parser.add_argument("--resume", help="resume from checkpoint")
-    parser.add_argument(
         "--accumulation-steps", type=int, help="gradient accumulation steps"
-    )
-    parser.add_argument(
-        "--use-checkpoint",
-        action="store_true",
-        help="whether to use gradient checkpointing to save memory",
     )
     parser.add_argument(
         "--disable_amp", action="store_true", help="Disable pytorch amp"

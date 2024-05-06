@@ -74,9 +74,6 @@ _C.MODEL = CN()
 _C.MODEL.TYPE = "VM_ASR"
 # Model name
 _C.MODEL.NAME = "VM_ASR_BASIC"
-# Pretrained weight from checkpoint, could be imagenet22k pretrained weight
-# could be overwritten by command line argument
-_C.MODEL.PRETRAINED = ""
 # Checkpoint to resume, could be overwritten by command line argument
 _C.MODEL.RESUME_PATH = None
 # Dropout rate
@@ -134,9 +131,6 @@ _C.TRAIN.AUTO_RESUME = True
 # Gradient accumulation steps
 # could be overwritten by command line argument
 _C.TRAIN.ACCUMULATION_STEPS = 1
-# Whether to use gradient checkpointing to save memory
-# could be overwritten by command line argument
-_C.TRAIN.USE_CHECKPOINT = False
 
 # Optimizer
 _C.TRAIN.OPTIMIZER = CN()
@@ -252,21 +246,15 @@ def update_config(config, args):
             return True
         return False
 
-    # merge from specific arguments
+    # Merge from specific arguments
     if _check_args("batch_size"):
         config.DATA.BATCH_SIZE = args.batch_size
-    if _check_args("data_path"):
-        config.DATA.DATA_PATH = args.data_path
-    if _check_args("pretrained"):
-        config.MODEL.PRETRAINED = args.pretrained
     if _check_args("resume"):
         config.MODEL.RESUME_PATH = args.resume
         if config.MODEL.RESUME_PATH is not None and not config.EVAL_MODE:
             config.WANDB.RESUME = True
     if _check_args("accumulation_steps"):
         config.TRAIN.ACCUMULATION_STEPS = args.accumulation_steps
-    if _check_args("use_checkpoint"):
-        config.TRAIN.USE_CHECKPOINT = True
     if _check_args("disable_amp"):
         config.AMP_ENABLE = False
     if _check_args("output"):

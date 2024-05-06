@@ -151,7 +151,6 @@ class MambaUNet(BaseModel):
         upsample_version: str = "v1",  # "v1"
         output_version: str = "v2",  # "v1", "v2", "v3"
         concat_skip=False,
-        use_checkpoint=False,
         # =================
         # FFT related parameters
         n_fft=512,
@@ -275,7 +274,6 @@ class MambaUNet(BaseModel):
                     drop_path=self.dpr[
                         sum(self.depths[:i_layer]) : sum(self.depths[: i_layer + 1])
                     ],
-                    use_checkpoint=use_checkpoint,
                     norm_layer=norm_layer,
                     sampler=downsample,
                     channel_first=self.channel_first,
@@ -311,7 +309,6 @@ class MambaUNet(BaseModel):
                             self.depths[: self.num_layers]
                         )
                     ],
-                    use_checkpoint=use_checkpoint,
                     norm_layer=norm_layer,
                     sampler=nn.Identity(),
                     channel_first=self.channel_first,
@@ -370,7 +367,6 @@ class MambaUNet(BaseModel):
                     drop_path=self.dpr[
                         sum(self.depths[:i_layer]) : sum(self.depths[: i_layer + 1])
                     ],
-                    use_checkpoint=use_checkpoint,
                     norm_layer=norm_layer,
                     sampler=upsample,
                     channel_first=self.channel_first,
@@ -402,7 +398,6 @@ class MambaUNet(BaseModel):
             dim=dims[0],
             norm_layer=None,
             sampler=_make_upsample,
-            use_checkpoint=use_checkpoint,
             concat_skip=self.concat_skip,
             channel_first=self.channel_first,
             # =================
@@ -683,7 +678,6 @@ class MambaUNet(BaseModel):
         dim=96,
         sampler=nn.Identity(),
         concat_skip=False,
-        use_checkpoint=False,
         # ===========================
         ssm_d_state=16,
         ssm_ratio=2.0,
@@ -713,7 +707,6 @@ class MambaUNet(BaseModel):
                         self.depths[: self.num_layers]
                     )
                 ],
-                use_checkpoint=use_checkpoint,
                 norm_layer=nn.LayerNorm,
                 sampler=sampler(
                     dim,
@@ -745,7 +738,6 @@ class MambaUNet(BaseModel):
                         self.depths[: self.num_layers]
                     )
                 ],
-                use_checkpoint=use_checkpoint,
                 norm_layer=nn.LayerNorm,
                 sampler=sampler(
                     dim // 2,
@@ -782,7 +774,6 @@ class MambaUNet(BaseModel):
         self,
         in_chans=1,
         dim=96,
-        use_checkpoint=False,
         sampler=nn.Identity(),
         concat_skip=True,
         # ===========================
@@ -810,7 +801,6 @@ class MambaUNet(BaseModel):
             self.VSSLayer(
                 dim=dim,
                 drop_path=self.dpr[-1:],
-                use_checkpoint=use_checkpoint,
                 norm_layer=nn.Identity,
                 # Input: (B, H, W, C) -> Output: (B, 2 * H, 2 * W, C // 2)
                 sampler=sampler(
@@ -840,7 +830,6 @@ class MambaUNet(BaseModel):
             self.VSSLayer(
                 dim=dim // 2,
                 drop_path=self.dpr[-1:],
-                use_checkpoint=use_checkpoint,
                 norm_layer=nn.LayerNorm,
                 # Input: (B, 2 * H, 2 * W, C // 2) -> Output: (B, 4 * H, 4 * W, C // 4)
                 sampler=sampler(
@@ -874,7 +863,6 @@ class MambaUNet(BaseModel):
             self.VSSLayer(
                 dim=in_chans,
                 drop_path=self.dpr[-1:],
-                use_checkpoint=use_checkpoint,
                 norm_layer=nn.Identity,
                 sampler=nn.Identity(),
                 channel_first=self.channel_first,
@@ -902,7 +890,6 @@ class MambaUNet(BaseModel):
     def VSSLayer(
         dim=96,
         drop_path=[0.1, 0.1],
-        use_checkpoint=False,
         norm_layer=nn.LayerNorm,
         sampler=nn.Identity(),
         channel_first=False,
@@ -957,7 +944,6 @@ class MambaUNet(BaseModel):
                     mlp_act_layer=mlp_act_layer,
                     mlp_drop_rate=mlp_drop_rate,
                     gmlp=gmlp,
-                    use_checkpoint=use_checkpoint,
                 )
             )
 
@@ -1052,7 +1038,6 @@ class DualStreamInteractiveMambaUNet(MambaUNet):
         upsample_version: str = "v1",  # "v1"
         output_version: str = "v2",  # "v1", "v2", "v3"
         concat_skip=False,
-        use_checkpoint=False,
         **kwargs,
     ):
         # Initialize the MambaUNet
@@ -1082,7 +1067,6 @@ class DualStreamInteractiveMambaUNet(MambaUNet):
             upsample_version,
             output_version,
             concat_skip,
-            use_checkpoint,
             **kwargs,
         )
         # Deep copy patch embedding, encoder, latent, decoder and output in MambaUNet
