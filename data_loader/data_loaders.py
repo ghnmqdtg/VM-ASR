@@ -38,14 +38,14 @@ def get_loader(config, logger):
             train_loader = torch.utils.data.DataLoader(
                 train_dataset,
                 batch_size=config.DATA.BATCH_SIZE,
-                shuffle=False,
+                shuffle=True,
                 num_workers=config.DATA.NUM_WORKERS,
                 pin_memory=True,
             )
             val_loader = torch.utils.data.DataLoader(
                 val_dataset,
                 batch_size=config.DATA.BATCH_SIZE,
-                shuffle=False,
+                shuffle=True,
                 num_workers=config.DATA.NUM_WORKERS,
                 pin_memory=True,
             )
