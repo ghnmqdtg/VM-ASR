@@ -220,7 +220,6 @@ def plot_spectrogram(name_list, wave_list, config, title="Spectrogram"):
             origin="lower",
             interpolation="none",
             cmap="viridis",
-            vmin=-40,
         )
         plt.colorbar(img, ax=axs[i, 1])
         # Plot the phase of the STFT
