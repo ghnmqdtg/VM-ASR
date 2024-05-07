@@ -28,7 +28,7 @@ def get_scheduler(config, optimizer, n_iter_per_epoch):
                 if config.TRAIN.LR_SCHEDULER.WARMUP_PREFIX
                 else num_steps
             ),
-            t_mul=1.0,
+            # t_mul=1.0,
             lr_min=config.TRAIN.MIN_LR,
             # warmup_lr_init=config.TRAIN.MAX_LR,
             warmup_lr_init=config.TRAIN.MIN_LR,
