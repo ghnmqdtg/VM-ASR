@@ -41,7 +41,7 @@ _C.DATA.WEIGHTED_SR.ENABLE = False
 _C.DATA.WEIGHTED_SR.RANGES = (
     [(8000, 16000), (16000, 24000), (24000, 48000)]
     if _C.DATA.TARGET_SR == 48000
-    else [(4000, 8000), (8000, 12000), (12000, 16000)]
+    else [(2000, 8000), (8000, 12000), (12000, 16000)]
 )
 _C.DATA.WEIGHTED_SR.WEIGHTS = [0.5, 0.3, 0.2]
 # Length of audio clip
@@ -295,7 +295,7 @@ def update_config(config, args):
     else:
         config.DATA.RANDOM_RESAMPLE = [2000, 16000]
         config.DATA.STFT.HOP_LENGTH = 80
-        config.DATA.WEIGHTED_SR.RANGES = [(4000, 8000), (8000, 12000), (12000, 16000)]
+        config.DATA.WEIGHTED_SR.RANGES = [(2000, 8000), (8000, 12000), (12000, 16000)]
 
     # Update low pass filter config
     if not config.EVAL_MODE:
