@@ -148,6 +148,9 @@ class CustomVCTK_092(datasets.VCTK_092):
         """
         As the dataset is downloaded in flac format, we need to convert it to wav.
         """
+        # Make sure the destination folder exists
+        os.makedirs(self.config.DATA.DATA_PATH, exist_ok=True)
+        # Download the dataset
         dataset = datasets.VCTK_092(
             root=self.config.DATA.DATA_PATH,
             mic_id=self.config.DATA.MIC_ID,
