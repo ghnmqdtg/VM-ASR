@@ -35,13 +35,13 @@ _C.DATA.TARGET_SR = 48000
 # Random resampling
 _C.DATA.RANDOM_RESAMPLE = [8000, 48000]
 # Length of audio clip
-_C.DATA.SEGMENT = 1.705 if _C.DATA.TARGET_SR == 48000 else 2.555
+_C.DATA.SEGMENT = 2.555
 # White noise to pad to the short audio
 _C.DATA.PAD_WHITENOISE = 1e-32
 # STFT parameters
 _C.DATA.STFT = CN()
 _C.DATA.STFT.N_FFT = 1024
-_C.DATA.STFT.HOP_LENGTH = 80
+_C.DATA.STFT.HOP_LENGTH = 240 if _C.DATA.TARGET_SR == 48000 else 80
 _C.DATA.STFT.WIN_LENGTH = 1024
 _C.DATA.STFT.SCALE = "log2"
 # Random low pass filter
@@ -83,8 +83,8 @@ _C.MODEL.DROP_RATE = 0.0
 _C.MODEL.VSSM = CN()
 _C.MODEL.VSSM.IN_CHANS = 1
 _C.MODEL.VSSM.PATCH_SIZE = 4
-_C.MODEL.VSSM.DEPTHS = [2, 2, 9, 2]
-_C.MODEL.VSSM.DIMS = 8
+_C.MODEL.VSSM.DEPTHS = [2, 2, 2, 2]
+_C.MODEL.VSSM.DIMS = 16
 _C.MODEL.VSSM.SSM_D_STATE = 1
 _C.MODEL.VSSM.SSM_RATIO = 2.0
 _C.MODEL.VSSM.SSM_DT_RANK = "auto"
@@ -276,7 +276,7 @@ def update_config(config, args):
         config.OUTPUT = config.MODEL.RESUME_PATH
 
     # Update SEGMENT according to TARGET_SR
-    config.DATA.SEGMENT = 1.705 if config.DATA.TARGET_SR == 48000 else 2.555
+    config.DATA.STFT.HOP_LENGTH = 240 if _C.DATA.TARGET_SR == 48000 else 80
 
     # Update low pass filter config
     if not config.EVAL_MODE:

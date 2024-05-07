@@ -2,17 +2,7 @@ MODEL:
   TYPE: 'VM_ASR'
   NAME: 'DualStreamInteractiveMambaUNet'
   VSSM:
-    IN_CHANS: 1
-    DEPTHS: [2, 2, 2, 2]
     DIMS: 16
-    SSM_D_STATE: 1
-    SSM_FORWARDTYPE: "v5"
-    DROP_PATH_RATE: 0.1
-    PATCHEMBED:  "v2"
-    DOWNSAMPLE:  "v1"
-    UPSAMPLE:  "v1"
-    OUTPUT:  "v3"
-    CONCAT_SKIP: True
 
 TRAIN:
   EARLY_STOPPING: 0
@@ -21,9 +11,6 @@ TRAIN:
   ADVERSARIAL:
     ENABLE: True
     DISCRIMINATORS: ["mpd"]
-    FEATURE_LOSS_LAMBDA: 100
-    ONLY_FEATURE_LOSS: False
-    ONLY_ADVERSARIAL_LOSS: False
 
 DATA:
   BATCH_SIZE: 8
@@ -37,4 +24,4 @@ DATA:
 DEBUG: False
 
 WANDB:
-  ENABLE: False
+  ENABLE: True
