@@ -400,7 +400,6 @@ class CustomVCTK_092(datasets.VCTK_092):
                 range_idx = np.random.choice(len(sr_ranges), p=sr_weights)
                 min_sr, max_sr = sr_ranges[range_idx]
                 sr_input = random.randint(min_sr, max_sr)
-                print(f"SR: {sr_input}")
             else:
                 # Uniformly choose an integer from min to max in the list
                 sr_input = random.randint(

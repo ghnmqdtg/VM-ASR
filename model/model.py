@@ -1228,18 +1228,46 @@ if __name__ == "__main__":
     from tqdm import tqdm
     import time
 
-    length = int(48000 * 1.705)
-    # length = int(16000 * 2.555)
-    n_fft = 512
-    hop_length = 80
-    win_length = 512
+    target_sr = 48000
+    segment_length = 2.555
+    n_fft = 1024
+    hop_length = 80 if target_sr == 16000 else 240
+    win_length = 1024
     spectro_scale = "log2"
+    length = int(target_sr * segment_length)
 
-    x = torch.rand(24, 1, length).to("cuda")
-    model = MambaUNet(
+    # x = torch.rand(24, 1, length).to("cuda")
+    # model = MambaUNet(
+    #     in_chans=1,
+    #     depths=[2, 2, 2, 2],
+    #     dims=16,
+    #     # dims=[32, 64, 128, 256],
+    #     ssm_d_state=1,
+    #     ssm_ratio=2.0,
+    #     ssm_dt_rank="auto",
+    #     ssm_conv=3,
+    #     ssm_conv_bias=False,
+    #     forward_type="v5",
+    #     mlp_ratio=4.0,
+    #     patchembed_version="v2",
+    #     downsample_version="v1",
+    #     upsample_version="v1",
+    #     output_version="v3",
+    #     concat_skip=False,
+    #     # FFT related parameters
+    #     n_fft=n_fft,
+    #     hop_length=hop_length,
+    #     win_length=win_length,
+    #     spectro_scale=spectro_scale,
+    #     low_freq_replacement=True,
+    # ).to("cuda")
+
+    # print(model.flops(shape=(1, length)))
+
+    model = DualStreamInteractiveMambaUNet(
         in_chans=1,
         depths=[2, 2, 2, 2],
-        dims=[8, 16, 32, 64],
+        dims=16,
         # dims=[32, 64, 128, 256],
         ssm_d_state=1,
         ssm_ratio=2.0,
@@ -1262,23 +1290,3 @@ if __name__ == "__main__":
     ).to("cuda")
 
     print(model.flops(shape=(1, length)))
-
-    # x = torch.rand(12, 2, 1, 512, 128).to("cuda")
-    # model = DualStreamInteractiveMambaUNet(
-    #     in_chans=1,
-    #     depths=[2, 2, 2, 2],
-    #     dims=[8, 16, 32, 64],
-    #     # dims=[32, 64, 128, 256],
-    #     ssm_d_state=1,
-    #     ssm_ratio=2.0,
-    #     ssm_dt_rank="auto",
-    #     ssm_conv=3,
-    #     ssm_conv_bias=False,
-    #     forward_type="v5",
-    #     mlp_ratio=4.0,
-    #     patchembed_version="v2",
-    #     downsample_version="v1",
-    #     upsample_version="v1",
-    #     output_version="v3",
-    #     concat_skip=False,
-    # ).to("cuda")
