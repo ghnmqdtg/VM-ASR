@@ -176,7 +176,9 @@ class BaseTrainer:
                 self.logger.info(f"Saving best {model_type}: {filename} ...")
 
     def _resume_checkpoint(self):
-        # Check if the path exists
+        """
+        Load a model checkpoint from the provided path.
+        """
         self.models, self.optimizer, self.config, self.start_epoch = load_from_path(
             self.models, self.optimizer, self.config, self.logger
         )

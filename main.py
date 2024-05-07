@@ -9,6 +9,7 @@ import numpy as np
 from data_loader.data_loaders import get_loader
 
 from trainer.trainer import Trainer
+from trainer.tester import Tester
 from logger.logger import create_logger
 
 import torch
@@ -84,7 +85,7 @@ def main(config):
     # Get the metrics
     metrics = [getattr(module_metric, met) for met in config.TRAIN.METRICS]
 
-    if config.WANDB.ENABLE:
+    if config.WANDB.ENABLE and not config.EVAL_MODE:
         init_wandb_run(config)
 
     if not config.EVAL_MODE:
@@ -149,13 +150,54 @@ def main(config):
 
         trainer.train()
     else:
-        data_loader_test = get_loader(config)
+        logger.info(f"Starting evaluation ...")
+        logger.info(f"Loading checkpoint from {config.MODEL.RESUME_PATH}")
+        # Remove models except the generator
+        models = {"generator": models["generator"]}
+        data_loader_test = get_loader(config, logger)
         logger.info(f"TESTING: ({len(data_loader_test)} files)")
         # Test the trained model
-        return NotImplementedError("Testing is not implemented yet")
+        tester = Tester(
+            models=models,
+            metric_ftns=metrics,
+            config=config,
+            device=(device, device_ids),
+            data_loader=data_loader_test,
+            logger=logger,
+        )
+
+        tester.evaluate()
 
     if config.WANDB.ENABLE:
         wandb.finish()
+
+
+def validate_resume_path(config):
+    assert os.path.exists(
+        config.MODEL.RESUME_PATH
+    ), f"Folder not found, please check the path: {config.MODEL.RESUME_PATH}"
+    assert (
+        glob.glob(os.path.join(config.MODEL.RESUME_PATH, "*.pth")) != []
+    ), f"No checkpoint found in the folder. Please check the path: {config.MODEL.RESUME_PATH}"
+
+
+def setup_test(config):
+    # Evaluate the trained model with the test dataset
+    assert (
+        len(config.TAG.split("_")) == 2
+    ), "TAG should be in format {input_sr}_{target_sr}"
+    input_sr, target_sr = config.TAG.split("_")
+    output_dir = os.path.join(config.TEST.RESULTS_DIR, target_sr, input_sr)
+    # Remove the existing output directory
+    if os.path.exists(output_dir):
+        os.system(f"rm -rf {output_dir}")
+    os.makedirs(output_dir, exist_ok=True)
+    # Update config
+    config.defrost()
+    config.OUTPUT = output_dir
+    config.freeze()
+    logger = create_logger(output_dir=config.OUTPUT, name=f"{config.MODEL.NAME}")
+    return config, logger
 
 
 if __name__ == "__main__":
@@ -173,18 +215,16 @@ if __name__ == "__main__":
     cudnn.benchmark = True
 
     if config.MODEL.RESUME_PATH is not None:
-        assert os.path.exists(
-            config.MODEL.RESUME_PATH
-        ), f"Folder not found, please check the path: {config.MODEL.RESUME_PATH}"
-        assert (
-            glob.glob(os.path.join(config.MODEL.RESUME_PATH, "*.pth")) != []
-        ), f"No checkpoint found in the folder. Please check the path: {config.MODEL.RESUME_PATH}"
-        logger = create_logger(
-            output_dir=config.MODEL.RESUME_PATH,
-            name=f"{config.MODEL.NAME}",
-            load_existing=True,
-        )
-        logger.info(f"Resume training from {config.MODEL.RESUME_PATH}")
+        validate_resume_path(config)
+        if not config.EVAL_MODE:
+            logger = create_logger(
+                output_dir=config.MODEL.RESUME_PATH,
+                name=f"{config.MODEL.NAME}",
+                load_existing=True,
+            )
+            logger.info(f"Resume training from {config.MODEL.RESUME_PATH}")
+        else:
+            config, logger = setup_test(config)
     else:
         logger = create_logger(output_dir=config.OUTPUT, name=f"{config.MODEL.NAME}")
         logger.info(config.dump())

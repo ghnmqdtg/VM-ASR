@@ -88,6 +88,7 @@ class CustomVCTK_092(datasets.VCTK_092):
     ):
         self.config = config
         self.logger = logger
+        self.training = training
         # Check if the trimmed wav files exist
         if not os.path.isdir(
             os.path.join(self.config.DATA.DATA_PATH, self.config.DATA.FLAC2WAV.DST_PATH)
@@ -120,7 +121,7 @@ class CustomVCTK_092(datasets.VCTK_092):
                 and self.config.DATA.USE_QUANTITY <= 1.0
                 else ValueError("Quantity should be between 0 and 1")
             )
-            if not self.config.EVAL_MODE
+            if self.training
             else 1.0
         )
 
@@ -130,13 +131,10 @@ class CustomVCTK_092(datasets.VCTK_092):
         # The number of frames is calculated as the segment length * original `.wav` sample rate
         # For 48kHz target: 1.705 * 48000 = 81840 samples
         # For 16kHz target: 2.555 * 48000 * (16000 / 48000) = 40880 samples, downsample is applied after loading the audio
-        self.num_frames = (
-            int(self.config.DATA.SEGMENT * self.config.DATA.FLAC2WAV.SRC_SR)
-            if not self.config.EVAL_MODE
-            else -1
+        self.num_frames = int(
+            self.config.DATA.SEGMENT * self.config.DATA.FLAC2WAV.SRC_SR
         )
 
-        self.training = training
         # Initialize the sample IDs
         self._sample_ids = []
         # Set the sample IDs file path
@@ -286,11 +284,14 @@ class CustomVCTK_092(datasets.VCTK_092):
         """
         with open(self.sample_ids_file, "r") as f:
             self._sample_ids = json.load(f)
+            # Load 100% of the sample IDs for testing, otherwise load the specified quantity
+            quantity = self.quantity if self.training else 1.0
             num_smaples = len(self._sample_ids)
-            loaded_samples = int(num_smaples * self.quantity)
-
+            loaded_samples = (
+                int(num_smaples * quantity) if self.training else num_smaples
+            )
             self.logger.info(
-                f"Loading {self.quantity}% of the sample IDs ({loaded_samples} of {num_smaples})..."
+                f"Loading {quantity}% of the sample IDs ({loaded_samples} of {num_smaples})..."
             )
 
             # Randomly shuffle the sample IDs
@@ -299,29 +300,43 @@ class CustomVCTK_092(datasets.VCTK_092):
             self._sample_ids = self._sample_ids[:loaded_samples]
 
     def _load_audio(self, file_path, num_frames) -> Tuple[torch.Tensor | int]:
-        audio, sr = torchaudio.load(file_path, num_frames=num_frames)
+        if self.training:
+            audio, sr = torchaudio.load(file_path, num_frames=num_frames)
+            target_sr = self.config.DATA.TARGET_SR
+        else:
+            audio, sr = torchaudio.load(file_path)
+            # Check if the sample rate of the original audio is the same as the target sample rate
+            target_sr = int(self.config.TAG.split("_")[1])
+
         # Check if the sample rate of the original audio is the same as the target sample rate
-        if sr != self.config.DATA.TARGET_SR:
+        if sr != target_sr:
             # Resample the audio
-            audio = resample_audio(audio, sr, self.config.DATA.TARGET_SR)
-            sr = self.config.DATA.TARGET_SR
+            audio = resample_audio(audio, sr, target_sr)
+            sr = target_sr
             # Update the num_frames based on the ratio of TARGET_SR and SRC_SR
-            num_frames = int(
-                num_frames
-                * self.config.DATA.TARGET_SR
-                / self.config.DATA.FLAC2WAV.SRC_SR
-            )
+            num_frames = int(num_frames * target_sr / self.config.DATA.FLAC2WAV.SRC_SR)
+
         # Check if the audio is stereo, convert it to mono
         if audio.shape[0] == 2:
             audio = torch.mean(audio, dim=0, keepdim=True)
         # Pad the audio if the length is less than the specified number of frames
+        # For the training, the audio will be padded to the same length
+        pad_length = 0
         if audio.shape[-1] < num_frames:
             # Generate white noise
+            pad_length = num_frames - audio.shape[-1]
             white_noise = (
-                torch.randn((num_frames - audio.shape[-1]))
-                * self.config.DATA.PAD_WHITENOISE
+                torch.randn((pad_length)) * self.config.DATA.PAD_WHITENOISE
             ).unsqueeze(0)
             # Pad the audio with white noise
+            audio = torch.cat((audio, white_noise), dim=-1)
+        # For the testing, some of audio would be longer than the number of frames
+        # We pad them to match multiple of the number of frames
+        elif audio.shape[-1] % num_frames != 0:
+            pad_length = num_frames - (audio.shape[-1] % num_frames)
+            white_noise = (
+                torch.randn((pad_length)) * self.config.DATA.PAD_WHITENOISE
+            ).unsqueeze(0)
             audio = torch.cat((audio, white_noise), dim=-1)
 
         if self.config.DEBUG:
@@ -355,7 +370,7 @@ class CustomVCTK_092(datasets.VCTK_092):
             plt.savefig("./debug/spectrogram.png")
             plt.close()
 
-        return audio, sr
+        return audio, sr, pad_length
 
     def _get_io_pair(
         self, output: torch.Tensor, sr: int
@@ -372,12 +387,17 @@ class CustomVCTK_092(datasets.VCTK_092):
             output (torch.Tensor): The target waveform
             highcut_in_stft (int): The highcut frequency in the STFT for operating low-frequency replacement and calculating the LSD-HF and LSD-LF
         """
-        # Uniformly choose an integer from min to max in the list
-        sr_input = random.randint(
-            self.config.DATA.RANDOM_RESAMPLE[0], self.config.DATA.RANDOM_RESAMPLE[-1]
-        )
+        if self.training:
+            # Uniformly choose an integer from min to max in the list
+            sr_input = random.randint(
+                self.config.DATA.RANDOM_RESAMPLE[0],
+                self.config.DATA.RANDOM_RESAMPLE[-1],
+            )
+        else:
+            sr_input = int(self.config.TAG.split("_")[0])
+
         if sr_input != sr:
-            if not self.config.EVAL_MODE:
+            if not self.training:
                 # Random choose the low pass filter
                 filter_ = random.choice(self.config.DATA.LPF.LPF_TRAIN)
                 # Apply the low pass filter
@@ -419,7 +439,9 @@ class CustomVCTK_092(datasets.VCTK_092):
             f"{speaker_id}_{utterance_id}{self._audio_ext}",
         )
         # Read audio file
-        audio, sr = self._load_audio(audio_path, num_frames=self.num_frames or -1)
+        audio, sr, pad_length = self._load_audio(
+            audio_path, num_frames=self.num_frames or -1
+        )
         input, output, highcut = self._get_io_pair(audio, sr)
 
         return (
@@ -427,6 +449,7 @@ class CustomVCTK_092(datasets.VCTK_092):
             output,
             highcut,
             f"{speaker_id}_{utterance_id}{self._audio_ext}",
+            pad_length,
         )
 
     def __getitem__(self, n: int) -> Tuple[torch.Tensor, torch.Tensor]:

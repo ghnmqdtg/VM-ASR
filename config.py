@@ -176,7 +176,8 @@ _C.TRAIN.ADVERSARIAL.ONLY_ADVERSARIAL_LOSS = False
 # Testing settings
 # -----------------------------------------------------------------------------
 _C.TEST = CN()
-_C.TEST.SHUFFLE = False
+_C.TEST.RESULTS_DIR = "results"
+_C.TEST.OVERLAP = 2000  # Overlap in samples
 _C.TEST.SAVE_RESULT = True
 
 # -----------------------------------------------------------------------------

@@ -13,8 +13,6 @@ from model.loss import (
 )
 from logger.visualization import log_audio, log_waveform, log_spectrogram
 
-import torch.nn.functional as F
-
 
 class Trainer(BaseTrainer):
     """
@@ -62,10 +60,6 @@ class Trainer(BaseTrainer):
 
         self._init_metrics()
         self._init_losses()
-
-        # Set models to device
-        for model in self.models.values():
-            model.to(self.device)
 
         # Set models to device
         for key, model in self.models.items():
@@ -126,7 +120,8 @@ class Trainer(BaseTrainer):
                     wave_input,
                     wave_target,
                     highcut,
-                    filename,
+                    _,  # filename is not needed for training
+                    _,  # We only trim the audio for testing (see trainer/tester.py)
                 ) in enumerate(tepoch):
                     # Set description for the progress bar
                     tepoch.set_description(
@@ -174,6 +169,7 @@ class Trainer(BaseTrainer):
                             }
                         )
 
+                    # Calculate the metrics
                     for met in self.metric_ftns:
                         metrics_values[met.__name__] = met(
                             wave_out.squeeze(1), wave_target.squeeze(1), hf=highcut
