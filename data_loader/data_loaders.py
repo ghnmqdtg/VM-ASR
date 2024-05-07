@@ -2,6 +2,7 @@ from typing import Tuple
 import os
 import json
 import random
+import numpy as np
 import pandas as pd
 from tqdm import tqdm
 import matplotlib.pyplot as plt
@@ -391,11 +392,21 @@ class CustomVCTK_092(datasets.VCTK_092):
             highcut_in_stft (int): The highcut frequency in the STFT for operating low-frequency replacement and calculating the LSD-HF and LSD-LF
         """
         if self.training:
-            # Uniformly choose an integer from min to max in the list
-            sr_input = random.randint(
-                self.config.DATA.RANDOM_RESAMPLE[0],
-                self.config.DATA.RANDOM_RESAMPLE[-1],
-            )
+            if self.config.DATA.WEIGHTED_SR.ENABLE:
+                # Set the weight to randomly choose the SR
+                # The lower SR has higher probability to be chosen
+                sr_ranges = self.config.DATA.WEIGHTED_SR.RANGES
+                sr_weights = self.config.DATA.WEIGHTED_SR.WEIGHTS
+                range_idx = np.random.choice(len(sr_ranges), p=sr_weights)
+                min_sr, max_sr = sr_ranges[range_idx]
+                sr_input = random.randint(min_sr, max_sr)
+                print(f"SR: {sr_input}")
+            else:
+                # Uniformly choose an integer from min to max in the list
+                sr_input = random.randint(
+                    self.config.DATA.RANDOM_RESAMPLE[0],
+                    self.config.DATA.RANDOM_RESAMPLE[-1],
+                )
         else:
             sr_input = int(self.config.TAG.split("_")[0])
 

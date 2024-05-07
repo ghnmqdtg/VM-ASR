@@ -33,7 +33,17 @@ _C.DATA.VALID_SPLIT = 0.1
 # Target sample rate
 _C.DATA.TARGET_SR = 48000
 # Random resampling
-_C.DATA.RANDOM_RESAMPLE = [8000, 48000]
+_C.DATA.RANDOM_RESAMPLE = [8000, 48000] if _C.DATA.TARGET_SR == 48000 else [2000, 16000]
+# Set the weight to randomly choose the SR
+# The lower SR has higher probability to be chosen
+_C.DATA.WEIGHTED_SR = CN()
+_C.DATA.WEIGHTED_SR.ENABLE = False
+_C.DATA.WEIGHTED_SR.RANGES = (
+    [(8000, 16000), (16000, 24000), (24000, 48000)]
+    if _C.DATA.TARGET_SR == 48000
+    else [(4000, 8000), (8000, 12000), (12000, 16000)]
+)
+_C.DATA.WEIGHTED_SR.WEIGHTS = [0.5, 0.3, 0.2]
 # Length of audio clip
 _C.DATA.SEGMENT = 2.555
 # White noise to pad to the short audio
