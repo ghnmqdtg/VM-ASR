@@ -235,7 +235,8 @@ class Trainer(BaseTrainer):
                         wave_input,
                         wave_target,
                         highcut,
-                        filename,
+                        _,
+                        _,
                     ) in enumerate(tepoch):
                         # Set description for the progress bar
                         tepoch.set_description(
