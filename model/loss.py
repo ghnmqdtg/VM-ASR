@@ -14,7 +14,7 @@ def mse_loss(output, target):
 # REF: Parallel WaveGAN
 # URL: https://github.com/kan-bayashi/ParallelWaveGAN/blob/master/parallel_wavegan/losses/stft_loss.py
 # ================================================================= #
-def stft(x, fft_size, hop_size, win_length, window):
+def stft(x, fft_size, hop_size, win_length, window, emphasize_high_freq=False):
     """Perform STFT and convert to magnitude spectrogram.
     Args:
         x (Tensor): Input signal tensor (B, T).
@@ -22,6 +22,7 @@ def stft(x, fft_size, hop_size, win_length, window):
         hop_size (int): Hop size.
         win_length (int): Window length.
         window (str): Window function type.
+        emphasize_high_freq (bool): Whether to emphasize high frequency.
     Returns:
         Tensor: Magnitude spectrogram (B, #frames, fft_size // 2 + 1).
     """
@@ -33,8 +34,15 @@ def stft(x, fft_size, hop_size, win_length, window):
     real = x_stft[..., 0]
     imag = x_stft[..., 1]
 
-    # NOTE(kan-bayashi): clamp is needed to avoid nan or inf
-    return torch.sqrt(torch.clamp(real**2 + imag**2, min=1e-7)).transpose(2, 1)
+    magnitude = torch.sqrt(torch.clamp(real**2 + imag**2, min=1e-7)).transpose(2, 1)
+
+    if emphasize_high_freq:
+        # Create a linear weight scale that increases from 1 to 2 across the frequency axis
+        freq_weights = torch.linspace(1.0, 2.0, magnitude.size(1), device=x.device)
+        freq_weights = freq_weights.view(1, -1, 1)
+        magnitude = magnitude * freq_weights
+
+    return magnitude
 
 
 class SpectralConvergengeLoss(torch.nn.Module):
@@ -77,13 +85,19 @@ class STFTLoss(torch.nn.Module):
     """STFT loss module."""
 
     def __init__(
-        self, fft_size=1024, shift_size=120, win_length=600, window="hann_window"
+        self,
+        fft_size=1024,
+        shift_size=120,
+        win_length=600,
+        window="hann_window",
+        emphasize_high_freq=False,
     ):
         """Initialize STFT loss module."""
         super(STFTLoss, self).__init__()
         self.fft_size = fft_size
         self.shift_size = shift_size
         self.win_length = win_length
+        self.emphasize_high_freq = emphasize_high_freq
         self.register_buffer("window", getattr(torch, window)(win_length))
         self.spectral_convergenge_loss = SpectralConvergengeLoss()
         self.log_stft_magnitude_loss = LogSTFTMagnitudeLoss()
@@ -98,8 +112,22 @@ class STFTLoss(torch.nn.Module):
             Tensor: Log STFT magnitude loss value.
         """
         self.window = self.window.to(x.device)
-        x_mag = stft(x, self.fft_size, self.shift_size, self.win_length, self.window)
-        y_mag = stft(y, self.fft_size, self.shift_size, self.win_length, self.window)
+        x_mag = stft(
+            x,
+            self.fft_size,
+            self.shift_size,
+            self.win_length,
+            self.window,
+            self.emphasize_high_freq,
+        )
+        y_mag = stft(
+            y,
+            self.fft_size,
+            self.shift_size,
+            self.win_length,
+            self.window,
+            self.emphasize_high_freq,
+        )
         sc_loss = self.spectral_convergenge_loss(x_mag, y_mag)
         mag_loss = self.log_stft_magnitude_loss(x_mag, y_mag)
 
@@ -117,6 +145,7 @@ class MultiResolutionSTFTLoss(torch.nn.Module):
         window="hann_window",
         factor_sc=0.1,
         factor_mag=0.1,
+        emphasize_high_freq=False,
     ):
         """Initialize Multi resolution STFT loss module.
         Args:
@@ -130,7 +159,7 @@ class MultiResolutionSTFTLoss(torch.nn.Module):
         assert len(fft_sizes) == len(hop_sizes) == len(win_lengths)
         self.stft_losses = torch.nn.ModuleList()
         for fs, ss, wl in zip(fft_sizes, hop_sizes, win_lengths):
-            self.stft_losses += [STFTLoss(fs, ss, wl, window)]
+            self.stft_losses += [STFTLoss(fs, ss, wl, window, emphasize_high_freq)]
         self.factor_sc = factor_sc
         self.factor_mag = factor_mag
 

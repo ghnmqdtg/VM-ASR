@@ -11,6 +11,8 @@ TRAIN:
   ADVERSARIAL:
     ENABLE: True
     DISCRIMINATORS: ["mpd"]
+    STFT_LOSS:
+      EMPHASIZE_HIGH_FREQ: True
 
 DATA:
   BATCH_SIZE: 4
@@ -25,4 +27,4 @@ DATA:
 DEBUG: False
 
 WANDB:
-  ENABLE: False
+  ENABLE: True

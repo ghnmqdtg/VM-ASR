@@ -94,6 +94,7 @@ class Trainer(BaseTrainer):
         self.multi_resolution_stft = MultiResolutionSTFTLoss(
             factor_sc=self.config.TRAIN.ADVERSARIAL.STFT_LOSS.SC_FACTOR,
             factor_mag=self.config.TRAIN.ADVERSARIAL.STFT_LOSS.MAG_FACTOR,
+            emphasize_high_freq=self.config.TRAIN.ADVERSARIAL.STFT_LOSS.EMPHASIZE_HIGH_FREQ,
         )
 
     def _train_epoch(self, epoch):

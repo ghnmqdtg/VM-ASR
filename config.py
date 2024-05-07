@@ -176,6 +176,8 @@ _C.TRAIN.ADVERSARIAL.STFT_LOSS = CN()
 _C.TRAIN.ADVERSARIAL.STFT_LOSS.SC_FACTOR = 0.5
 # MAG stands for Log STFT magnitude loss
 _C.TRAIN.ADVERSARIAL.STFT_LOSS.MAG_FACTOR = 0.5
+# Emphasize high frequency in STFT loss
+_C.TRAIN.ADVERSARIAL.STFT_LOSS.EMPHASIZE_HIGH_FREQ = False
 # The feature loss lambda controls how much the similarity between the
 # generated and the original features should be enforced
 _C.TRAIN.ADVERSARIAL.FEATURE_LOSS_LAMBDA = 100
