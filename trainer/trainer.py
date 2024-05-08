@@ -137,20 +137,19 @@ class Trainer(BaseTrainer):
 
                     # Calculate the losses
                     losses = self._get_losses(wave_out, wave_target)
-                    total_generator_loss = 0
-                    for loss_name, loss in losses["generator"].items():
-                        total_generator_loss += loss
+                    total_generator_loss = sum(list(losses["generator"].values()))
+                    if self.gan:
+                        total_disc_loss = sum(list(losses["discriminator"].values()))
 
                     # Accumulate the loss for the accumulation steps
                     total_generator_loss /= self.config.TRAIN.ACCUMULATION_STEPS
+                    if self.gan:
+                        total_disc_loss /= self.config.TRAIN.ACCUMULATION_STEPS
 
                     # Backward pass
                     if (batch_idx + 1) % self.config.TRAIN.ACCUMULATION_STEPS == 0:
                         self._optimize(total_generator_loss)
                         if self.gan:
-                            total_disc_loss = sum(
-                                list(losses["discriminator"].values())
-                            )
                             self._optimize_adversarial(total_disc_loss)
 
                     metrics_values = {"total_loss": total_generator_loss.item()}
@@ -260,12 +259,18 @@ class Trainer(BaseTrainer):
 
                         # Calculate the losses
                         losses = self._get_losses(wave_out, wave_target)
-
-                        total_generator_loss = 0
-                        for loss_name, loss in losses["generator"].items():
-                            total_generator_loss += loss
+                        total_generator_loss = sum(list(losses["generator"].values()))
+                        if self.gan:
+                            total_disc_loss = sum(
+                                list(losses["discriminator"].values())
+                            )
 
                         metrics_values = {"total_loss": total_generator_loss.item()}
+                        if self.gan:
+                            metrics_values.update(
+                                {"total_disc_loss": total_disc_loss.item()}
+                            )
+
                         metrics_values.update(
                             {
                                 f"generator/{loss_name}": loss.item()
