@@ -3,14 +3,7 @@ from tqdm import tqdm
 from base import BaseTrainer
 from utils import inf_loop, MetricTracker
 from tqdm.contrib.logging import logging_redirect_tqdm
-from model.loss import (
-    mse_loss,
-    mae_loss,
-    MultiResolutionSTFTLoss,
-    discriminator_loss,
-    generator_loss,
-    feature_loss,
-)
+from model.loss import mse_loss, mae_loss, MultiResolutionSTFTLoss, HiFiGANLoss
 from logger.visualization import log_audio, log_waveform, log_spectrogram
 
 
@@ -67,7 +60,7 @@ class Trainer(BaseTrainer):
 
         # Log summary of models
         for key, model in self.models.items():
-            if key == "generator":
+            if key in ["generator", "mpd"]:
                 length = int(self.config.DATA.TARGET_SR * self.config.DATA.SEGMENT)
                 self.logger.info(f"Model summary: {model.flops(shape=(1, length))}")
             else:
@@ -96,6 +89,8 @@ class Trainer(BaseTrainer):
             factor_mag=self.config.TRAIN.ADVERSARIAL.STFT_LOSS.MAG_FACTOR,
             emphasize_high_freq=self.config.TRAIN.ADVERSARIAL.STFT_LOSS.EMPHASIZE_HIGH_FREQ,
         )
+
+        self.higi_gan_loss = HiFiGANLoss()
 
     def _train_epoch(self, epoch):
         # Set the model to training mode
@@ -346,17 +341,19 @@ class Trainer(BaseTrainer):
 
     def _get_mpd_loss(self, wave_out, wave_target):
         # Discriminator loss
+        # Detach the wave_out because we don't want to update the gradients of the generator
         y_df_hat_r, y_df_hat_g, _, _ = self.models["mpd"](
             wave_target, wave_out.detach()
         )
-        d_loss = discriminator_loss(y_df_hat_r, y_df_hat_g)
+        d_loss = self.higi_gan_loss.discriminator_loss(y_df_hat_r, y_df_hat_g)
 
         # Generator loss
+        # We want to update the gradients of the generator, so we don't detach the wave_out
         y_df_hat_r, y_df_hat_g, fmap_f_r, fmap_f_g = self.models["mpd"](
             wave_target, wave_out
         )
-        g_feat_loss = feature_loss(fmap_f_r, fmap_f_g)
-        g_adv_loss = generator_loss(y_df_hat_g)
+        g_feat_loss = self.higi_gan_loss.feature_loss(fmap_f_r, fmap_f_g)
+        g_adv_loss = self.higi_gan_loss.generator_loss(y_df_hat_g)
 
         features_loss = self.config.TRAIN.ADVERSARIAL.FEATURE_LOSS_LAMBDA * g_feat_loss
 
