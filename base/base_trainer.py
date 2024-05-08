@@ -183,9 +183,6 @@ class BaseTrainer:
             self.models, self.optimizer, self.config, self.logger
         )
         self.logger.info(
-            f"Checkpoint loaded successfully from {self.config.MODEL.RESUME_PATH}"
-        )
-        self.logger.info(
             f"Resuming training from epoch {self.start_epoch} / {self.epochs} ..."
         )
 

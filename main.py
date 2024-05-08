@@ -176,9 +176,11 @@ def validate_resume_path(config):
     assert os.path.exists(
         config.MODEL.RESUME_PATH
     ), f"Folder not found, please check the path: {config.MODEL.RESUME_PATH}"
-    assert (
-        glob.glob(os.path.join(config.MODEL.RESUME_PATH, "*.pth")) != []
-    ), f"No checkpoint found in the folder. Please check the path: {config.MODEL.RESUME_PATH}"
+    if config.EVAL_MODE:
+        # There must be a checkpoint for evaluation
+        assert (
+            glob.glob(os.path.join(config.MODEL.RESUME_PATH, "*.pth")) != []
+        ), f"No checkpoint found in the folder. Please check the path: {config.MODEL.RESUME_PATH}"
 
 
 def setup_test(config):

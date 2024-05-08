@@ -1,4 +1,5 @@
 import os
+import glob
 import wandb
 import torch
 import pandas as pd
@@ -116,13 +117,20 @@ def load_from_path(models, optimizer, config, logger):
     resume_path = config.MODEL.RESUME_PATH
 
     logger.info(f"Loading checkpoint from folder: {resume_path}")
-    # Find all the checkpoint files containing the "best"
-    for file in os.listdir(resume_path):
-        if "best" in file:
-            if not config.EVAL_MODE:
+    # Check if there are any checkpoints
+    if not config.EVAL_MODE:
+        # Training mode: Try to load the latest checkpoint, if not found, train from scratch
+        # Get all the .pth files that has "best" in the name
+        checkpoint_files = glob.glob(os.path.join(resume_path, "*best*.pth"))
+        if len(checkpoint_files) == 0:
+            logger.info(
+                f"No best checkpoints found in the folder. Training from scratch ..."
+            )
+            return (models, optimizer, config, start_epoch)
+        else:
+            for file in checkpoint_files:
                 try:
-                    model_path = os.path.join(resume_path, file)
-                    checkpoint = torch.load(model_path)
+                    checkpoint = torch.load(file)
                     # Get the model type
                     model_type = file.split("-")[2].split(".")[0]
                     key = "generator" if model_type == "G" else model_type
@@ -132,33 +140,41 @@ def load_from_path(models, optimizer, config, logger):
                         "generator" if model_type == "G" else "discriminator"
                     )
                     optimizer[optimizer_key].load_state_dict(checkpoint["optimizer"])
-                    start_epoch = checkpoint["epoch"]
                     # Update the configurations
                     if key == "generator":
                         # Update the generator config
                         config = checkpoint["config"]
+                        config.defrost()
+                        config.MODEL.RESUME_PATH = resume_path
+                        config.freeze()
+                        start_epoch = checkpoint["epoch"] + 1
                     # Log the loaded model
-                    logger.info(f"Loaded {key} from {model_path}")
+                    logger.info(f"Loaded {key} from {file}")
                 except:
                     logger.error(
-                        f"Error loading {model_path}, the .pth file might be corrupted"
+                        f"Error loading {file}, the .pth file might be corrupted"
                     )
                     exit(1)
-            else:
-                # Only load the generator model for evaluation
-                model_type = file.split("-")[2].split(".")[0]
-                if model_type == "G":
-                    try:
-                        model_path = os.path.join(resume_path, file)
-                        checkpoint = torch.load(model_path)
-                        # Load the model
-                        models["generator"].load_state_dict(checkpoint["state_dict"])
-                        # Log the loaded model
-                        logger.info(f"Loaded generator from {model_path}")
-                    except:
-                        logger.error(
-                            f"Error loading {model_path}, the .pth file might be corrupted"
-                        )
-                        exit(1)
+    else:
+        # Evaluation mode: Load the best checkpoint, if not found, exit
+        # Get all the .pth files that has "best" in the name
+        checkpoint_files = glob.glob(os.path.join(resume_path, "*best-G*.pth"))
+        if len(checkpoint_files) == 0:
+            logger.error(
+                f"No best checkpoints found in the folder. Please check the path: {resume_path}"
+            )
+            exit(1)
+        else:
+            try:
+                # Load the model
+                checkpoint = torch.load(checkpoint_files[0])
+                models["generator"].load_state_dict(checkpoint["state_dict"])
+                # Log the loaded model
+                logger.info(f"Loaded generator from {checkpoint_files[0]}")
+            except:
+                logger.error(
+                    f"Error loading {checkpoint_files[0]}, the .pth file might be corrupted"
+                )
+                exit(1)
 
     return (models, optimizer, config, start_epoch)
