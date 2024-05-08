@@ -91,7 +91,7 @@ def _get_wandb_config(config):
 
 def init_wandb_run(config):
 
-    experiment_name = f"{config.MODEL.TYPE}/{config.MODEL.NAME}"
+    experiment_name = f"{config.TAG}"
     if config.TENSORBOARD.ENABLE:
         wandb.tensorboard.patch(root_logdir=config.OUTPUT, pytorch=True)
 
@@ -99,7 +99,7 @@ def init_wandb_run(config):
         project=config.WANDB.PROJECT,
         entity=config.WANDB.ENTITY,
         name=experiment_name,
-        group=config.TAG,
+        group=config.WANDB.TAGS[0],
         config=_get_wandb_config(config),
         dir=config.OUTPUT,
         resume=True if config.MODEL.RESUME_PATH else False,

@@ -7,4 +7,5 @@
 #SBATCH --account=MST112230
 
 python main.py \
-    --cfg configs/vm_asr_16k.yaml
+    --cfg configs/vm_asr_16k.yaml \
+    --tag 16k_FullData_MPD
