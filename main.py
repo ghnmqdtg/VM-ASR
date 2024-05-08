@@ -63,6 +63,7 @@ def parse_option():
         help="tag of experiment",
     )
     parser.add_argument("--eval", action="store_true", help="Perform evaluation only")
+    # TODO: Add throughput mode
     parser.add_argument(
         "--throughput", action="store_true", help="Test throughput only"
     )

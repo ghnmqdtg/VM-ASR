@@ -60,7 +60,7 @@ class Trainer(BaseTrainer):
 
         # Log summary of models
         for key, model in self.models.items():
-            if key in ["generator", "mpd"]:
+            if key in ["generator", "mpd", "msd"]:
                 length = int(self.config.DATA.TARGET_SR * self.config.DATA.SEGMENT)
                 self.logger.info(f"Model summary: {model.flops(shape=(1, length))}")
             else:
@@ -148,9 +148,17 @@ class Trainer(BaseTrainer):
                     if (batch_idx + 1) % self.config.TRAIN.ACCUMULATION_STEPS == 0:
                         self._optimize(total_generator_loss)
                         if self.gan:
-                            self._optimize_adversarial(losses["discriminator"])
+                            total_disc_loss = sum(
+                                list(losses["discriminator"].values())
+                            )
+                            self._optimize_adversarial(total_disc_loss)
 
                     metrics_values = {"total_loss": total_generator_loss.item()}
+                    if self.gan:
+                        metrics_values.update(
+                            {"total_disc_loss": total_disc_loss.item()}
+                        )
+
                     metrics_values.update(
                         {
                             f"generator/{loss_name}": loss.item()
@@ -329,6 +337,17 @@ class Trainer(BaseTrainer):
                             {"features_mpd": gen_losses["features"]}
                         )
                     losses["discriminator"].update({"mpd": disc_loss})
+                if "msd" in self.config.TRAIN.ADVERSARIAL.DISCRIMINATORS:
+                    gen_losses, disc_loss = self._get_msd_loss(wave_out, wave_target)
+                    if not self.config.TRAIN.ADVERSARIAL.ONLY_FEATURE_LOSS:
+                        losses["generator"].update(
+                            {"adversarial_msd": gen_losses["adversarial"]}
+                        )
+                    if not self.config.TRAIN.ADVERSARIAL.ONLY_ADVERSARIAL_LOSS:
+                        losses["generator"].update(
+                            {"features_msd": gen_losses["features"]}
+                        )
+                    losses["discriminator"].update({"msd": disc_loss})
 
         return losses
 
@@ -366,16 +385,42 @@ class Trainer(BaseTrainer):
             "features": features_loss,
         }, disc_loss
 
+    def _get_msd_loss(self, wave_out, wave_target):
+        # Discriminator loss
+        # Detach the wave_out because we don't want to update the gradients of the generator
+        y_real, y_gen, _, _ = self.models["msd"](wave_target, wave_out.detach())
+        disc_loss = self.higi_gan_loss.discriminator_loss(y_real, y_gen)
+
+        # Generator loss
+        # We want to update the gradients of the generator, so we don't detach the wave_out
+        y_real, y_gen, feature_map_real, feature_map_gen = self.models["msd"](
+            wave_target, wave_out
+        )
+        g_feat_loss = self.higi_gan_loss.feature_loss(feature_map_real, feature_map_gen)
+        g_adv_loss = self.higi_gan_loss.generator_loss(y_gen)
+
+        features_loss = self.config.TRAIN.ADVERSARIAL.FEATURE_LOSS_LAMBDA * g_feat_loss
+
+        if self.config.TRAIN.ADVERSARIAL.ONLY_ADVERSARIAL_LOSS:
+            return {"adversarial": g_adv_loss}, disc_loss
+
+        if self.config.TRAIN.ADVERSARIAL.ONLY_FEATURE_LOSS:
+            return {"features": features_loss}, disc_loss
+
+        return {
+            "adversarial": g_adv_loss,
+            "features": features_loss,
+        }, disc_loss
+
     def _optimize(self, loss):
         self.optimizer_G.zero_grad()
         self.scaler_G.scale(loss).backward()
         self.scaler_G.step(self.optimizer_G)
         self.scaler_G.update()
 
-    def _optimize_adversarial(self, losses):
-        total_disc_loss = sum(list(losses.values()))
+    def _optimize_adversarial(self, loss):
         self.optimizer_D.zero_grad()
-        self.scaler_D.scale(total_disc_loss).backward()
+        self.scaler_D.scale(loss).backward()
         self.scaler_D.step(self.optimizer_D)
         self.scaler_D.update()
 
@@ -402,19 +447,19 @@ class Trainer(BaseTrainer):
     def update_progress_bar(tepoch, metrics_values):
         # Update the progress bar
         # Filter out the necessary metrics to display in the progress bar
-        # progress_metrics = {
-        #     k: v
-        #     for k, v in metrics_values.items()
-        #     if k
-        #     in [
-        #         "total_loss",
-        #         "snr",
-        #         "lsd",
-        #         "lsd-hf",
-        #         "lsd-lf",
-        #     ]
-        # }
-        progress_metrics = metrics_values
+        progress_metrics = {
+            k: v
+            for k, v in metrics_values.items()
+            if k
+            in [
+                "total_loss",
+                "total_disc_loss",
+                "snr",
+                "lsd",
+                "lsd-hf",
+                "lsd-lf",
+            ]
+        }
         # Add the memory usage to the progress bar
         progress_metrics["mem"] = (
             f"{torch.cuda.max_memory_allocated() / (1024.0 * 1024.0):.0f} MB"
