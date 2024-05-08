@@ -3,8 +3,15 @@ from copy import deepcopy
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from torch.nn.utils import weight_norm
-from torch.nn.utils.parametrizations import spectral_norm
+
+try:
+    # Newer versions of PyTorch
+    from torch.nn.utils.parametrizations import weight_norm, spectral_norm
+except:
+    # Older versions of PyTorch
+    from torch.nn.utils import weight_norm
+    from torch.nn.utils.parametrizations import spectral_norm
+
 
 from fvcore.nn import flop_count, parameter_count
 
@@ -121,22 +128,22 @@ class MultiPeriodDiscriminator(torch.nn.Module):
 
     def forward(self, y, y_hat):
         # y: real audio, y_hat: generated audio
-        y_d_rs = []  # Discriminator outputs for real audio
-        y_d_gs = []  # Discriminator outputs for generated audio
-        fmap_rs = []  # Feature maps for real audio
-        fmap_gs = []  # Feature maps for generated audio
-        for i, d in enumerate(self.discriminators):
-            y_d_r, fmap_r = d(y)
-            y_d_g, fmap_g = d(y_hat)
-            y_d_rs.append(y_d_r)
-            fmap_rs.append(fmap_r)
-            y_d_gs.append(y_d_g)
-            fmap_gs.append(fmap_g)
+        y_real = []  # Discriminator outputs for real audio
+        y_gen = []  # Discriminator outputs for generated audio
+        feature_map_real = []  # Feature maps for real audio
+        feature_map_gen = []  # Feature maps for generated audio
+        for i, disc in enumerate(self.discriminators):
+            y_r, feature_map_r = disc(y)
+            y_g, feature_map_g = disc(y_hat)
+            y_real.append(y_r)
+            feature_map_real.append(feature_map_r)
+            y_gen.append(y_g)
+            feature_map_gen.append(feature_map_g)
 
-        return y_d_rs, y_d_gs, fmap_rs, fmap_gs
+        return y_real, y_gen, feature_map_real, feature_map_gen
 
     @torch.no_grad()
-    def flops(self, shape=(1, 121890)):
+    def flops(self, shape=(1, 122640)):
         model = deepcopy(self)
         model.cuda().eval()
         supported_ops = {
@@ -158,3 +165,176 @@ class MultiPeriodDiscriminator(torch.nn.Module):
         return (
             f"{statics}\nparams {params/1e6:.2f}M, GFLOPs {sum(Gflops.values()):.2f}\n"
         )
+
+
+class ScaleDiscriminator(torch.nn.Module):
+    def __init__(self, use_spectral_norm=False, hidden=128):
+        super(ScaleDiscriminator, self).__init__()
+        self.norm_layer = weight_norm if use_spectral_norm else spectral_norm
+        self.convs = nn.ModuleList(
+            [
+                self.norm_layer(
+                    nn.Conv1d(
+                        1,
+                        hidden,
+                        kernel_size=15,
+                        stride=1,
+                        padding=7,
+                    )
+                ),
+                self.norm_layer(
+                    nn.Conv1d(
+                        hidden,
+                        hidden,
+                        kernel_size=41,
+                        stride=4,
+                        groups=4,
+                        padding=20,
+                    )
+                ),
+                self.norm_layer(
+                    nn.Conv1d(
+                        hidden,
+                        hidden * 2,
+                        kernel_size=41,
+                        stride=4,
+                        groups=16,
+                        padding=20,
+                    )
+                ),
+                self.norm_layer(
+                    nn.Conv1d(
+                        hidden * 2,
+                        hidden * 4,
+                        kernel_size=41,
+                        stride=4,
+                        groups=16,
+                        padding=20,
+                    )
+                ),
+                self.norm_layer(
+                    nn.Conv1d(
+                        hidden * 4,
+                        hidden * 8,
+                        kernel_size=41,
+                        stride=4,
+                        groups=16,
+                        padding=20,
+                    )
+                ),
+                self.norm_layer(
+                    nn.Conv1d(
+                        hidden * 8,
+                        hidden * 8,
+                        kernel_size=41,
+                        stride=4,
+                        groups=16,
+                        padding=20,
+                    )
+                ),
+                self.norm_layer(
+                    nn.Conv1d(
+                        hidden * 8,
+                        hidden * 8,
+                        kernel_size=5,
+                        stride=1,
+                        padding=2,
+                    )
+                ),
+            ]
+        )
+
+        self.conv_post = self.norm_layer(
+            nn.Conv1d(
+                hidden * 8,
+                1,
+                kernel_size=3,
+                stride=1,
+                padding=1,
+            )
+        )
+
+    def forward(self, x):
+        feature_map = []
+        for layer in self.convs:
+            x = layer(x)
+            x = nn.GELU()(x)
+            feature_map.append(x)
+        x = self.conv_post(x)
+        feature_map.append(x)
+        x = torch.flatten(x, 1, -1)
+
+        return x, feature_map
+
+
+class MultiScaleDiscriminator(torch.nn.Module):
+
+    def __init__(self, hidden=128):
+        super(MultiScaleDiscriminator, self).__init__()
+        self.discriminators = nn.ModuleList(
+            [
+                ScaleDiscriminator(hidden=hidden),
+                ScaleDiscriminator(hidden=hidden),
+                ScaleDiscriminator(hidden=hidden),
+            ]
+        )
+        self.meanpools = nn.ModuleList(
+            [
+                nn.AvgPool1d(4, 2, padding=2),
+                nn.AvgPool1d(4, 2, padding=2),
+            ]
+        )
+
+    def forward(self, y, y_hat):
+        # y: real audio, y_hat: generated audio
+        y_real = []  # Discriminator outputs for real audio
+        y_gen = []  # Discriminator outputs for generated audio
+        feature_map_real = []  # Feature maps for real audio
+        feature_map_gen = []  # Feature maps for generated audio
+        for i, disc in enumerate(self.discriminators):
+            if i != 0:
+                y = self.meanpools[i - 1](y)
+                y_hat = self.meanpools[i - 1](y_hat)
+            y_r, feature_map_r = disc(y)
+            y_g, feature_map_g = disc(y_hat)
+            y_real.append(y_r)
+            feature_map_real.append(feature_map_r)
+            y_gen.append(y_g)
+            feature_map_gen.append(feature_map_g)
+
+        return y_real, y_gen, feature_map_real, feature_map_gen
+
+    @torch.no_grad()
+    def flops(self, shape=(1, 122640)):
+        model = deepcopy(self)
+        model.cuda().eval()
+        supported_ops = {
+            "aten::gelu": None,  # as relu is in _IGNORED_OPS
+        }
+
+        input = torch.randn((1, *shape), device=next(model.parameters()).device)
+        input_hat = torch.randn((1, *shape), device=next(model.parameters()).device)
+        params = parameter_count(model)[""]
+        Gflops, unsupported = flop_count(
+            model=model, inputs=(input, input_hat), supported_ops=supported_ops
+        )
+
+        statics = summary(model, input_data=[input, input_hat], verbose=0)
+        del model, input, input_hat
+        torch.cuda.empty_cache()
+
+        # Return the number of parameters and FLOPs
+        return (
+            f"{statics}\nparams {params/1e6:.2f}M, GFLOPs {sum(Gflops.values()):.2f}\n"
+        )
+
+
+if __name__ == "__main__":
+    # Test the discriminator
+    model = MultiPeriodDiscriminator(hidden=32).to("cuda")
+    print(model.flops())
+
+    del model
+
+    model = MultiScaleDiscriminator(hidden=128).to("cuda")
+    print(model.flops())

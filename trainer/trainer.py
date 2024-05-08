@@ -342,31 +342,29 @@ class Trainer(BaseTrainer):
     def _get_mpd_loss(self, wave_out, wave_target):
         # Discriminator loss
         # Detach the wave_out because we don't want to update the gradients of the generator
-        y_df_hat_r, y_df_hat_g, _, _ = self.models["mpd"](
-            wave_target, wave_out.detach()
-        )
-        d_loss = self.higi_gan_loss.discriminator_loss(y_df_hat_r, y_df_hat_g)
+        y_real, y_gen, _, _ = self.models["mpd"](wave_target, wave_out.detach())
+        disc_loss = self.higi_gan_loss.discriminator_loss(y_real, y_gen)
 
         # Generator loss
         # We want to update the gradients of the generator, so we don't detach the wave_out
-        y_df_hat_r, y_df_hat_g, fmap_f_r, fmap_f_g = self.models["mpd"](
+        y_real, y_gen, feature_map_real, feature_map_gen = self.models["mpd"](
             wave_target, wave_out
         )
-        g_feat_loss = self.higi_gan_loss.feature_loss(fmap_f_r, fmap_f_g)
-        g_adv_loss = self.higi_gan_loss.generator_loss(y_df_hat_g)
+        g_feat_loss = self.higi_gan_loss.feature_loss(feature_map_real, feature_map_gen)
+        g_adv_loss = self.higi_gan_loss.generator_loss(y_gen)
 
         features_loss = self.config.TRAIN.ADVERSARIAL.FEATURE_LOSS_LAMBDA * g_feat_loss
 
         if self.config.TRAIN.ADVERSARIAL.ONLY_ADVERSARIAL_LOSS:
-            return {"adversarial": g_adv_loss}, d_loss
+            return {"adversarial": g_adv_loss}, disc_loss
 
         if self.config.TRAIN.ADVERSARIAL.ONLY_FEATURE_LOSS:
-            return {"features": features_loss}, d_loss
+            return {"features": features_loss}, disc_loss
 
         return {
             "adversarial": g_adv_loss,
             "features": features_loss,
-        }, d_loss
+        }, disc_loss
 
     def _optimize(self, loss):
         self.optimizer_G.zero_grad()
