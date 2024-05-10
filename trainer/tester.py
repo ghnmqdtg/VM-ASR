@@ -79,6 +79,10 @@ class Tester(BaseTester):
                         filename,
                         pad_length,
                     ) in enumerate(tepoch):
+                        # Set description for the progress bar
+                        tepoch.set_description(
+                            f"[TEST] | {self.input_sr} to {self.target_sr} | {self._progress(batch_idx)}"
+                        )
                         # Reset the peak memory stats for the GPU
                         torch.cuda.reset_peak_memory_stats()
                         metrics_values = {}
