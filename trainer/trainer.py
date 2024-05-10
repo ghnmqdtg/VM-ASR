@@ -90,7 +90,10 @@ class Trainer(BaseTrainer):
             emphasize_high_freq=self.config.TRAIN.ADVERSARIAL.STFT_LOSS.EMPHASIZE_HIGH_FREQ,
         )
 
-        self.higi_gan_loss = HiFiGANLoss()
+        self.higi_gan_loss = HiFiGANLoss(
+            gan_loss_type=self.config.TRAIN.ADVERSARIAL.GAN_LOSS_TYPE,
+            gp_weight=self.config.TRAIN.ADVERSARIAL.GP_LAMBDA,
+        )
 
     def _train_epoch(self, epoch):
         # Set the model to training mode
@@ -368,6 +371,11 @@ class Trainer(BaseTrainer):
         # Detach the wave_out because we don't want to update the gradients of the generator
         y_real, y_gen, _, _ = self.models["mpd"](wave_target, wave_out.detach())
         disc_loss = self.higi_gan_loss.discriminator_loss(y_real, y_gen)
+        if self.config.TRAIN.ADVERSARIAL.GAN_LOSS_TYPE == "wgan-gp":
+            gp = self.higi_gan_loss.gradient_penalty(
+                wave_target, wave_out.detach(), self.models["mpd"]
+            )
+            disc_loss += gp
 
         # Generator loss
         # We want to update the gradients of the generator, so we don't detach the wave_out

@@ -192,23 +192,35 @@ class HiFiGANLoss:
     URL: https://github.com/jik876/hifi-gan/blob/master/models.py
     """
 
-    def __init__(self):
+    def __init__(self, gan_loss_type, gp_weight=10):
         super(HiFiGANLoss, self).__init__()
+        self.gan_loss_type = gan_loss_type
+        self.gp_weight = gp_weight
 
     def discriminator_loss(self, real_data, generated_data):
         loss = 0
-        for dr, dg in zip(real_data, generated_data):
-            r_loss = torch.mean((dr - 1) ** 2)
-            g_loss = torch.mean(dg**2)
-            loss += r_loss + g_loss
+        if self.gan_loss_type == "lsgan":
+            for dr, dg in zip(real_data, generated_data):
+                r_loss = torch.mean((dr - 1) ** 2)
+                g_loss = torch.mean(dg**2)
+                loss += r_loss + g_loss
+        elif self.gan_loss_type == "wgan" or self.gan_loss_type == "wgan-gp":
+            for dr, dg in zip(real_data, generated_data):
+                r_loss = -torch.mean(dr)
+                g_loss = torch.mean(dg)
+                loss += r_loss + g_loss
 
         return loss
 
     def generator_loss(self, disc_outputs):
         loss = 0
-        for dg in disc_outputs:
-            l = torch.mean((1 - dg) ** 2)
-            loss += l
+        if self.gan_loss_type == "lsgan":
+            for dg in disc_outputs:
+                l = torch.mean((1 - dg) ** 2)
+                loss += l
+        elif self.gan_loss_type == "wgan" or self.gan_loss_type == "wgan-gp":
+            for dg in disc_outputs:
+                loss += -torch.mean(dg)
 
         return loss
 
@@ -219,3 +231,28 @@ class HiFiGANLoss:
                 loss += torch.mean(torch.abs(rl - gl))
 
         return loss * 2
+
+    def gradient_penalty(self, real_data, generated_data, discriminator):
+        batch_size = real_data.size(0)
+
+        # Get random interpolations between real and generated data
+        alpha = torch.rand(batch_size, 1, 1).to(real_data.device)
+        interpolates = alpha * real_data + (1 - alpha) * generated_data
+        interpolates.requires_grad = True
+
+        # Get discriminator scores for interpolates
+        disc_interpolates, _, _, _ = discriminator(interpolates, None)
+
+        # Calculate gradients w.r.t. interpolates
+        gradients = torch.autograd.grad(
+            outputs=disc_interpolates,
+            inputs=interpolates,
+            grad_outputs=[torch.ones_like(layer) for layer in disc_interpolates],
+            create_graph=True,
+            retain_graph=True,
+            only_inputs=True,
+        )[0]
+        gradients = gradients.view(gradients.size(0), -1)
+
+        gradient_penalty = ((gradients.norm(2, dim=1) - 1) ** 2).mean() * self.gp_weight
+        return gradient_penalty

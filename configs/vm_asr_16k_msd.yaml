@@ -9,7 +9,7 @@ TRAIN:
   LOW_FREQ_REPLACEMENT: True
   ADVERSARIAL:
     ENABLE: True
-    DISCRIMINATORS: ["mpd"]
+    DISCRIMINATORS: ["msd"]
     GAN_LOSS_TYPE: "lsgan"
     STFT_LOSS:
       EMPHASIZE_HIGH_FREQ: False
@@ -17,7 +17,7 @@ TRAIN:
 DATA:
   BATCH_SIZE: 8
   TARGET_SR: 16000
-  USE_QUANTITY: 1.0
+  USE_QUANTITY: 0.1
   VALID_SPLIT: 0.1
   WEIGHTED_SR:
     ENABLE: False
@@ -28,4 +28,4 @@ DEBUG: False
 
 WANDB:
   ENABLE: True
-  TAGS: ["16k", "Data_1.0", "MPD", "LS-GAN"]
+  TAGS: ["16k", "Data_0.1", "MSD", "LSGAN"]

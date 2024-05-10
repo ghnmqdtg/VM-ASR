@@ -183,6 +183,9 @@ _C.TRAIN.ADVERSARIAL.STFT_LOSS.EMPHASIZE_HIGH_FREQ = False
 _C.TRAIN.ADVERSARIAL.FEATURE_LOSS_LAMBDA = 100
 _C.TRAIN.ADVERSARIAL.ONLY_FEATURE_LOSS = False
 _C.TRAIN.ADVERSARIAL.ONLY_ADVERSARIAL_LOSS = False
+# GAN loss type
+_C.TRAIN.ADVERSARIAL.GAN_LOSS_TYPE = "lsgan"  # Could be wgan or wgan-gp
+_C.TRAIN.ADVERSARIAL.GP_LAMBDA = 10
 
 # -----------------------------------------------------------------------------
 # Testing settings

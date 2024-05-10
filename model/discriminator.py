@@ -134,11 +134,15 @@ class MultiPeriodDiscriminator(torch.nn.Module):
         feature_map_gen = []  # Feature maps for generated audio
         for i, disc in enumerate(self.discriminators):
             y_r, feature_map_r = disc(y)
-            y_g, feature_map_g = disc(y_hat)
             y_real.append(y_r)
             feature_map_real.append(feature_map_r)
-            y_gen.append(y_g)
-            feature_map_gen.append(feature_map_g)
+            if y_hat is not None:
+                y_g, feature_map_g = disc(y_hat)
+                y_gen.append(y_g)
+                feature_map_gen.append(feature_map_g)
+            else:
+                y_gen.append(0)
+                feature_map_gen.append(0)
 
         return y_real, y_gen, feature_map_real, feature_map_gen
 
@@ -296,11 +300,15 @@ class MultiScaleDiscriminator(torch.nn.Module):
                 y = self.meanpools[i - 1](y)
                 y_hat = self.meanpools[i - 1](y_hat)
             y_r, feature_map_r = disc(y)
-            y_g, feature_map_g = disc(y_hat)
             y_real.append(y_r)
             feature_map_real.append(feature_map_r)
-            y_gen.append(y_g)
-            feature_map_gen.append(feature_map_g)
+            if y_hat is not None:
+                y_g, feature_map_g = disc(y_hat)
+                y_gen.append(y_g)
+                feature_map_gen.append(feature_map_g)
+            else:
+                y_gen.append(0)
+                feature_map_gen.append(0)
 
         return y_real, y_gen, feature_map_real, feature_map_gen
 
