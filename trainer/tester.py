@@ -151,7 +151,6 @@ class Tester(BaseTester):
                                 wave_target = wave_target[:, :, :trim_length]
 
                             # Save audio in 16-bit PCM format using torchaudio
-                            # TODO: Save to different output directory for each model
                             torchaudio.save(
                                 f"{self.output_dir}/{filename[0].replace('.wav', '')}_up.wav",
                                 wave_out[0].cpu().detach(),

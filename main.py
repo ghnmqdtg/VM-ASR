@@ -200,7 +200,13 @@ def setup_test(config):
         len(config.TAG.split("_")) == 2
     ), "TAG should be in format {input_sr}_{target_sr}"
     input_sr, target_sr = config.TAG.split("_")
-    output_dir = os.path.join(config.TEST.RESULTS_DIR, target_sr, input_sr)
+    # Example: "./results/16k_DeciData_MPD_WGAN_Local/16000/2000"
+    output_dir = os.path.join(
+        config.TEST.RESULTS_DIR,
+        os.path.basename(config.MODEL.RESUME_PATH),
+        target_sr,
+        input_sr,
+    )
     # Remove the existing output directory
     if os.path.exists(output_dir):
         os.system(f"rm -rf {output_dir}")
