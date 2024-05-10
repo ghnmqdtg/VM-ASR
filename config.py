@@ -283,6 +283,9 @@ def update_config(config, args):
         config.THROUGHPUT_MODE = True
     if _check_args("optim"):
         config.TRAIN.OPTIMIZER.NAME = args.optim
+    if _check_args("target_sr"):
+        if args.target_sr not in [16000, 48000]:
+            raise ValueError("Target sample rate should be 16000 or 48000")
 
     # Output folder
     if config.MODEL.RESUME_PATH is None:
@@ -299,6 +302,13 @@ def update_config(config, args):
         config.DATA.RANDOM_RESAMPLE = [2000, 16000]
         config.DATA.STFT.HOP_LENGTH = 80
         config.DATA.WEIGHTED_SR.RANGES = [(2000, 8000), (8000, 12000), (12000, 16000)]
+
+    if _check_args("input_sr"):
+        if config.DATA.TARGET_SR == 48000 and args.input_sr >= config.DATA.TARGET_SR:
+            raise ValueError(
+                f"Input sample rate should be less than {config.DATA.TARGET_SR}"
+            )
+        config.DATA.RANDOM_RESAMPLE = [args.input_sr]
 
     # Update low pass filter config
     if not config.EVAL_MODE:

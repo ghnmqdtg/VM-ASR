@@ -43,6 +43,16 @@ def parse_option():
     )
     # easy config modification
     parser.add_argument("--batch-size", type=int, help="batch size for single GPU")
+    parser.add_argument(
+        "--input_sr",
+        type=int,
+        help="the input sample rate (if set, the random resample will be disabled)",
+    )
+    parser.add_argument(
+        "--target_sr",
+        type=int,
+        help="the target sample rate",
+    )
     parser.add_argument("--resume", type=str, help="path to checkpoint for models")
     parser.add_argument(
         "--accumulation-steps", type=int, help="gradient accumulation steps"
