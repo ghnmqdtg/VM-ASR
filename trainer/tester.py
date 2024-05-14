@@ -94,10 +94,9 @@ class Tester(BaseTester):
                             wave_out = self.models["generator"](wave_input, highcut)
                             # Compute metrics
                             run_time = time.time() - start_time
-                            rtf = (
-                                run_time
-                                / (wave_input.size(2) - pad_length[0].item())
-                                * self.config.DATA.TARGET_SR
+                            rtf = run_time / (
+                                (wave_input.size(2) - pad_length[0].item())
+                                / self.config.DATA.TARGET_SR
                             )
                             metrics_values = self._evaluate_batch(
                                 wave_out, wave_target, highcut
@@ -130,10 +129,9 @@ class Tester(BaseTester):
                                 overlap=self.config.TEST.OVERLAP,
                             )
                             run_time = time.time() - start_time
-                            rtf = (
-                                run_time
-                                / (wave_input.size(2) - pad_length[0].item())
-                                * self.config.DATA.TARGET_SR
+                            rtf = run_time / (
+                                (wave_input.size(2) - pad_length[0].item())
+                                / self.config.DATA.TARGET_SR
                             )
                             metrics_values = self._evaluate_batch(
                                 wave_out, wave_target, highcut
