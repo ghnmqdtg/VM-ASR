@@ -226,11 +226,13 @@ class HiFiGANLoss:
 
     def feature_loss(self, fmap_r, fmap_g):
         loss = 0
+        total_n_layers = 0
         for dr, dg in zip(fmap_r, fmap_g):
             for rl, gl in zip(dr, dg):
+                total_n_layers += 1
                 loss += torch.mean(torch.abs(rl - gl))
 
-        return loss * 2
+        return loss / total_n_layers
 
     def gradient_penalty(self, real_data, generated_data, discriminator):
         batch_size = real_data.size(0)
