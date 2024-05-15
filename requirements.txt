@@ -1,3 +1,4 @@
+sox
 tqdm
 timm
 wandb

@@ -1,5 +1,6 @@
 from typing import Tuple
 import os
+import sox
 import json
 import random
 import numpy as np
@@ -125,6 +126,8 @@ class CustomVCTK_092(datasets.VCTK_092):
             if self.training
             else 1.0
         )
+        if self.config.DATA.RESAMPLER == "sox":
+            self.sox_tfm = sox.Transformer()
 
         # The number of time frames in a segment
         # If the length of the audio is more than the segment length, it will be trimmed
@@ -303,6 +306,46 @@ class CustomVCTK_092(datasets.VCTK_092):
             # Load the specified quantity of the sample IDs
             self._sample_ids = self._sample_ids[:loaded_samples]
 
+    def resample_audio(
+        self, waveform: torch.Tensor, sr_org: int, sr_new: int, resampler: str
+    ) -> torch.Tensor:
+        """
+        Resample the waveform to the new sample rate
+
+        Args:
+            waveform (torch.Tensor): The input waveform
+            sr_org (int): The original sample rate
+            sr_new (int): The new sample rate
+            resampler (str): The resampler to use
+
+        Returns:
+            torch.Tensor: The resampled waveform
+        """
+        if resampler == "sox":
+            # Convert the PyTorch tensor to a NumPy array
+            waveform_np = waveform.squeeze().numpy()
+            # Set the sample rate for the resampler
+            self.sox_tfm.set_output_format(rate=sr_new)
+            # Resample the audio
+            waveform_resampled_np = self.sox_tfm.build_array(
+                input_array=waveform_np, sample_rate_in=sr_org
+            )
+            waveform_resampled = torch.tensor(
+                waveform_resampled_np, dtype=torch.float32
+            ).unsqueeze(0)
+            # Clear the effects
+            self.sox_tfm.clear_effects()
+        else:
+            # Resample the audio using scipy
+            waveform_resampled_np = resample_poly(
+                waveform.numpy(), sr_new, sr_org, axis=-1
+            )
+            waveform_resampled = torch.tensor(
+                waveform_resampled_np, dtype=torch.float32
+            )
+
+        return waveform_resampled
+
     def _load_audio(self, file_path, num_frames) -> Tuple[torch.Tensor | int]:
         if self.training:
             audio, sr = torchaudio.load(file_path, num_frames=num_frames)
@@ -315,7 +358,9 @@ class CustomVCTK_092(datasets.VCTK_092):
         # Check if the sample rate of the original audio is the same as the target sample rate
         if sr != target_sr:
             # Resample the audio
-            audio = resample_audio(audio, sr, target_sr)
+            audio = self.resample_audio(
+                audio, sr, target_sr, self.config.DATA.RESAMPLER
+            )
             sr = target_sr
             # Update the num_frames based on the ratio of TARGET_SR and SRC_SR
             num_frames = int(num_frames * target_sr / self.config.DATA.FLAC2WAV.SRC_SR)
@@ -424,9 +469,11 @@ class CustomVCTK_092(datasets.VCTK_092):
                     output, int(sr_input * 0.5), filter_, self.config.DATA.TARGET_SR
                 )
             # Downsample the audio
-            input = resample_audio(output, sr, sr_input)
+            input = self.resample_audio(
+                output, sr, sr_input, self.config.DATA.RESAMPLER
+            )
             # Upsample the audio
-            input = resample_audio(input, sr_input, sr)
+            input = self.resample_audio(input, sr_input, sr, self.config.DATA.RESAMPLER)
             # Align the waveform length
             input = align_waveform(input, output)
         else:
@@ -486,22 +533,6 @@ def align_waveform(
         waveform_resampled = waveform_resampled[:, : waveform.shape[1]]
 
     return waveform_resampled
-
-
-def resample_audio(waveform: torch.Tensor, sr_org: int, sr_new: int) -> torch.Tensor:
-    """
-    Resample the waveform to the new sample rate
-
-    Args:
-        waveform (torch.Tensor): The input waveform
-        sr_org (int): The original sample rate
-        sr_new (int): The new sample rate
-
-    Returns:
-        torch.Tensor: The resampled waveform
-    """
-    waveform_resampled = resample_poly(waveform, sr_new, sr_org, axis=-1)
-    return torch.tensor(waveform_resampled, dtype=torch.float32)
 
 
 def lowpass(audio, highcut, filter_=("cheby1", 8), sr=48000):

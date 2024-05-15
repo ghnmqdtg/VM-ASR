@@ -19,6 +19,8 @@ _C.DATA.DATA_PATH = "data/"
 _C.DATA.DATASET = "VCTK_092"
 # Microphone id
 _C.DATA.MIC_ID = "mic1"
+# Resampler
+_C.DATA.RESAMPLER = "scipy"
 # Shuffle data
 _C.DATA.SHUFFLE = True
 # Number of workers for dataloading
