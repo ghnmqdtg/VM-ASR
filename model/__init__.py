@@ -55,7 +55,9 @@ def get_model(config):
 
     if config.TRAIN.ADVERSARIAL:
         if "mpd" in config.TRAIN.ADVERSARIAL.DISCRIMINATORS:
-            discriminator = MultiPeriodDiscriminator()
+            discriminator = MultiPeriodDiscriminator(
+                hidden=config.TRAIN.ADVERSARIAL.MPD_HIDDEN
+            )
             models["mpd"] = discriminator
         if "msd" in config.TRAIN.ADVERSARIAL.DISCRIMINATORS:
             discriminator = MultiScaleDiscriminator()
