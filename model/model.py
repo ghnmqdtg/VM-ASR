@@ -10,7 +10,8 @@ from torchinfo import summary
 
 try:
     from base import BaseModel
-    from .vmamba import VSSBlock, selective_scan_flop_jit
+    from .vmamba import VSSBlock
+    from .csms6s import selective_scan_flop_jit, flops_selective_scan_fn
     from utils.stft import wav2spectro, spectro2wav
 except:
     # Used for debugging data_loader
@@ -23,7 +24,8 @@ except:
 
     # Now you can import BaseModel
     from base.base_model import BaseModel
-    from vmamba import VSSBlock, selective_scan_flop_jit
+    from vmamba import VSSBlock
+    from csms6s import selective_scan_flop_jit, flops_selective_scan_fn
     from utils.stft import wav2spectro, spectro2wav
 
 
@@ -967,20 +969,37 @@ class MambaUNet(BaseModel):
             nn.init.constant_(m.weight, 1.0)
 
     @torch.no_grad()
-    def flops(self, shape=(1, 40880)):
+    def flops(self, shape=(1, 40880), verbose=True):
+        from functools import partial
+
         # shape = self.__input_shape__[1:]
         supported_ops = {
             "aten::silu": None,  # as relu is in _IGNORED_OPS
-            "aten::gelu": None,  # as relu is in _IGNORED_OPS
             "aten::neg": None,  # as relu is in _IGNORED_OPS
             "aten::exp": None,  # as relu is in _IGNORED_OPS
             "aten::flip": None,  # as permute is in _IGNORED_OPS
             # "prim::PythonOp.CrossScan": None,
             # "prim::PythonOp.CrossMerge": None,
-            "prim::PythonOp.SelectiveScanMamba": selective_scan_flop_jit,
-            "prim::PythonOp.SelectiveScanOflex": selective_scan_flop_jit,
-            "prim::PythonOp.SelectiveScanCore": selective_scan_flop_jit,
-            "prim::PythonOp.SelectiveScanNRow": selective_scan_flop_jit,
+            "prim::PythonOp.SelectiveScanMamba": partial(
+                selective_scan_flop_jit,
+                flops_fn=flops_selective_scan_fn,
+                verbose=verbose,
+            ),
+            "prim::PythonOp.SelectiveScanOflex": partial(
+                selective_scan_flop_jit,
+                flops_fn=flops_selective_scan_fn,
+                verbose=verbose,
+            ),
+            "prim::PythonOp.SelectiveScanCore": partial(
+                selective_scan_flop_jit,
+                flops_fn=flops_selective_scan_fn,
+                verbose=verbose,
+            ),
+            "prim::PythonOp.SelectiveScanNRow": partial(
+                selective_scan_flop_jit,
+                flops_fn=flops_selective_scan_fn,
+                verbose=verbose,
+            ),
         }
 
         model = deepcopy(self)
@@ -1236,24 +1255,23 @@ if __name__ == "__main__":
     spectro_scale = "log2"
     length = int(target_sr * segment_length)
 
-    # x = torch.rand(24, 1, length).to("cuda")
     # model = MambaUNet(
     #     in_chans=1,
     #     depths=[2, 2, 2, 2],
     #     dims=16,
     #     # dims=[32, 64, 128, 256],
     #     ssm_d_state=1,
-    #     ssm_ratio=2.0,
+    #     ssm_ratio=1.0,
     #     ssm_dt_rank="auto",
     #     ssm_conv=3,
     #     ssm_conv_bias=False,
-    #     forward_type="v5",
+    #     forward_type="v04_ondwconv3",
     #     mlp_ratio=4.0,
     #     patchembed_version="v2",
     #     downsample_version="v1",
     #     upsample_version="v1",
     #     output_version="v3",
-    #     concat_skip=False,
+    #     concat_skip=True,
     #     # FFT related parameters
     #     n_fft=n_fft,
     #     hop_length=hop_length,
@@ -1270,17 +1288,17 @@ if __name__ == "__main__":
         dims=16,
         # dims=[32, 64, 128, 256],
         ssm_d_state=1,
-        ssm_ratio=2.0,
+        ssm_ratio=1.0,
         ssm_dt_rank="auto",
         ssm_conv=3,
         ssm_conv_bias=False,
-        forward_type="v5",
+        forward_type="v04_ondwconv3",
         mlp_ratio=4.0,
         patchembed_version="v2",
         downsample_version="v1",
         upsample_version="v1",
         output_version="v3",
-        concat_skip=False,
+        concat_skip=True,
         # FFT related parameters
         n_fft=n_fft,
         hop_length=hop_length,
