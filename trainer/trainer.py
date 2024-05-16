@@ -328,14 +328,6 @@ class Trainer(BaseTrainer):
             self.logger.info(tepoch)
 
     def _get_losses(self, wave_out, wave_target, epoch):
-        # Check for NaNs and Infs
-        if torch.isnan(wave_out).any():
-            self.logger.error("NaNs in the output or target")
-            raise ValueError("NaNs in the output or target")
-        if torch.isinf(wave_out).any():
-            self.logger.error("Infs in the output or target")
-            raise ValueError("Infs in the output or target")
-
         losses = {"generator": {}, "discriminator": {}}
         with torch.autograd.set_detect_anomaly(True):
             # Generator loss

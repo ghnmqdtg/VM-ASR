@@ -1,4 +1,5 @@
 import os
+import math
 import torch
 from abc import abstractmethod
 from numpy import inf
@@ -213,3 +214,13 @@ class BaseTrainer:
             table.add_row([key, value, val_value])
 
         self.logger.info(f"\n{table}")
+
+        # Check for NaNs and Infs
+        has_inf_or_nan = False
+        for key, value in logs.items():
+            if math.isnan(value) or math.isinf(value):
+                self.logger.warning(f"Found an invalid value: {key} = {value}")
+                has_inf_or_nan = True
+        if has_inf_or_nan:
+            self.logger.warning("Terminating due to invalid values.")
+            exit(1)
