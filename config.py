@@ -155,6 +155,10 @@ _C.TRAIN.AUTO_RESUME = True
 # Gradient accumulation steps
 # could be overwritten by command line argument
 _C.TRAIN.ACCUMULATION_STEPS = 1
+# Gradient clipping norm
+_C.TRAIN.CLIP_GRAD = CN()
+_C.TRAIN.CLIP_GRAD.ENABLE = False
+_C.TRAIN.CLIP_GRAD.MAX_NORM = 1.0
 
 # Optimizer
 _C.TRAIN.OPTIMIZER = CN()

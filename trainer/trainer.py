@@ -436,12 +436,24 @@ class Trainer(BaseTrainer):
     def _optimize(self, loss):
         self.optimizer_G.zero_grad()
         self.scaler_G.scale(loss).backward()
+        # Clip the gradients
+        if self.config.TRAIN.CLIP_GRAD.ENABLE:
+            torch.nn.utils.clip_grad_norm_(
+                self.models["generator"].parameters(),
+                self.config.TRAIN.CLIP_GRAD.MAX_NORM,
+            )
         self.scaler_G.step(self.optimizer_G)
         self.scaler_G.update()
 
     def _optimize_adversarial(self, loss):
         self.optimizer_D.zero_grad()
         self.scaler_D.scale(loss).backward()
+        # Clip the gradients
+        if self.config.TRAIN.CLIP_GRAD.ENABLE:
+            for disc in self.config.TRAIN.ADVERSARIAL.DISCRIMINATORS:
+                torch.nn.utils.clip_grad_norm_(
+                    self.models[disc].parameters(), self.config.TRAIN.CLIP_GRAD.MAX_NORM
+                )
         self.scaler_D.step(self.optimizer_D)
         self.scaler_D.update()
 
