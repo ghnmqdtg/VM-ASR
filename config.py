@@ -20,6 +20,7 @@ _C.DATA.DATASET = "VCTK_092"
 # Microphone id
 _C.DATA.MIC_ID = "mic1"
 # Resampler
+# ! Don't use sox, the model learns nothing from the resampled data
 _C.DATA.RESAMPLER = "scipy"
 # Shuffle data
 _C.DATA.SHUFFLE = True

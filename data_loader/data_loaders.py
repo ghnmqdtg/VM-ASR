@@ -422,7 +422,7 @@ class CustomVCTK_092(datasets.VCTK_092):
         return audio, sr, pad_length
 
     def _get_io_pair(
-        self, output: torch.Tensor, sr: int
+        self, output: torch.Tensor, sr: int, pad_length: int
     ) -> Tuple[torch.Tensor, torch.Tensor]:
         """
         Get the input and output pair for the model
@@ -484,6 +484,15 @@ class CustomVCTK_092(datasets.VCTK_092):
             (1 + self.config.DATA.STFT.N_FFT // 2)
             * (sr_input / self.config.DATA.TARGET_SR)
         )
+        if self.config.DATA.RESAMPLER == "sox":
+            # The noise is removed by the sox, we need to add it back
+            # Otherwise, the phase will be empty
+            if pad_length:
+                white_noise = (
+                    torch.randn((pad_length)) * self.config.DATA.PAD_WHITENOISE
+                ).unsqueeze(0)
+                # Replace the padded part with white noise
+                input[:, -pad_length:] = white_noise
 
         return input, output, highcut_in_stft
 
@@ -502,7 +511,7 @@ class CustomVCTK_092(datasets.VCTK_092):
         audio, sr, pad_length = self._load_audio(
             audio_path, num_frames=self.num_frames or -1
         )
-        input, output, highcut = self._get_io_pair(audio, sr)
+        input, output, highcut = self._get_io_pair(audio, sr, pad_length)
 
         return (
             input,
