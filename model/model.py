@@ -1021,6 +1021,32 @@ class MambaUNet(BaseModel):
             f"{statics}\nparams {params/1e6:.2f}M, GFLOPs {sum(Gflops.values()):.2f}\n"
         )
 
+    @torch.no_grad()
+    def throughput(self, shape=(1, 40880), n=500):
+        model = deepcopy(self)
+        model.cuda().eval()
+
+        input = torch.randn((1, *shape), device=next(model.parameters()).device)
+        hf = torch.randint(0, 512, (1,), device=next(model.parameters()).device)
+
+        # Warm up
+        for _ in range(10):
+            _ = model(input, hf)
+
+        # Measure throughput
+        torch.cuda.synchronize()
+        start = time.time()
+        for _ in tqdm(range(n)):
+            _ = model(input, hf)
+        torch.cuda.synchronize()
+        elapsed_time = time.time() - start
+
+        del model, input
+        torch.cuda.empty_cache()
+
+        # Return the throughput
+        return f"{n/elapsed_time:.2f} samples/s"
+
 
 class DualStreamInteractiveMambaUNet(MambaUNet):
     """
@@ -1281,6 +1307,7 @@ if __name__ == "__main__":
     # ).to("cuda")
 
     # print(model.flops(shape=(1, length)))
+    # print(model.throughput(shape=(1, length)))
 
     model = DualStreamInteractiveMambaUNet(
         in_chans=1,
@@ -1308,3 +1335,4 @@ if __name__ == "__main__":
     ).to("cuda")
 
     print(model.flops(shape=(1, length)))
+    print(model.throughput(shape=(1, length)))
