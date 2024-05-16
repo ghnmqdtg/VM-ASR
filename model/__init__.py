@@ -53,7 +53,7 @@ def get_model(config):
         )
         models["generator"] = generator
 
-    if config.TRAIN.ADVERSARIAL:
+    if config.TRAIN.ADVERSARIAL.ENABLE:
         if "mpd" in config.TRAIN.ADVERSARIAL.DISCRIMINATORS:
             discriminator = MultiPeriodDiscriminator(
                 hidden=config.TRAIN.ADVERSARIAL.MPD_HIDDEN

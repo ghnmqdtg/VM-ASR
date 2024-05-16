@@ -137,6 +137,8 @@ class BaseTrainer:
         for key in self.models.keys():
             # The key would be either "generator" or names of the discriminators
             model = self.models[key]
+            if model is None:
+                continue
             model_name = "G" if key == "generator" else key
             model_type = "generator" if key == "generator" else "discriminator"
             state = {
