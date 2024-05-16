@@ -2,24 +2,25 @@ MODEL:
   TYPE: 'VM_ASR'
   NAME: 'DualStreamInteractiveMambaUNet'
   VSSM:
-    DIMS: 16
+    DIMS: 32
 
 TRAIN:
   EARLY_STOPPING: 10
   LOSSES:
     STFT_LOSS:
+      SC_FACTOR: 1.0
+      MAG_FACTOR: 1.0
       EMPHASIZE_HIGH_FREQ: False
   LOW_FREQ_REPLACEMENT: True
   ADVERSARIAL:
     ENABLE: True
     DISCRIMINATORS: ["mpd"]
-    STFT_LOSS:
-      EMPHASIZE_HIGH_FREQ: False
+    GAN_LOSS_TYPE: "lsgan"
 
 DATA:
-  BATCH_SIZE: 4
-  TARGET_SR: 48000
-  USE_QUANTITY: 1.0
+  BATCH_SIZE: 8
+  TARGET_SR: 16000
+  USE_QUANTITY: 0.1
   VALID_SPLIT: 0.1
   WEIGHTED_SR:
     ENABLE: False
@@ -30,4 +31,4 @@ DEBUG: False
 
 WANDB:
   ENABLE: True
-  TAGS: ["48k", "Data_1.0", "MPD"]
+  TAGS: ["16k", "Data_0.1", "MPD", "Deep", "LS-GAN"]

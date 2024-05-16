@@ -52,9 +52,6 @@ def wav2spectro(
 
     _, freqs, frame = spec.shape
 
-    # if frame % 2 != 0:
-    #     spec = spec[..., :-1]
-
     # Get the magnitude and phase
     if spectro_scale == "dB":
         # The AmplitudeToDB default input is in power |x|^2

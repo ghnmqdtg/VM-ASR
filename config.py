@@ -135,8 +135,16 @@ _C.TRAIN.MIN_LR = 1e-5
 _C.TRAIN.CYCLE_MULT = 1.0
 _C.TRAIN.ENABLE_GAN = False
 _C.TRAIN.LOSSES = CN()
-_C.TRAIN.LOSSES.GEN = ["multi_resolution_stft"]
 _C.TRAIN.METRICS = ["snr", "lsd", "lsd_hf", "lsd_lf"]
+_C.TRAIN.LOSSES.GEN = ["multi_resolution_stft"]
+_C.TRAIN.LOSSES.STFT_LOSS = CN()
+# The factor controls how much the STFT loss should be enforced
+# SC stands for spectral convergence loss
+_C.TRAIN.LOSSES.STFT_LOSS.SC_FACTOR = 0.5
+# MAG stands for Log STFT magnitude loss
+_C.TRAIN.LOSSES.STFT_LOSS.MAG_FACTOR = 0.5
+# Emphasize high frequency in STFT loss
+_C.TRAIN.LOSSES.STFT_LOSS.EMPHASIZE_HIGH_FREQ = False
 _C.TRAIN.LOW_FREQ_REPLACEMENT = False
 
 # Auto resume from latest checkpoint
@@ -173,14 +181,6 @@ _C.TRAIN.LR_SCHEDULER.MULTISTEPS = []
 _C.TRAIN.ADVERSARIAL = CN()
 _C.TRAIN.ADVERSARIAL.ENABLE = False
 _C.TRAIN.ADVERSARIAL.DISCRIMINATORS = [""]
-_C.TRAIN.ADVERSARIAL.STFT_LOSS = CN()
-# The factor controls how much the STFT loss should be enforced
-# SC stands for spectral convergence loss
-_C.TRAIN.ADVERSARIAL.STFT_LOSS.SC_FACTOR = 0.5
-# MAG stands for Log STFT magnitude loss
-_C.TRAIN.ADVERSARIAL.STFT_LOSS.MAG_FACTOR = 0.5
-# Emphasize high frequency in STFT loss
-_C.TRAIN.ADVERSARIAL.STFT_LOSS.EMPHASIZE_HIGH_FREQ = False
 # The feature loss lambda controls how much the similarity between the
 # generated and the original features should be enforced
 _C.TRAIN.ADVERSARIAL.MPD_HIDDEN = 32
@@ -188,7 +188,8 @@ _C.TRAIN.ADVERSARIAL.FEATURE_LOSS_LAMBDA = 100
 _C.TRAIN.ADVERSARIAL.ONLY_FEATURE_LOSS = False
 _C.TRAIN.ADVERSARIAL.ONLY_ADVERSARIAL_LOSS = False
 # GAN loss type
-_C.TRAIN.ADVERSARIAL.GAN_LOSS_TYPE = "lsgan"  # Could be wgan or wgan-gp
+# ! wgan or wgan-gp does not wor, use lsgan instead
+_C.TRAIN.ADVERSARIAL.GAN_LOSS_TYPE = "lsgan"
 _C.TRAIN.ADVERSARIAL.GP_LAMBDA = 10
 
 # -----------------------------------------------------------------------------
