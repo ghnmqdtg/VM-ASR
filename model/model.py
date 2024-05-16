@@ -153,6 +153,7 @@ class MambaUNet(BaseModel):
         upsample_version: str = "v1",  # "v1"
         output_version: str = "v2",  # "v1", "v2", "v3"
         concat_skip=False,
+        drop_last_encoder=False,
         # =================
         # FFT related parameters
         n_fft=512,
@@ -269,6 +270,12 @@ class MambaUNet(BaseModel):
                     # The last layer does not need downsample
                     else nn.Identity()
                 )
+
+            # If the number of dims is not 5, we drop the last layer of the encoder and use the first layer of the decoder as the latent layer
+            if len(self.dims) == 4 and drop_last_encoder:
+                if i_layer == self.num_layers - 1:
+                    del downsample
+                    break
 
             self.layers_encoder.append(
                 self.VSSLayer(
@@ -1083,6 +1090,7 @@ class DualStreamInteractiveMambaUNet(MambaUNet):
         upsample_version: str = "v1",  # "v1"
         output_version: str = "v2",  # "v1", "v2", "v3"
         concat_skip=False,
+        drop_last_encoder=False,
         **kwargs,
     ):
         # Initialize the MambaUNet
@@ -1112,6 +1120,7 @@ class DualStreamInteractiveMambaUNet(MambaUNet):
             upsample_version,
             output_version,
             concat_skip,
+            drop_last_encoder,
             **kwargs,
         )
         # Deep copy patch embedding, encoder, latent, decoder and output in MambaUNet
@@ -1304,6 +1313,7 @@ if __name__ == "__main__":
     #     win_length=win_length,
     #     spectro_scale=spectro_scale,
     #     low_freq_replacement=True,
+    #     drop_last_encoder=True,
     # ).to("cuda")
 
     # print(model.flops(shape=(1, length)))
@@ -1332,6 +1342,7 @@ if __name__ == "__main__":
         win_length=win_length,
         spectro_scale=spectro_scale,
         low_freq_replacement=True,
+        drop_last_encoder=True,
     ).to("cuda")
 
     print(model.flops(shape=(1, length)))
