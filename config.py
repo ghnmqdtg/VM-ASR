@@ -187,6 +187,7 @@ _C.TRAIN.LR_SCHEDULER.MULTISTEPS = []
 # Adversarial training
 _C.TRAIN.ADVERSARIAL = CN()
 _C.TRAIN.ADVERSARIAL.ENABLE = False
+_C.TRAIN.ADVERSARIAL.DELAYED_START = 0
 _C.TRAIN.ADVERSARIAL.DISCRIMINATORS = [""]
 # The feature loss lambda controls how much the similarity between the
 # generated and the original features should be enforced

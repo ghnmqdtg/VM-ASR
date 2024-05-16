@@ -139,24 +139,27 @@ class Trainer(BaseTrainer):
                         wave_out = self.models["generator"](wave_input, highcut)
 
                     # Calculate the losses
-                    losses = self._get_losses(wave_out, wave_target)
+                    losses = self._get_losses(wave_out, wave_target, epoch)
                     total_generator_loss = sum(list(losses["generator"].values()))
-                    if self.gan:
+                    if self.gan and epoch > self.config.TRAIN.ADVERSARIAL.DELAYED_START:
                         total_disc_loss = sum(list(losses["discriminator"].values()))
 
                     # Accumulate the loss for the accumulation steps
                     total_generator_loss /= self.config.TRAIN.ACCUMULATION_STEPS
-                    if self.gan:
+                    if self.gan and epoch > self.config.TRAIN.ADVERSARIAL.DELAYED_START:
                         total_disc_loss /= self.config.TRAIN.ACCUMULATION_STEPS
 
                     # Backward pass
                     if (batch_idx + 1) % self.config.TRAIN.ACCUMULATION_STEPS == 0:
                         self._optimize(total_generator_loss)
-                        if self.gan:
+                        if (
+                            self.gan
+                            and epoch > self.config.TRAIN.ADVERSARIAL.DELAYED_START
+                        ):
                             self._optimize_adversarial(total_disc_loss)
 
                     metrics_values = {"total_loss": total_generator_loss.item()}
-                    if self.gan:
+                    if self.gan and epoch > self.config.TRAIN.ADVERSARIAL.DELAYED_START:
                         metrics_values.update(
                             {"total_disc_loss": total_disc_loss.item()}
                         )
@@ -167,7 +170,7 @@ class Trainer(BaseTrainer):
                             for loss_name, loss in losses["generator"].items()
                         }
                     )
-                    if self.gan:
+                    if self.gan and epoch > self.config.TRAIN.ADVERSARIAL.DELAYED_START:
                         metrics_values.update(
                             {
                                 f"discriminator/{disc_name}": loss.item()
@@ -208,7 +211,7 @@ class Trainer(BaseTrainer):
                 self.writer.add_scalar(
                     "lr/generator", self.optimizer_G.param_groups[-1]["lr"]
                 )
-            if self.gan:
+            if self.gan and epoch > self.config.TRAIN.ADVERSARIAL.DELAYED_START:
                 if self.lr_scheduler_D is not None:
                     self.lr_scheduler_D.step_update(
                         (epoch * num_steps + batch_idx)
@@ -261,15 +264,21 @@ class Trainer(BaseTrainer):
                             wave_out = self.models["generator"](wave_input, highcut)
 
                         # Calculate the losses
-                        losses = self._get_losses(wave_out, wave_target)
+                        losses = self._get_losses(wave_out, wave_target, epoch)
                         total_generator_loss = sum(list(losses["generator"].values()))
-                        if self.gan:
+                        if (
+                            self.gan
+                            and epoch > self.config.TRAIN.ADVERSARIAL.DELAYED_START
+                        ):
                             total_disc_loss = sum(
                                 list(losses["discriminator"].values())
                             )
 
                         metrics_values = {"total_loss": total_generator_loss.item()}
-                        if self.gan:
+                        if (
+                            self.gan
+                            and epoch > self.config.TRAIN.ADVERSARIAL.DELAYED_START
+                        ):
                             metrics_values.update(
                                 {"total_disc_loss": total_disc_loss.item()}
                             )
@@ -280,7 +289,10 @@ class Trainer(BaseTrainer):
                                 for loss_name, loss in losses["generator"].items()
                             }
                         )
-                        if self.gan:
+                        if (
+                            self.gan
+                            and epoch > self.config.TRAIN.ADVERSARIAL.DELAYED_START
+                        ):
                             metrics_values.update(
                                 {
                                     f"discriminator/{disc_name}": loss.item()
@@ -315,7 +327,7 @@ class Trainer(BaseTrainer):
             # Log the progress bar
             self.logger.info(tepoch)
 
-    def _get_losses(self, wave_out, wave_target):
+    def _get_losses(self, wave_out, wave_target, epoch):
         # Check for NaNs and Infs
         if torch.isnan(wave_out).any():
             self.logger.error("NaNs in the output or target")
@@ -341,7 +353,7 @@ class Trainer(BaseTrainer):
                 )
 
             # Discriminator loss
-            if self.gan:
+            if self.gan and epoch > self.config.TRAIN.ADVERSARIAL.DELAYED_START:
                 if "mpd" in self.config.TRAIN.ADVERSARIAL.DISCRIMINATORS:
                     gen_losses, disc_loss = self._get_mpd_loss(wave_out, wave_target)
                     if not self.config.TRAIN.ADVERSARIAL.ONLY_FEATURE_LOSS:
