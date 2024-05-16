@@ -209,6 +209,11 @@ class HiFiGANLoss:
                 r_loss = -torch.mean(dr)
                 g_loss = torch.mean(dg)
                 loss += r_loss + g_loss
+        elif self.gan_loss_type == "hinge":
+            for dr, dg in zip(real_data, generated_data):
+                r_loss = torch.nn.ReLU()(1.0 - dr).mean()
+                g_loss = torch.nn.ReLU()(1.0 + dg).mean()
+                loss += r_loss + g_loss
 
         return loss
 
@@ -219,6 +224,9 @@ class HiFiGANLoss:
                 l = torch.mean((1 - dg) ** 2)
                 loss += l
         elif self.gan_loss_type == "wgan" or self.gan_loss_type == "wgan-gp":
+            for dg in disc_outputs:
+                loss += -torch.mean(dg)
+        elif self.gan_loss_type == "hinge":
             for dg in disc_outputs:
                 loss += -torch.mean(dg)
 
