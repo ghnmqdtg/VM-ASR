@@ -10,7 +10,7 @@ from torchinfo import summary
 
 try:
     from base import BaseModel
-    from .vmamba import VSSBlock
+    from .vmamba import VSSBlock, PatchMerging2D, Permute, LayerNorm2d
     from .csms6s import selective_scan_flop_jit, flops_selective_scan_fn
     from utils.stft import wav2spectro, spectro2wav
 except:
@@ -24,71 +24,9 @@ except:
 
     # Now you can import BaseModel
     from base.base_model import BaseModel
-    from vmamba import VSSBlock
+    from vmamba import VSSBlock, PatchMerging2D, Permute, LayerNorm2d
     from csms6s import selective_scan_flop_jit, flops_selective_scan_fn
     from utils.stft import wav2spectro, spectro2wav
-
-
-class LayerNorm2d(nn.LayerNorm):
-    """
-    LayerNorm2d is a wrapper for LayerNorm to support 2D input.
-    """
-
-    def forward(self, x: torch.Tensor):
-        x = x.permute(0, 2, 3, 1)
-        x = nn.functional.layer_norm(
-            x, self.normalized_shape, self.weight, self.bias, self.eps
-        )
-        x = x.permute(0, 3, 1, 2)
-        return x
-
-
-class Permute(nn.Module):
-    """
-    Wrapper for torch.permute. Used in nn.Sequential.
-    """
-
-    def __init__(self, *args):
-        super().__init__()
-        self.args = args
-
-    def forward(self, x: torch.Tensor):
-        return x.permute(*self.args)
-
-
-class PatchMerging2D(nn.Module):
-    """
-    Patch merging module.
-
-    input: (B, H, W, C) -> output: (B, H/2, W/2, 4*C)
-    """
-
-    def __init__(self, dim, out_dim=-1, norm_layer=nn.LayerNorm, **kwargs):
-        super().__init__()
-        self.dim = dim
-        self.reduction = nn.Linear(
-            4 * dim, (2 * dim) if out_dim < 0 else out_dim, bias=False
-        )
-        self.norm = norm_layer(4 * dim)
-
-    @staticmethod
-    def _patch_merging_pad(x: torch.Tensor):
-        H, W, _ = x.shape[-3:]
-        if (W % 2 != 0) or (H % 2 != 0):
-            x = F.pad(x, (0, 0, 0, W % 2, 0, H % 2))
-        x0 = x[..., 0::2, 0::2, :]  # ... H/2 W/2 C
-        x1 = x[..., 1::2, 0::2, :]  # ... H/2 W/2 C
-        x2 = x[..., 0::2, 1::2, :]  # ... H/2 W/2 C
-        x3 = x[..., 1::2, 1::2, :]  # ... H/2 W/2 C
-        x = torch.cat([x0, x1, x2, x3], -1)  # ... H/2 W/2 4*C
-        return x
-
-    def forward(self, x):
-        x = self._patch_merging_pad(x)
-        x = self.norm(x)
-        x = self.reduction(x)
-
-        return x
 
 
 class PatchExpanding(nn.Module):
@@ -234,6 +172,8 @@ class MambaUNet(BaseModel):
         # Get the downsample version
         _make_downsample = dict(
             v1=PatchMerging2D,
+            v2=self._make_downsample_v2,
+            v3=self._make_downsample_v3,
         ).get(downsample_version, None)
 
         # print(f"downsample_version: {downsample_version} -> {_make_downsample}")
@@ -241,6 +181,7 @@ class MambaUNet(BaseModel):
         # Get the upsample version
         _make_upsample = dict(
             v1=PatchExpanding,
+            v2=self._make_upsample_v2,
         ).get(upsample_version, None)
 
         self.layers_encoder = nn.ModuleList()
@@ -643,6 +584,44 @@ class MambaUNet(BaseModel):
             # Permute the dimensions if channel_first is False and patch_norm is True
             (nn.Identity() if channel_first else Permute(0, 2, 3, 1)),
             (norm_layer(embed_dim) if patch_norm else nn.Identity()),
+        )
+
+    @staticmethod
+    def _make_downsample_v2(
+        dim=16, out_dim=32, norm_layer=nn.LayerNorm, channel_first=False
+    ):
+        # If channel first, then Norm and Output are both channel_first
+        return nn.Sequential(
+            (nn.Identity() if channel_first else Permute(0, 3, 1, 2)),
+            nn.Conv2d(dim, out_dim, kernel_size=2, stride=2),
+            (nn.Identity() if channel_first else Permute(0, 2, 3, 1)),
+            norm_layer(out_dim),
+        )
+
+    @staticmethod
+    def _make_downsample_v3(
+        dim=16, out_dim=32, norm_layer=nn.LayerNorm, channel_first=False
+    ):
+        # if channel first, then Norm and Output are both channel_first
+        return nn.Sequential(
+            (nn.Identity() if channel_first else Permute(0, 3, 1, 2)),
+            nn.Conv2d(dim, out_dim, kernel_size=3, stride=2, padding=1),
+            (nn.Identity() if channel_first else Permute(0, 2, 3, 1)),
+            norm_layer(out_dim),
+        )
+
+    @staticmethod
+    def _make_upsample_v2(
+        dim=32, norm_layer=nn.LayerNorm, channel_first=False, **kwargs
+    ):
+        out_dim = dim // 2
+        # If channel first, then Norm and Output are both channel_first
+        return nn.Sequential(
+            (nn.Identity() if channel_first else Permute(0, 3, 1, 2)),
+            # Transpose Convolution
+            nn.ConvTranspose2d(dim, out_dim, kernel_size=2, stride=2),
+            (nn.Identity() if channel_first else Permute(0, 2, 3, 1)),
+            norm_layer(out_dim),
         )
 
     @staticmethod
