@@ -35,12 +35,12 @@ def stft(waveform, fft_size, hop_size, win_length, window, return_phase=False):
         return_complex=True,
     )
     # View as real
-    spec = torch.view_as_real(spec)
-    real = spec[..., 0]
-    imag = spec[..., 1]
+    spec_real = torch.view_as_real(spec)
 
-    magnitude = torch.sqrt(torch.clamp(real**2 + imag**2, min=1e-7)).transpose(2, 1)
-    phase = torch.atan2(imag, real).transpose(2, 1) if return_phase else None
+    magnitude = torch.sqrt(
+        torch.clamp(spec_real[..., 0] ** 2 + spec_real[..., 1] ** 2, min=1e-7)
+    ).transpose(2, 1)
+    phase = torch.angle(spec) if return_phase else None
 
     return magnitude, phase
 
