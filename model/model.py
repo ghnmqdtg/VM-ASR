@@ -1013,29 +1013,58 @@ class MambaUNet(BaseModel):
 
     @torch.no_grad()
     def throughput(self, shape=(1, 40880), n=500):
+        import time
+
         model = deepcopy(self)
         model.cuda().eval()
 
         input = torch.randn((1, *shape), device=next(model.parameters()).device)
         hf = torch.randint(0, 512, (1,), device=next(model.parameters()).device)
 
-        # Warm up
-        for _ in range(10):
-            _ = model(input, hf)
+        with torch.cuda.amp.autocast():
+            # Warm up
+            for _ in range(10):
+                _ = model(input, hf)
 
-        # Measure throughput
-        torch.cuda.synchronize()
-        start = time.time()
-        for _ in tqdm(range(n)):
-            _ = model(input, hf)
-        torch.cuda.synchronize()
-        elapsed_time = time.time() - start
+            # Measure throughput
+            torch.cuda.synchronize()
+            start = time.time()
+            for _ in tqdm(range(n)):
+                _ = model(input, hf)
+            torch.cuda.synchronize()
+            elapsed_time = time.time() - start
 
         del model, input
         torch.cuda.empty_cache()
 
         # Return the throughput
         return f"{n/elapsed_time:.2f} samples/s"
+
+    @torch.no_grad()
+    def profile(self, shape=(1, 40880)):
+        model = deepcopy(self)
+        model.cuda().eval()
+
+        input = torch.randn((1, *shape), device=next(model.parameters()).device).cuda()
+        hf = torch.randint(0, 512, (1,), device=next(model.parameters()).device).cuda()
+
+        with torch.profiler.profile(
+            activities=[
+                torch.profiler.ProfilerActivity.CPU,
+                torch.profiler.ProfilerActivity.CUDA,
+            ],
+            record_shapes=True,
+        ) as prof:
+            with torch.profiler.record_function("model_inference"):
+                for _ in range(10):
+                    model(input, hf)
+
+        del model, input, hf
+        torch.cuda.empty_cache()
+
+        return prof.key_averages(group_by_input_shape=True).table(
+            sort_by="cuda_time_total", row_limit=-1
+        )
 
 
 class DualStreamInteractiveMambaUNet(MambaUNet):
@@ -1278,7 +1307,6 @@ class DualStreamInteractiveMambaUNet(MambaUNet):
 
 if __name__ == "__main__":
     from tqdm import tqdm
-    import time
 
     target_sr = 48000
     segment_length = 2.555
@@ -1357,3 +1385,4 @@ if __name__ == "__main__":
 
     print(model.flops(shape=(1, length)))
     print(model.throughput(shape=(1, length)))
+    print(model.profile(shape=(1, length)))
