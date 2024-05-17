@@ -416,7 +416,7 @@ class CustomVCTK_092(datasets.VCTK_092):
                 cmap="viridis",
             )
             plt.colorbar(img, ax=axs[1])
-            plt.savefig("./debug/spectrogram.png")
+            plt.savefig("./debug/spectrogram_orig.png")
             plt.close()
 
         return audio, sr, pad_length
@@ -493,6 +493,37 @@ class CustomVCTK_092(datasets.VCTK_092):
                 ).unsqueeze(0)
                 # Replace the padded part with white noise
                 input[:, -pad_length:] = white_noise
+
+        if self.config.DEBUG:
+            # Save the spectrogram of the audio
+            mag, phase = wav2spectro(
+                input,
+                n_fft=self.config.DATA.STFT.N_FFT,
+                hop_length=self.config.DATA.STFT.HOP_LENGTH,
+                win_length=self.config.DATA.STFT.WIN_LENGTH,
+                spectro_scale="log2",
+            )
+            # Save the spectrogram
+            fig, axs = plt.subplots(1, 2, figsize=(16, 6))
+            img = axs[0].imshow(
+                mag.squeeze(0).detach().cpu().numpy(),
+                aspect="auto",
+                origin="lower",
+                interpolation="none",
+                cmap="viridis",
+                vmin=-15,
+            )
+            plt.colorbar(img, ax=axs[0])
+            img = axs[1].imshow(
+                phase.squeeze(0).detach().cpu().numpy(),
+                aspect="auto",
+                origin="lower",
+                interpolation="none",
+                cmap="viridis",
+            )
+            plt.colorbar(img, ax=axs[1])
+            plt.savefig("./debug/spectrogram_down.png")
+            plt.close()
 
         return input, output, highcut_in_stft
 
