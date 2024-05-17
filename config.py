@@ -146,8 +146,8 @@ _C.TRAIN.LOSSES.STFT_LOSS = CN()
 _C.TRAIN.LOSSES.STFT_LOSS.SC_FACTOR = 0.5
 # MAG stands for Log STFT magnitude loss
 _C.TRAIN.LOSSES.STFT_LOSS.MAG_FACTOR = 0.5
-# Emphasize high frequency in STFT loss
-_C.TRAIN.LOSSES.STFT_LOSS.EMPHASIZE_HIGH_FREQ = False
+# Compute the phase loss
+_C.TRAIN.LOSSES.STFT_LOSS.PHASE_FACTOR = 0.0
 _C.TRAIN.LOW_FREQ_REPLACEMENT = False
 
 # Auto resume from latest checkpoint

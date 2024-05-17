@@ -10,7 +10,7 @@ TRAIN:
     STFT_LOSS:
       SC_FACTOR: 1.0
       MAG_FACTOR: 1.0
-      EMPHASIZE_HIGH_FREQ: False
+
   LOW_FREQ_REPLACEMENT: True
   ADVERSARIAL:
     ENABLE: True
@@ -31,4 +31,4 @@ DEBUG: False
 
 WANDB:
   ENABLE: True
-  TAGS: ["16k", "Data_0.1", "MPD", "Deep", "LS-GAN"]
+  TAGS: ["16k", "Data_0.1", "MPD", "Deep", "LS-GAN

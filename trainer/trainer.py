@@ -87,7 +87,7 @@ class Trainer(BaseTrainer):
         self.multi_resolution_stft = MultiResolutionSTFTLoss(
             factor_sc=self.config.TRAIN.LOSSES.STFT_LOSS.SC_FACTOR,
             factor_mag=self.config.TRAIN.LOSSES.STFT_LOSS.MAG_FACTOR,
-            emphasize_high_freq=self.config.TRAIN.LOSSES.STFT_LOSS.EMPHASIZE_HIGH_FREQ,
+            factor_phase=self.config.TRAIN.LOSSES.STFT_LOSS.PHASE_FACTOR,
         )
 
         self.higi_gan_loss = HiFiGANLoss(
@@ -373,10 +373,13 @@ class Trainer(BaseTrainer):
 
     def _get_stft_loss(self, wave_out, wave_target):
         # Squeeze the channel dimension for the torch.stft
-        sc_loss, mag_loss = self.multi_resolution_stft(
+        sc_loss, mag_loss, phase_loss = self.multi_resolution_stft(
             wave_out.squeeze(1), wave_target.squeeze(1)
         )
-        return sc_loss + mag_loss
+        if phase_loss is not None:
+            return sc_loss + mag_loss + phase_loss
+        else:
+            return sc_loss + mag_loss
 
     def _get_mpd_loss(self, wave_out, wave_target):
         # Discriminator loss

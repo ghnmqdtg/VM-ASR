@@ -14,35 +14,35 @@ def mse_loss(output, target):
 # REF: Parallel WaveGAN
 # URL: https://github.com/kan-bayashi/ParallelWaveGAN/blob/master/parallel_wavegan/losses/stft_loss.py
 # ================================================================= #
-def stft(x, fft_size, hop_size, win_length, window, emphasize_high_freq=False):
+def stft(waveform, fft_size, hop_size, win_length, window, return_phase=False):
     """Perform STFT and convert to magnitude spectrogram.
     Args:
-        x (Tensor): Input signal tensor (B, T).
+        waveform (Tensor): Input signal tensor (B, T).
         fft_size (int): FFT size.
         hop_size (int): Hop size.
         win_length (int): Window length.
         window (str): Window function type.
-        emphasize_high_freq (bool): Whether to emphasize high frequency.
+        return_phase (bool): Whether to return phase tensor or not.
     Returns:
         Tensor: Magnitude spectrogram (B, #frames, fft_size // 2 + 1).
     """
-    x_stft = torch.stft(
-        x, fft_size, hop_size, win_length, window=window, return_complex=True
+    spec = torch.stft(
+        waveform,
+        n_fft=fft_size,
+        hop_length=hop_size,
+        win_length=win_length,
+        window=window,
+        return_complex=True,
     )
     # View as real
-    x_stft = torch.view_as_real(x_stft)
-    real = x_stft[..., 0]
-    imag = x_stft[..., 1]
+    spec = torch.view_as_real(spec)
+    real = spec[..., 0]
+    imag = spec[..., 1]
 
     magnitude = torch.sqrt(torch.clamp(real**2 + imag**2, min=1e-7)).transpose(2, 1)
+    phase = torch.atan2(imag, real).transpose(2, 1) if return_phase else None
 
-    if emphasize_high_freq:
-        # Create a linear weight scale that increases from 1 to 2 across the frequency axis
-        freq_weights = torch.linspace(1.0, 2.0, magnitude.size(1), device=x.device)
-        freq_weights = freq_weights.view(1, -1, 1)
-        magnitude = magnitude * freq_weights
-
-    return magnitude
+    return magnitude, phase
 
 
 class SpectralConvergengeLoss(torch.nn.Module):
@@ -81,6 +81,24 @@ class LogSTFTMagnitudeLoss(torch.nn.Module):
         return F.l1_loss(torch.log(y_mag), torch.log(x_mag))
 
 
+class STFTPhaseLoss(torch.nn.Module):
+    """STFT phase loss module."""
+
+    def __init__(self):
+        """Initilize STFT phase loss module."""
+        super(STFTPhaseLoss, self).__init__()
+
+    def forward(self, x_phase, y_phase):
+        """Calculate forward propagation.
+        Args:
+            x_phase (Tensor): Phase spectrogram of predicted signal (B, #frames, #freq_bins).
+            y_phase (Tensor): Phase spectrogram of groundtruth signal (B, #frames, #freq_bins).
+        Returns:
+            Tensor: STFT phase loss value.
+        """
+        return F.l1_loss(y_phase, x_phase)
+
+
 class STFTLoss(torch.nn.Module):
     """STFT loss module."""
 
@@ -90,17 +108,19 @@ class STFTLoss(torch.nn.Module):
         shift_size=120,
         win_length=600,
         window="hann_window",
-        emphasize_high_freq=False,
+        return_phase=False,
     ):
         """Initialize STFT loss module."""
         super(STFTLoss, self).__init__()
         self.fft_size = fft_size
         self.shift_size = shift_size
         self.win_length = win_length
-        self.emphasize_high_freq = emphasize_high_freq
+        self.return_phase = return_phase
         self.register_buffer("window", getattr(torch, window)(win_length))
         self.spectral_convergenge_loss = SpectralConvergengeLoss()
         self.log_stft_magnitude_loss = LogSTFTMagnitudeLoss()
+        if return_phase:
+            self.phase_loss = STFTPhaseLoss()
 
     def forward(self, x, y):
         """Calculate forward propagation.
@@ -112,26 +132,29 @@ class STFTLoss(torch.nn.Module):
             Tensor: Log STFT magnitude loss value.
         """
         self.window = self.window.to(x.device)
-        x_mag = stft(
+        x_mag, x_phase = stft(
             x,
             self.fft_size,
             self.shift_size,
             self.win_length,
             self.window,
-            self.emphasize_high_freq,
+            self.return_phase,
         )
-        y_mag = stft(
+        y_mag, y_phase = stft(
             y,
             self.fft_size,
             self.shift_size,
             self.win_length,
             self.window,
-            self.emphasize_high_freq,
+            self.return_phase,
         )
         sc_loss = self.spectral_convergenge_loss(x_mag, y_mag)
         mag_loss = self.log_stft_magnitude_loss(x_mag, y_mag)
-
-        return sc_loss, mag_loss
+        if self.return_phase:
+            phase_loss = self.phase_loss(x_phase, y_phase)
+            return sc_loss, mag_loss, phase_loss
+        else:
+            return sc_loss, mag_loss
 
 
 class MultiResolutionSTFTLoss(torch.nn.Module):
@@ -145,7 +168,7 @@ class MultiResolutionSTFTLoss(torch.nn.Module):
         window="hann_window",
         factor_sc=0.1,
         factor_mag=0.1,
-        emphasize_high_freq=False,
+        factor_phase=0.0,
     ):
         """Initialize Multi resolution STFT loss module.
         Args:
@@ -157,11 +180,13 @@ class MultiResolutionSTFTLoss(torch.nn.Module):
         """
         super(MultiResolutionSTFTLoss, self).__init__()
         assert len(fft_sizes) == len(hop_sizes) == len(win_lengths)
-        self.stft_losses = torch.nn.ModuleList()
-        for fs, ss, wl in zip(fft_sizes, hop_sizes, win_lengths):
-            self.stft_losses += [STFTLoss(fs, ss, wl, window, emphasize_high_freq)]
         self.factor_sc = factor_sc
         self.factor_mag = factor_mag
+        self.factor_phase = factor_phase
+        self.return_phase = factor_phase > 0.0
+        self.stft_losses = torch.nn.ModuleList()
+        for fs, ss, wl in zip(fft_sizes, hop_sizes, win_lengths):
+            self.stft_losses += [STFTLoss(fs, ss, wl, window, self.return_phase)]
 
     def forward(self, x, y):
         """Calculate forward propagation.
@@ -172,16 +197,35 @@ class MultiResolutionSTFTLoss(torch.nn.Module):
             Tensor: Multi resolution spectral convergence loss value.
             Tensor: Multi resolution log STFT magnitude loss value.
         """
-        sc_loss = 0.0
-        mag_loss = 0.0
-        for f in self.stft_losses:
-            sc_l, mag_l = f(x, y)
-            sc_loss += sc_l
-            mag_loss += mag_l
-        sc_loss /= len(self.stft_losses)
-        mag_loss /= len(self.stft_losses)
+        if self.return_phase:
+            sc_loss = 0.0
+            mag_loss = 0.0
+            phase_loss = 0.0
+            for f in self.stft_losses:
+                sc_l, mag_l, ph_l = f(x, y)
+                sc_loss += sc_l
+                mag_loss += mag_l
+                phase_loss += ph_l
+            sc_loss /= len(self.stft_losses)
+            mag_loss /= len(self.stft_losses)
+            phase_loss /= len(self.stft_losses)
 
-        return self.factor_sc * sc_loss, self.factor_mag * mag_loss
+            return (
+                self.factor_sc * sc_loss,
+                self.factor_mag * mag_loss,
+                self.factor_phase * phase_loss,
+            )
+        else:
+            sc_loss = 0.0
+            mag_loss = 0.0
+            for f in self.stft_losses:
+                sc_l, mag_l = f(x, y)
+                sc_loss += sc_l
+                mag_loss += mag_l
+            sc_loss /= len(self.stft_losses)
+            mag_loss /= len(self.stft_losses)
+
+            return self.factor_sc * sc_loss, self.factor_mag * mag_loss, None
 
 
 # ==================== GAN Losses ==================== #
