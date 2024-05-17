@@ -153,6 +153,7 @@ class MambaUNet(BaseModel):
         upsample_version: str = "v1",  # "v1"
         output_version: str = "v2",  # "v1", "v2", "v3"
         concat_skip=False,
+        skip_connect_patch=False,
         drop_last_encoder=False,
         # =================
         # FFT related parameters
@@ -180,6 +181,7 @@ class MambaUNet(BaseModel):
             x.item() for x in torch.linspace(0, drop_path_rate, sum(depths))
         ]  # stochastic depth decay rule (dpr = drop path rate)
         self.concat_skip = concat_skip
+        self.skip_connect_patch = skip_connect_patch
         # STFT parameters
         self.n_fft = n_fft
         self.hop_length = hop_length
@@ -407,7 +409,7 @@ class MambaUNet(BaseModel):
             dim=dims[0],
             norm_layer=None,
             sampler=_make_upsample,
-            concat_skip=self.concat_skip,
+            concat_skip=False if not self.skip_connect_patch else self.concat_skip,
             channel_first=self.channel_first,
             # =================
             # Used for output versions that require VSSLayer
@@ -488,7 +490,8 @@ class MambaUNet(BaseModel):
         skip_connections = []
         # Patch embedding
         mag = self.patch_embed(mag)
-        skip_connections.append(mag)
+        if self.skip_connect_patch:
+            skip_connections.append(mag)
         if verbose:
             print(f"Patch embedding shape: {mag.shape}")
         if len(self.dims) == 5:
@@ -518,12 +521,13 @@ class MambaUNet(BaseModel):
                 if verbose:
                     print(f"Decoder layer {i} shape: {mag.shape}")
 
-            # Concatenate or add skip connection
-            mag = (
-                torch.cat((mag, skip_connections.pop()), dim=-1)
-                if self.concat_skip
-                else (mag + skip_connections.pop())
-            )
+            if self.skip_connect_patch:
+                # Concatenate or add skip connection
+                mag = (
+                    torch.cat((mag, skip_connections.pop()), dim=-1)
+                    if self.concat_skip
+                    else (mag + skip_connections.pop())
+                )
             if verbose:
                 print(f"Output layer input shape: {mag.shape}")
 
@@ -553,17 +557,17 @@ class MambaUNet(BaseModel):
                         if self.concat_skip
                         else (mag + skip_connections.pop())
                     )
-
                 mag = layer(mag)
                 if verbose:
                     print(f"Decoder layer {i} shape: {mag.shape}")
 
-            # Concatenate or add skip connection
-            mag = (
-                torch.cat((mag, skip_connections.pop()), dim=-1)
-                if self.concat_skip
-                else (mag + skip_connections.pop())
-            )
+            if self.skip_connect_patch:
+                # Concatenate or add skip connection
+                mag = (
+                    torch.cat((mag, skip_connections.pop()), dim=-1)
+                    if self.skip_connect_patch
+                    else (mag + skip_connections.pop())
+                )
             if verbose:
                 print(f"Output layer input shape: {mag.shape}")
 
@@ -784,7 +788,7 @@ class MambaUNet(BaseModel):
         in_chans=1,
         dim=96,
         sampler=nn.Identity(),
-        concat_skip=True,
+        concat_skip=False,
         # ===========================
         ssm_d_state=16,
         ssm_ratio=2.0,
@@ -925,9 +929,9 @@ class MambaUNet(BaseModel):
             # If concat_skip is True, then then input dimension is doubled
             # We use a Conv2d layer to reduce the dimension back to the original
             skip_handler = nn.Sequential(
-                Permute(0, 3, 1, 2),
+                (nn.Identity() if channel_first else Permute(0, 3, 1, 2)),
                 nn.Conv2d(2 * dim, dim, kernel_size=1, stride=1, padding=0),
-                Permute(0, 2, 3, 1),
+                (nn.Identity() if channel_first else Permute(0, 2, 3, 1)),
             )
 
         # If channel first, then Norm and Output are both channel_first
@@ -1090,6 +1094,7 @@ class DualStreamInteractiveMambaUNet(MambaUNet):
         upsample_version: str = "v1",  # "v1"
         output_version: str = "v2",  # "v1", "v2", "v3"
         concat_skip=False,
+        skip_connect_patch=False,
         drop_last_encoder=False,
         **kwargs,
     ):
@@ -1120,6 +1125,7 @@ class DualStreamInteractiveMambaUNet(MambaUNet):
             upsample_version,
             output_version,
             concat_skip,
+            skip_connect_patch,
             drop_last_encoder,
             **kwargs,
         )
@@ -1170,7 +1176,8 @@ class DualStreamInteractiveMambaUNet(MambaUNet):
         # Patch embedding
         mag = self.patch_embed_mag(mag)
         phase = self.patch_embed_phase(phase)
-        skip_connections.append((mag, phase))
+        if self.skip_connect_patch:
+            skip_connections.append((mag, phase))
         if len(self.dims) == 5:
             # Encoders (zip is used to iterate over two lists at the same time)
             for i, (encoder_mag, encoder_phase) in enumerate(
@@ -1205,14 +1212,20 @@ class DualStreamInteractiveMambaUNet(MambaUNet):
                 mag = mag + phase
                 phase = phase + mag
 
-            # Concatenate or add skip connection for the output layer
-            mag_skip, phase_skip = skip_connections.pop()
-            if self.concat_skip:
-                mag = self.output_layer_mag(torch.cat((mag, mag_skip), dim=-1))
-                phase = self.output_layer_phase(torch.cat((phase, phase_skip), dim=-1))
+            if self.skip_connect_patch:
+                # Concatenate or add skip connection for the output layer
+                mag_skip, phase_skip = skip_connections.pop()
+                if self.concat_skip:
+                    mag = self.output_layer_mag(torch.cat((mag, mag_skip), dim=-1))
+                    phase = self.output_layer_phase(
+                        torch.cat((phase, phase_skip), dim=-1)
+                    )
+                else:
+                    mag = self.output_layer_mag(mag + mag_skip)
+                    phase = self.output_layer_phase(phase + phase_skip)
             else:
-                mag = self.output_layer_mag(mag + mag_skip)
-                phase = self.output_layer_phase(phase + phase_skip)
+                mag = self.output_layer_mag(mag)
+                phase = self.output_layer_phase(phase)
         else:
             # Encoders (zip is used to iterate over two lists at the same time)
             for i, (encoder_mag, encoder_phase) in enumerate(
@@ -1247,14 +1260,20 @@ class DualStreamInteractiveMambaUNet(MambaUNet):
                 mag = mag + phase
                 phase = phase + mag
 
-            # Concatenate or add skip connection for the output layer
-            mag_skip, phase_skip = skip_connections.pop()
-            if self.concat_skip:
-                mag = self.output_layer_mag(torch.cat((mag, mag_skip), dim=-1))
-                phase = self.output_layer_phase(torch.cat((phase, phase_skip), dim=-1))
+            if self.skip_connect_patch:
+                # Concatenate or add skip connection for the output layer
+                mag_skip, phase_skip = skip_connections.pop()
+                if self.concat_skip:
+                    mag = self.output_layer_mag(torch.cat((mag, mag_skip), dim=-1))
+                    phase = self.output_layer_phase(
+                        torch.cat((phase, phase_skip), dim=-1)
+                    )
+                else:
+                    mag = self.output_layer_mag(mag + mag_skip)
+                    phase = self.output_layer_phase(phase + phase_skip)
             else:
-                mag = self.output_layer_mag(mag + mag_skip)
-                phase = self.output_layer_phase(phase + phase_skip)
+                mag = self.output_layer_mag(mag)
+                phase = self.output_layer_phase(phase)
 
         # Residual connection
         mag = mag + residual_mag
@@ -1284,11 +1303,17 @@ if __name__ == "__main__":
 
     target_sr = 48000
     segment_length = 2.555
-    n_fft = 1024
-    hop_length = 80 if target_sr == 16000 else 240
-    win_length = 1024
     spectro_scale = "log2"
-    length = int(target_sr * segment_length)
+    if segment_length == 2.555:
+        n_fft = 1024
+        hop_length = 80 if target_sr == 16000 else 240
+        win_length = 1024
+        length = int(target_sr * segment_length)
+    else:
+        n_fft = 1024
+        hop_length = 160 if target_sr == 16000 else 480
+        win_length = 1024
+        length = int(target_sr * segment_length)
 
     # model = MambaUNet(
     #     in_chans=1,
@@ -1302,11 +1327,14 @@ if __name__ == "__main__":
     #     ssm_conv_bias=False,
     #     forward_type="v04_ondwconv3",
     #     mlp_ratio=4.0,
+    #     drop_path_rate=0.2,
+    #     norm_layer="LN",
     #     patchembed_version="v2",
-    #     downsample_version="v1",
-    #     upsample_version="v1",
+    #     downsample_version="v3",
+    #     upsample_version="v2",
     #     output_version="v3",
     #     concat_skip=True,
+    #     skip_connect_patch=False,
     #     # FFT related parameters
     #     n_fft=n_fft,
     #     hop_length=hop_length,
@@ -1323,7 +1351,7 @@ if __name__ == "__main__":
         in_chans=1,
         depths=[2, 2, 2, 2],
         dims=16,
-        # dims=[32, 64, 128, 256],
+        # dims=[16, 32, 64, 128, 256],
         ssm_d_state=1,
         ssm_ratio=1.0,
         ssm_dt_rank="auto",
@@ -1331,18 +1359,21 @@ if __name__ == "__main__":
         ssm_conv_bias=False,
         forward_type="v04_ondwconv3",
         mlp_ratio=4.0,
+        drop_path_rate=0.1,
+        norm_layer="LN",
         patchembed_version="v2",
-        downsample_version="v1",
-        upsample_version="v1",
+        downsample_version="v3",
+        upsample_version="v2",
         output_version="v3",
         concat_skip=True,
+        skip_connect_patch=False,
         # FFT related parameters
         n_fft=n_fft,
         hop_length=hop_length,
         win_length=win_length,
         spectro_scale=spectro_scale,
-        low_freq_replacement=True,
-        drop_last_encoder=True,
+        low_freq_replacement=False,
+        drop_last_encoder=False,
     ).to("cuda")
 
     print(model.flops(shape=(1, length)))

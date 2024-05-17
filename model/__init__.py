@@ -42,6 +42,7 @@ def get_model(config):
             upsample_version=config.MODEL.VSSM.UPSAMPLE,
             output_version=config.MODEL.VSSM.OUTPUT,
             concat_skip=config.MODEL.VSSM.CONCAT_SKIP,
+            skip_connect_patch=config.MODEL.VSSM.SKIP_CONNECT_PATCH,
             drop_last_encoder=config.MODEL.VSSM.DROP_LAST_ENCODER,
             # =========================
             # FFT related parameters

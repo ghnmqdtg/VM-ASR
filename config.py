@@ -119,6 +119,7 @@ _C.MODEL.VSSM.DOWNSAMPLE = "v1"
 _C.MODEL.VSSM.UPSAMPLE = "v1"
 _C.MODEL.VSSM.OUTPUT = "v3"
 _C.MODEL.VSSM.CONCAT_SKIP = True
+_C.MODEL.VSSM.SKIP_CONNECT_PATCH = False
 # If the dim is not 5, we use the last layer of the encoder and the first layer of the decoder as the latent layer (4 VSS blocks in total)
 # This option is to drop the last encoder layer, and only use the first decoder layer as the latent layer (only 2 VSS blocks in total)
 _C.MODEL.VSSM.DROP_LAST_ENCODER = False
