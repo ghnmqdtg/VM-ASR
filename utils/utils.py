@@ -3,6 +3,7 @@ import glob
 import wandb
 import torch
 import pandas as pd
+from copy import deepcopy
 from itertools import repeat
 
 import torch.nn.functional as F
@@ -115,10 +116,11 @@ def load_from_path(models, optimizer, config, logger):
     """
     start_epoch = 1
     resume_path = config.MODEL.RESUME_PATH
+    config_copy = deepcopy(config)
 
     logger.info(f"Loading checkpoint from folder: {resume_path}")
     # Check if there are any checkpoints
-    if not config.EVAL_MODE:
+    if not config_copy.EVAL_MODE:
         # Training mode: Try to load the latest checkpoint, if not found, train from scratch
         # Get all the .pth files that has "best" in the name
         checkpoint_files = glob.glob(os.path.join(resume_path, "*best*.pth"))
@@ -126,7 +128,7 @@ def load_from_path(models, optimizer, config, logger):
             logger.info(
                 f"No best checkpoints found in the folder. Training from scratch ..."
             )
-            return (models, optimizer, config, start_epoch)
+            return (models, optimizer, config_copy, start_epoch)
         else:
             for file in checkpoint_files:
                 try:
@@ -143,10 +145,10 @@ def load_from_path(models, optimizer, config, logger):
                     # Update the configurations
                     if key == "generator":
                         # Update the generator config
-                        config = checkpoint["config"]
-                        config.defrost()
-                        config.MODEL.RESUME_PATH = resume_path
-                        config.freeze()
+                        config_copy = checkpoint["config"]
+                        config_copy.defrost()
+                        config_copy.MODEL.RESUME_PATH = resume_path
+                        config_copy.freeze()
                         start_epoch = checkpoint["epoch"] + 1
                     # Log the loaded model
                     logger.info(f"Loaded {key} from {file}")
@@ -177,4 +179,4 @@ def load_from_path(models, optimizer, config, logger):
                 )
                 exit(1)
 
-    return (models, optimizer, config, start_epoch)
+    return (models, optimizer, config_copy, start_epoch)

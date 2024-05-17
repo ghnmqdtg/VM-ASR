@@ -182,12 +182,17 @@ class BaseTrainer:
         """
         Load a model checkpoint from the provided path.
         """
-        self.models, self.optimizer, self.config, self.start_epoch = load_from_path(
+        self.models, self.optimizer, config, start_epoch = load_from_path(
             self.models, self.optimizer, self.config, self.logger
         )
-        self.logger.info(
-            f"Resuming training from epoch {self.start_epoch} / {self.epochs} ..."
-        )
+        if self.config.FINETUNE:
+            self.logger.info("Using pretrained model ...")
+        else:
+            self.config = config
+            self.start_epoch = start_epoch
+            self.logger.info(
+                f"Resuming training from epoch {self.start_epoch} / {self.epochs} ..."
+            )
 
     def _log_epoch(self, logs):
         """

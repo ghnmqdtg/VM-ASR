@@ -55,6 +55,11 @@ def parse_option():
     )
     parser.add_argument("--resume", type=str, help="path to checkpoint for models")
     parser.add_argument(
+        "--finetune",
+        action="store_true",
+        help="use pretrain model from the resume path",
+    )
+    parser.add_argument(
         "--accumulation-steps", type=int, help="gradient accumulation steps"
     )
     parser.add_argument(
@@ -236,12 +241,19 @@ if __name__ == "__main__":
     if config.MODEL.RESUME_PATH is not None:
         validate_resume_path(config)
         if not config.EVAL_MODE:
-            logger = create_logger(
-                output_dir=config.MODEL.RESUME_PATH,
-                name=f"{config.MODEL.NAME}",
-                load_existing=True,
-            )
-            logger.info(f"Resume training from {config.MODEL.RESUME_PATH}")
+            if config.FINETUNE:
+                logger = create_logger(
+                    output_dir=config.OUTPUT, name=f"{config.MODEL.NAME}"
+                )
+                logger.info(config.dump())
+                logger.info(json.dumps(vars(args)))
+            else:
+                logger = create_logger(
+                    output_dir=config.MODEL.RESUME_PATH,
+                    name=f"{config.MODEL.NAME}",
+                    load_existing=True,
+                )
+                logger.info(f"Resume training from {config.MODEL.RESUME_PATH}")
         else:
             config, logger = setup_test(config)
     else:

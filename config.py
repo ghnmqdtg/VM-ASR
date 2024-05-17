@@ -230,6 +230,8 @@ _C.SAVE_EPOCH_FREQ = -1
 _C.PRINT_FREQ = 10
 # Fixed random seed
 _C.SEED = 123
+# Use pretrain model from the resume path
+_C.FINETUNE = False
 # Perform evaluation only, overwritten by command line argument
 _C.EVAL_MODE = False
 # Test throughput only, overwritten by command line argument
@@ -283,6 +285,11 @@ def update_config(config, args):
         config.MODEL.RESUME_PATH = args.resume
         if config.MODEL.RESUME_PATH is not None and not config.EVAL_MODE:
             config.WANDB.RESUME = True
+    if _check_args("finetune"):
+        if config.MODEL.RESUME_PATH is not None:
+            config.FINETUNE = True
+        else:
+            raise ValueError("Please specify the resume path to use pretrain model")
     if _check_args("accumulation_steps"):
         config.TRAIN.ACCUMULATION_STEPS = args.accumulation_steps
     if _check_args("disable_amp"):
@@ -304,6 +311,10 @@ def update_config(config, args):
     # Output folder
     if config.MODEL.RESUME_PATH is None:
         config.OUTPUT = os.path.join(config.OUTPUT, config.MODEL.NAME, config.TAG)
+    elif config.FINETUNE:
+        config.OUTPUT = os.path.join(
+            config.OUTPUT, config.MODEL.NAME, config.TAG, "finetune"
+        )
     else:
         config.OUTPUT = config.MODEL.RESUME_PATH
 
