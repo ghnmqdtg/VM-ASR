@@ -459,13 +459,13 @@ class CustomVCTK_092(datasets.VCTK_092):
                 # Random choose the low pass filter
                 filter_ = random.choice(self.config.DATA.LPF.LPF_TRAIN)
                 # Apply the low pass filter
-                input = lowpass(
+                input = filter(
                     output, int(sr_input * 0.5), filter_, self.config.DATA.TARGET_SR
                 )
             else:
                 filter_ = self.config.DATA.LPF.LPF_TEST[0]
                 # Apply the low pass filter
-                input = lowpass(
+                input = filter(
                     output, int(sr_input * 0.5), filter_, self.config.DATA.TARGET_SR
                 )
             # Downsample the audio
@@ -493,6 +493,22 @@ class CustomVCTK_092(datasets.VCTK_092):
                 ).unsqueeze(0)
                 # Replace the padded part with white noise
                 input[:, -pad_length:] = white_noise
+
+            # Add high-frequency white noise (target_sr ~ sr_input) as artifacts to the input
+            # Generate white noise with the same length as the input
+            white_noise = (
+                torch.randn((input.shape[-1] - pad_length)) * 1e-4
+            ).unsqueeze(0)
+            # High pass filter the white noise
+            white_noise = filter(
+                white_noise,
+                int(sr_input * 0.5),
+                filter_,
+                self.config.DATA.TARGET_SR,
+                "highpass",
+            )
+            # Add the white noise to the input
+            input = input + F.pad(white_noise, (0, pad_length))
 
         if self.config.DEBUG:
             # Save the spectrogram of the audio
@@ -575,9 +591,9 @@ def align_waveform(
     return waveform_resampled
 
 
-def lowpass(audio, highcut, filter_=("cheby1", 8), sr=48000):
+def filter(audio, highcut, filter_=("cheby1", 8), sr=48000, filter_type="lowpass"):
     """
-    Apply low pass filter to the audio.
+    Apply filter to the audio.
 
     REF: On Filter Generalization for Music Bandwidth Extension Using Deep Neural Networks
     URL: https://github.com/serkansulun/deep-music-enhancer/blob/master/src/utils.py
@@ -592,13 +608,13 @@ def lowpass(audio, highcut, filter_=("cheby1", 8), sr=48000):
     highcut /= nyq
 
     if filter_[0] == "butter":
-        sos = butter(filter_[1], highcut, btype="lowpass", output="sos")
+        sos = butter(filter_[1], highcut, btype=filter_type, output="sos")
     elif filter_[0] == "cheby1":
-        sos = cheby1(filter_[1], 0.05, highcut, btype="lowpass", output="sos")
+        sos = cheby1(filter_[1], 0.05, highcut, btype=filter_type, output="sos")
     elif filter_[0] == "bessel":
-        sos = bessel(filter_[1], highcut, norm="mag", btype="lowpass", output="sos")
+        sos = bessel(filter_[1], highcut, norm="mag", btype=filter_type, output="sos")
     elif filter_[0] == "ellip":
-        sos = ellip(filter_[1], 0.05, 20, highcut, btype="lowpass", output="sos")
+        sos = ellip(filter_[1], 0.05, 20, highcut, btype=filter_type, output="sos")
 
     # Apply the filter
     input = sosfiltfilt(sos, audio)
