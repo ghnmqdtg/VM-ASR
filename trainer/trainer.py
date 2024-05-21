@@ -92,7 +92,6 @@ class Trainer(BaseTrainer):
 
         self.higi_gan_loss = HiFiGANLoss(
             gan_loss_type=self.config.TRAIN.ADVERSARIAL.GAN_LOSS_TYPE,
-            gp_weight=self.config.TRAIN.ADVERSARIAL.GP_LAMBDA,
         )
 
     def _train_epoch(self, epoch):
@@ -386,11 +385,6 @@ class Trainer(BaseTrainer):
         # Detach the wave_out because we don't want to update the gradients of the generator
         y_real, y_gen, _, _ = self.models["mpd"](wave_target, wave_out.detach())
         disc_loss = self.higi_gan_loss.discriminator_loss(y_real, y_gen)
-        if self.config.TRAIN.ADVERSARIAL.GAN_LOSS_TYPE == "wgan-gp":
-            gp = self.higi_gan_loss.gradient_penalty(
-                wave_target, wave_out.detach(), self.models["mpd"]
-            )
-            disc_loss += gp
 
         # Generator loss
         # We want to update the gradients of the generator, so we don't detach the wave_out
@@ -442,27 +436,107 @@ class Trainer(BaseTrainer):
 
     def _optimize(self, loss):
         self.optimizer_G.zero_grad()
-        self.scaler_G.scale(loss).backward()
-        # Clip the gradients
-        if self.config.TRAIN.CLIP_GRAD.ENABLE:
-            torch.nn.utils.clip_grad_norm_(
-                self.models["generator"].parameters(),
-                self.config.TRAIN.CLIP_GRAD.MAX_NORM,
-            )
-        self.scaler_G.step(self.optimizer_G)
-        self.scaler_G.update()
+        if self.amp:
+            # Clip the gradients
+            if self.config.TRAIN.CLIP_GRAD.ENABLE:
+                # Scales the loss for autograd.grad's backward pass
+                self.scaler_G.scale(loss).backward()
+                # Unscales the gradients of optimizer's assigned params in-place
+                self.scaler_G.unscale_(self.optimizer_G)
+                # Perform gradient clipping
+                torch.nn.utils.clip_grad_norm_(
+                    self.models["generator"].parameters(),
+                    self.config.TRAIN.CLIP_GRAD.MAX_NORM,
+                )
+            # Gradient penalty
+            elif self.config.TRAIN.GRADIENT_PENALTY.ENABLE:
+                # REF: https://pytorch.org/docs/stable/notes/amp_examples.html#gradient-penalty
+                # Scales the loss for autograd.grad's backward pass, producing scaled_grad_params
+                scaled_grad_params = torch.autograd.grad(
+                    outputs=self.scaler_G.scale(loss),
+                    inputs=self.models["generator"].parameters(),
+                    create_graph=True,
+                    allow_unused=True,
+                )
+                # Creates unscaled grad_params before computing the penalty.
+                inv_scale = 1.0 / self.scaler_G.get_scale()
+                grad_params = [
+                    p * inv_scale for p in scaled_grad_params if p is not None
+                ]
+                # Computes the penalty term and adds it to the loss
+                with torch.cuda.amp.autocast():
+                    grad_norm = 0
+                    for grad in grad_params:
+                        grad_norm += grad.pow(2).sum()
+                    grad_norm = grad_norm.sqrt()
+                    loss = loss + grad_norm
+                # Applies scaling to the backward call as usual.
+                self.scaler_G.scale(loss).backward()
+            else:
+                self.scaler_G.scale(loss).backward()
+            self.scaler_G.step(self.optimizer_G)
+            self.scaler_G.update()
+        else:
+            loss.backward()
+            # Clip the gradients
+            if self.config.TRAIN.CLIP_GRAD.ENABLE:
+                torch.nn.utils.clip_grad_norm_(
+                    self.models["generator"].parameters(),
+                    self.config.TRAIN.CLIP_GRAD.MAX_NORM,
+                )
+            self.optimizer_G.step()
 
     def _optimize_adversarial(self, loss):
         self.optimizer_D.zero_grad()
-        self.scaler_D.scale(loss).backward()
-        # Clip the gradients
-        if self.config.TRAIN.CLIP_GRAD.ENABLE:
-            for disc in self.config.TRAIN.ADVERSARIAL.DISCRIMINATORS:
-                torch.nn.utils.clip_grad_norm_(
-                    self.models[disc].parameters(), self.config.TRAIN.CLIP_GRAD.MAX_NORM
-                )
-        self.scaler_D.step(self.optimizer_D)
-        self.scaler_D.update()
+        if self.amp:
+            # Perform gradient clipping
+            if self.config.TRAIN.CLIP_GRAD.ENABLE:
+                self.scaler_D.scale(loss).backward()
+                # Unscales the gradients of optimizer's assigned params in-place
+                self.scaler_D.unscale_(self.optimizer_D)
+                for disc in self.config.TRAIN.ADVERSARIAL.DISCRIMINATORS:
+                    torch.nn.utils.clip_grad_norm_(
+                        self.models[disc].parameters(),
+                        self.config.TRAIN.CLIP_GRAD.MAX_NORM,
+                    )
+            # Gradient penalty
+            elif self.config.TRAIN.GRADIENT_PENALTY.ENABLE:
+                # REF: https://pytorch.org/docs/stable/notes/amp_examples.html#gradient-penalty
+                # Scales the loss for autograd.grad's backward pass, producing scaled_grad_params
+                for disc in self.config.TRAIN.ADVERSARIAL.DISCRIMINATORS:
+                    scaled_grad_params = torch.autograd.grad(
+                        outputs=self.scaler_D.scale(loss),
+                        inputs=self.models[disc].parameters(),
+                        create_graph=True,
+                    )
+                    # Creates unscaled grad_params before computing the penalty.
+                    inv_scale = 1.0 / self.scaler_D.get_scale()
+                    grad_params = [
+                        p * inv_scale for p in scaled_grad_params if p is not None
+                    ]
+                    # Computes the penalty term and adds it to the loss
+                    with torch.cuda.amp.autocast():
+                        grad_norm = 0
+                        for grad in grad_params:
+                            grad_norm += grad.pow(2).sum()
+                        grad_norm = grad_norm.sqrt()
+                        loss = loss + grad_norm
+                        # Applies scaling to the backward call as usual.
+                        self.scaler_D.scale(loss).backward()
+            else:
+                self.scaler_D.scale(loss).backward()
+            self.scaler_D.step(self.optimizer_D)
+            self.scaler_D.update()
+        else:
+            loss.backward()
+            # Clip the gradients
+            if self.config.TRAIN.CLIP_GRAD.ENABLE:
+                for disc in self.config.TRAIN.ADVERSARIAL.DISCRIMINATORS:
+                    torch.nn.utils.clip_grad_norm_(
+                        self.models[disc].parameters(),
+                        self.config.TRAIN.CLIP_GRAD.MAX_NORM,
+                    )
+            self.optimizer_D.step()
 
     def update_metrics(self, metrics_values, training=True):
         # Update the batch metrics

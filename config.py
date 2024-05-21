@@ -160,6 +160,9 @@ _C.TRAIN.ACCUMULATION_STEPS = 1
 _C.TRAIN.CLIP_GRAD = CN()
 _C.TRAIN.CLIP_GRAD.ENABLE = False
 _C.TRAIN.CLIP_GRAD.MAX_NORM = 1.0
+# Gradient penalty
+_C.TRAIN.GRADIENT_PENALTY = CN()
+_C.TRAIN.GRADIENT_PENALTY.ENABLE = False
 
 # Optimizer
 _C.TRAIN.OPTIMIZER = CN()
@@ -197,9 +200,8 @@ _C.TRAIN.ADVERSARIAL.FEATURE_LOSS_LAMBDA = 100
 _C.TRAIN.ADVERSARIAL.ONLY_FEATURE_LOSS = False
 _C.TRAIN.ADVERSARIAL.ONLY_ADVERSARIAL_LOSS = False
 # GAN loss type
-# ! wgan or wgan-gp does not wor, use lsgan instead
+# ! wgan or wgan-gp does not work, use lsgan instead
 _C.TRAIN.ADVERSARIAL.GAN_LOSS_TYPE = "lsgan"
-_C.TRAIN.ADVERSARIAL.GP_LAMBDA = 10
 
 # -----------------------------------------------------------------------------
 # Testing settings
@@ -334,6 +336,12 @@ def update_config(config, args):
                 f"Input sample rate should be less than {config.DATA.TARGET_SR}"
             )
         config.DATA.RANDOM_RESAMPLE = [args.input_sr]
+
+    # Gradient clipping and gradient penalty should not be enabled at the same time
+    if config.TRAIN.CLIP_GRAD.ENABLE and config.TRAIN.GRADIENT_PENALTY.ENABLE:
+        raise ValueError(
+            "Gradient clipping and gradient penalty should not be enabled at the same time"
+        )
 
     # Update low pass filter config
     if not config.EVAL_MODE:
