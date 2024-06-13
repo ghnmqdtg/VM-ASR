@@ -14,7 +14,7 @@ for SR in "${SAMPLE_RATES[@]}"
 do
     python main.py \
         --cfg configs/vm_asr_48k.yaml \
-        --resume logs/DualStreamInteractiveMambaUNet/48k_FullData_MPD \
+        --resume logs/DualStreamInteractiveMambaUNet/48k_DeciData_MPD_Local \
         --eval \
         --tag ${SR}_48000
 done

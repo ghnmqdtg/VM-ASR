@@ -1,0 +1,48 @@
+MODEL:
+  TYPE: 'VM_ASR'
+  NAME: 'DualStreamInteractiveMambaUNet'
+  VSSM:
+    DIMS: 64
+    PATCHEMBED: "v2"
+    DOWNSAMPLE: "v3"
+    UPSAMPLE: "v2"
+    OUTPUT: "v3"
+    CONCAT_SKIP: True
+    SKIP_CONNECT_PATCH: False
+    DROP_LAST_ENCODER: False
+
+TRAIN:
+  EARLY_STOPPING: 10
+  LOSSES:
+    STFT_LOSS:
+      SC_FACTOR: 1.0
+      MAG_FACTOR: 1.0
+      PHASE_FACTOR: 0.2
+  BASE_LR: 1e-5
+  MAX_LR: 1e-5
+  LOW_FREQ_REPLACEMENT: True
+  CLIP_GRAD:
+    ENABLE: True
+    MAX_NORM: 1e-2
+  GRADIENT_PENALTY:
+    ENABLE: False
+  ADVERSARIAL:
+    ENABLE: True
+    DISCRIMINATORS: ["mpd"]
+    GAN_LOSS_TYPE: "lsgan"
+
+DATA:
+  BATCH_SIZE: 6
+  TARGET_SR: 16000
+  USE_QUANTITY: 0.1
+  VALID_SPLIT: 0.1
+  WEIGHTED_SR:
+    ENABLE: True
+  LPF:
+    MULTIFILTER: True
+
+DEBUG: False
+
+WANDB:
+  ENABLE: True
+  TAGS: ["16k", "Data_0.1", "MPD", "LS-GAN", "CG"]

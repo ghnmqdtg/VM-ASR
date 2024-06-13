@@ -8,4 +8,4 @@
 
 python main.py \
     --cfg configs/vm_asr_48k.yaml \
-    --tag 48k_FullData_MPD
+    --tag 48k_DeciData_MPD_Local

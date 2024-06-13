@@ -6,15 +6,22 @@
 #SBATCH --ntasks-per-node=1
 #SBATCH --account=MST112230
 
-# Array of sample rates
-SAMPLE_RATES=(2000 4000 8000 12000)
+# # Array of sample rates
+# SAMPLE_RATES=(2000 4000 8000 12000)
 
-# Loop over sample rates and run the Python script
-for SR in "${SAMPLE_RATES[@]}"
-do
-    python main.py \
-        --cfg configs/vm_asr_16k.yaml \
-        --resume logs/DualStreamInteractiveMambaUNet/16k_FullData_MPD \
-        --eval \
-        --tag ${SR}_16000
-done
+# # Loop over sample rates and run the Python script
+# for SR in "${SAMPLE_RATES[@]}"
+# do
+#     python main.py \
+#         --cfg configs/vm_asr_16k.yaml \
+#         --resume logs/DualStreamInteractiveMambaUNet/16k_DeciData_MPD_Local_NewVM \
+#         --eval \
+#         --tag ${SR}_16000
+# done
+
+
+python main.py \
+    --cfg configs/vm_asr_16k_woGAN.yaml \
+    --resume logs/DualStreamInteractiveMambaUNet/16k_DeciData_woGAN_Local_NewVM \
+    --eval \
+    --tag 2000_16000
