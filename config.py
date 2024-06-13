@@ -24,7 +24,7 @@ _C.DATA.RESAMPLER = "scipy"
 # Shuffle data
 _C.DATA.SHUFFLE = True
 # Number of workers for dataloading
-_C.DATA.NUM_WORKERS = 2
+_C.DATA.NUM_WORKERS = 1
 # Quantity of data to use
 _C.DATA.USE_QUANTITY = 0.1
 # Train/test_split on VCTK dataset

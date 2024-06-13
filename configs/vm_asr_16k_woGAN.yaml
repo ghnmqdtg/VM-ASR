@@ -10,12 +10,13 @@ TRAIN:
   ADVERSARIAL:
     ENABLE: False
     DISCRIMINATORS: ["mpd"]
+    GAN_LOSS_TYPE: "lsgan"
     STFT_LOSS:
       EMPHASIZE_HIGH_FREQ: False
 
 DATA:
-  BATCH_SIZE: 35
-  TARGET_SR: 48000
+  BATCH_SIZE: 36
+  TARGET_SR: 16000
   USE_QUANTITY: 1.0
   VALID_SPLIT: 0.1
   WEIGHTED_SR:
@@ -26,5 +27,5 @@ DATA:
 DEBUG: False
 
 WANDB:
-  ENABLE: True
-  TAGS: ["48k", "Data_1.0"]
+  ENABLE: False
+  TAGS: ["16k", "Data_1.0"]
