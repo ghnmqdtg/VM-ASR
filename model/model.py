@@ -1280,7 +1280,7 @@ if __name__ == "__main__":
         downsample_version="v1",
         upsample_version="v1",
         output_version="v3",
-        concat_skip=False,
+        concat_skip=True,
         # FFT related parameters
         n_fft=n_fft,
         hop_length=hop_length,

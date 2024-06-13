@@ -1,4 +1,5 @@
 import os
+import math
 import torch
 from abc import abstractmethod
 from numpy import inf
@@ -137,6 +138,8 @@ class BaseTrainer:
         for key in self.models.keys():
             # The key would be either "generator" or names of the discriminators
             model = self.models[key]
+            if model is None:
+                continue
             model_name = "G" if key == "generator" else key
             model_type = "generator" if key == "generator" else "discriminator"
             state = {
@@ -179,12 +182,17 @@ class BaseTrainer:
         """
         Load a model checkpoint from the provided path.
         """
-        self.models, self.optimizer, self.config, self.start_epoch = load_from_path(
+        self.models, self.optimizer, config, start_epoch = load_from_path(
             self.models, self.optimizer, self.config, self.logger
         )
-        self.logger.info(
-            f"Resuming training from epoch {self.start_epoch} / {self.epochs} ..."
-        )
+        if self.config.FINETUNE:
+            self.logger.info("Using pretrained model ...")
+        else:
+            self.config = config
+            self.start_epoch = start_epoch
+            self.logger.info(
+                f"Resuming training from epoch {self.start_epoch} / {self.epochs} ..."
+            )
 
     def _log_epoch(self, logs):
         """
@@ -211,3 +219,13 @@ class BaseTrainer:
             table.add_row([key, value, val_value])
 
         self.logger.info(f"\n{table}")
+
+        # Check for NaNs and Infs
+        has_inf_or_nan = False
+        for key, value in logs.items():
+            if math.isnan(value) or math.isinf(value):
+                self.logger.warning(f"Found an invalid value: {key} = {value}")
+                has_inf_or_nan = True
+        if has_inf_or_nan:
+            self.logger.warning("Terminating due to invalid values.")
+            exit(1)
