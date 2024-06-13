@@ -3,6 +3,13 @@ MODEL:
   NAME: 'DualStreamInteractiveMambaUNet'
   VSSM:
     DIMS: 16
+    PATCHEMBED: "v2"
+    DOWNSAMPLE: "v3"
+    UPSAMPLE: "v2"
+    OUTPUT: "v3"
+    CONCAT_SKIP: True
+    SKIP_CONNECT_PATCH: False
+    DROP_LAST_ENCODER: False
 
 TRAIN:
   EARLY_STOPPING: 10
@@ -10,17 +17,20 @@ TRAIN:
     STFT_LOSS:
       SC_FACTOR: 1.0
       MAG_FACTOR: 1.0
+      PHASE_FACTOR: 0.2
 
   LOW_FREQ_REPLACEMENT: True
+  CLIP_GRAD:
+    ENABLE: False
   ADVERSARIAL:
-    ENABLE: True
+    ENABLE: False
     DISCRIMINATORS: ["mpd"]
     GAN_LOSS_TYPE: "lsgan"
 
 DATA:
-  BATCH_SIZE: 8
+  BATCH_SIZE: 32
   TARGET_SR: 16000
-  USE_QUANTITY: 1.0
+  USE_QUANTITY: 0.1
   VALID_SPLIT: 0.1
   WEIGHTED_SR:
     ENABLE: False
@@ -31,4 +41,4 @@ DEBUG: False
 
 WANDB:
   ENABLE: True
-  TAGS: ["16k", "Data_1.0", "MPD", "LS-GAN"]
+  TAGS: ["16k", "Data_0.1"]
