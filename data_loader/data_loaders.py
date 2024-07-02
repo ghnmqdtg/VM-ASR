@@ -19,7 +19,7 @@ import torchaudio.datasets as datasets
 from torch.nn import functional as F
 from torch.utils.data import random_split
 
-from utils.stft import wav2spectro
+from utils.stft import wav2spectro, wav2power
 
 
 def get_loader(config, logger):
@@ -389,32 +389,58 @@ class CustomVCTK_092(datasets.VCTK_092):
             audio = torch.cat((audio, white_noise), dim=-1)
 
         if self.config.DEBUG:
-            # Save the spectrogram of the audio
-            mag, phase = wav2spectro(
-                audio,
-                n_fft=self.config.DATA.STFT.N_FFT,
-                hop_length=self.config.DATA.STFT.HOP_LENGTH,
-                win_length=self.config.DATA.STFT.WIN_LENGTH,
-                spectro_scale="log2",
-            )
-            # Save the spectrogram
-            fig, axs = plt.subplots(1, 2, figsize=(16, 6))
-            img = axs[0].imshow(
-                mag.squeeze(0).detach().cpu().numpy(),
-                aspect="auto",
-                origin="lower",
-                interpolation="none",
-                cmap="viridis",
-                vmin=-15,
-            )
-            plt.colorbar(img, ax=axs[0])
-            img = axs[1].imshow(
-                phase.squeeze(0).detach().cpu().numpy(),
-                aspect="auto",
-                origin="lower",
-                interpolation="none",
-                cmap="viridis",
-            )
+            if self.config.DATA.STFT.SCALE != "power":
+                # Save the spectrogram of the audio
+                mag, phase = wav2spectro(
+                    audio,
+                    n_fft=self.config.DATA.STFT.N_FFT,
+                    hop_length=self.config.DATA.STFT.HOP_LENGTH,
+                    win_length=self.config.DATA.STFT.WIN_LENGTH,
+                    spectro_scale="log2",
+                )
+                # Save the spectrogram
+                fig, axs = plt.subplots(1, 2, figsize=(16, 6))
+                img = axs[0].imshow(
+                    mag.squeeze(0).detach().cpu().numpy(),
+                    aspect="auto",
+                    origin="lower",
+                    interpolation="none",
+                    cmap="viridis",
+                    vmin=-15,
+                )
+                plt.colorbar(img, ax=axs[0])
+                img = axs[1].imshow(
+                    phase.squeeze(0).detach().cpu().numpy(),
+                    aspect="auto",
+                    origin="lower",
+                    interpolation="none",
+                    cmap="viridis",
+                )
+            else:
+                # Save the spectrogram of the audio
+                power = wav2power(
+                    audio,
+                    n_fft=self.config.DATA.STFT.N_FFT,
+                    hop_length=self.config.DATA.STFT.HOP_LENGTH,
+                    win_length=self.config.DATA.STFT.WIN_LENGTH,
+                )
+                # Save the spectrogram
+                fig, axs = plt.subplots(1, 2, figsize=(16, 6))
+                img = axs[0].imshow(
+                    power.squeeze(0).detach().cpu().numpy(),
+                    aspect="auto",
+                    origin="lower",
+                    interpolation="none",
+                    cmap="viridis",
+                )
+                plt.colorbar(img, ax=axs[0])
+                img = axs[1].imshow(
+                    power.squeeze(0).detach().cpu().numpy(),
+                    aspect="auto",
+                    origin="lower",
+                    interpolation="none",
+                    cmap="viridis",
+                )
             plt.colorbar(img, ax=axs[1])
             plt.savefig("./debug/spectrogram_orig.png")
             plt.close()
@@ -511,32 +537,58 @@ class CustomVCTK_092(datasets.VCTK_092):
             input = input + F.pad(white_noise, (0, pad_length))
 
         if self.config.DEBUG:
-            # Save the spectrogram of the audio
-            mag, phase = wav2spectro(
-                input,
-                n_fft=self.config.DATA.STFT.N_FFT,
-                hop_length=self.config.DATA.STFT.HOP_LENGTH,
-                win_length=self.config.DATA.STFT.WIN_LENGTH,
-                spectro_scale="log2",
-            )
-            # Save the spectrogram
-            fig, axs = plt.subplots(1, 2, figsize=(16, 6))
-            img = axs[0].imshow(
-                mag.squeeze(0).detach().cpu().numpy(),
-                aspect="auto",
-                origin="lower",
-                interpolation="none",
-                cmap="viridis",
-                vmin=-15,
-            )
-            plt.colorbar(img, ax=axs[0])
-            img = axs[1].imshow(
-                phase.squeeze(0).detach().cpu().numpy(),
-                aspect="auto",
-                origin="lower",
-                interpolation="none",
-                cmap="viridis",
-            )
+            if self.config.DATA.STFT.SCALE != "power":
+                # Save the spectrogram of the audio
+                mag, phase = wav2spectro(
+                    input,
+                    n_fft=self.config.DATA.STFT.N_FFT,
+                    hop_length=self.config.DATA.STFT.HOP_LENGTH,
+                    win_length=self.config.DATA.STFT.WIN_LENGTH,
+                    spectro_scale="log2",
+                )
+                # Save the spectrogram
+                fig, axs = plt.subplots(1, 2, figsize=(16, 6))
+                img = axs[0].imshow(
+                    mag.squeeze(0).detach().cpu().numpy(),
+                    aspect="auto",
+                    origin="lower",
+                    interpolation="none",
+                    cmap="viridis",
+                    vmin=-15,
+                )
+                plt.colorbar(img, ax=axs[0])
+                img = axs[1].imshow(
+                    phase.squeeze(0).detach().cpu().numpy(),
+                    aspect="auto",
+                    origin="lower",
+                    interpolation="none",
+                    cmap="viridis",
+                )
+            else:
+                # Save the spectrogram of the audio
+                power = wav2power(
+                    input,
+                    n_fft=self.config.DATA.STFT.N_FFT,
+                    hop_length=self.config.DATA.STFT.HOP_LENGTH,
+                    win_length=self.config.DATA.STFT.WIN_LENGTH,
+                )
+                # Save the spectrogram
+                fig, axs = plt.subplots(1, 2, figsize=(16, 6))
+                img = axs[0].imshow(
+                    power.squeeze(0).detach().cpu().numpy(),
+                    aspect="auto",
+                    origin="lower",
+                    interpolation="none",
+                    cmap="viridis",
+                )
+                plt.colorbar(img, ax=axs[0])
+                img = axs[1].imshow(
+                    power.squeeze(0).detach().cpu().numpy(),
+                    aspect="auto",
+                    origin="lower",
+                    interpolation="none",
+                    cmap="viridis",
+                )
             plt.colorbar(img, ax=axs[1])
             plt.savefig("./debug/spectrogram_down.png")
             plt.close()

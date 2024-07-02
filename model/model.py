@@ -12,7 +12,7 @@ try:
     from base import BaseModel
     from .vmamba import VSSBlock, PatchMerging2D, Permute, LayerNorm2d
     from .csms6s import selective_scan_flop_jit, flops_selective_scan_fn
-    from utils.stft import wav2spectro, spectro2wav
+    from utils.stft import wav2spectro, spectro2wav, wav2power, power2wav
 except:
     # Used for debugging data_loader
     # Add the project root directory to the Python path
@@ -26,7 +26,7 @@ except:
     from base.base_model import BaseModel
     from vmamba import VSSBlock, PatchMerging2D, Permute, LayerNorm2d
     from csms6s import selective_scan_flop_jit, flops_selective_scan_fn
-    from utils.stft import wav2spectro, spectro2wav
+    from utils.stft import wav2spectro, spectro2wav, wav2power, power2wav
 
 
 class PatchExpanding(nn.Module):
@@ -387,6 +387,17 @@ class MambaUNet(BaseModel):
         )
         return mag, phase
 
+    def power_spec(self, x):
+        if x.shape[-1] % self.hop_length:
+            x = F.pad(x, (0, self.hop_length - x.shape[-1] % self.hop_length))
+        power = wav2power(
+            x,
+            self.n_fft,
+            self.hop_length,
+            self.win_length,
+        )
+        return power
+
     def _i_mag_phase(self, mag, phase):
         wav = spectro2wav(
             mag,
@@ -395,6 +406,15 @@ class MambaUNet(BaseModel):
             self.hop_length,
             self.win_length,
             self.spectro_scale,
+        )
+        return wav
+
+    def _i_power_spec(self, power):
+        wav = power2wav(
+            power,
+            self.n_fft,
+            self.hop_length,
+            self.win_length,
         )
         return wav
 
@@ -410,7 +430,7 @@ class MambaUNet(BaseModel):
         x = (x - mean) / (1e-5 + std)
         return x, mean, std
 
-    def forward(self, x, hf):
+    def _forward_separated(self, x, hf):
         verbose = False
         length = x.shape[-1]
         mag, phase = self._mag_phase(x)
@@ -538,6 +558,136 @@ class MambaUNet(BaseModel):
         wav = wav[..., :length]
 
         return wav
+
+    def _forward_combined(self, x, hf):
+        verbose = False
+        length = x.shape[-1]
+        power = self.power_spec(x)
+        power_first_freq = power[..., :1, :].clone()
+        # Remove the first freq to make the shape even
+        # We will concatenate it back with the residual mag after the model
+        power = power[..., 1:, :]
+        # Clone the input for residual connection
+        residual_power = power.clone()
+        # Skip connections
+        skip_connections = []
+        # Patch embedding
+        power = self.patch_embed(power)
+        if self.skip_connect_patch:
+            skip_connections.append(power)
+        if verbose:
+            print(f"Patch embedding shape: {power.shape}")
+        if len(self.dims) == 5:
+            for i, layer in enumerate(self.layers_encoder):
+                power = layer(power)
+                skip_connections.append(power)
+                if verbose:
+                    print(f"Encoder layer {i} shape: {power.shape}")
+            # Latent layer
+            for i, layer in enumerate(self.layers_latent):
+                power = layer(power)
+                if verbose:
+                    print(f"Latent layer {i} shape: {power.shape}")
+            if verbose:
+                # Print shape of each item in skip_connections
+                for i, skip in enumerate(skip_connections):
+                    print(f"Skip connection {i} shape: {skip.shape}")
+            # Decoder
+            for i, layer in enumerate(self.layers_decoder):
+                # Concatenate or add skip connection
+                power = (
+                    torch.cat(
+                        (power, skip_connections.pop()),
+                        dim=-1 if not self.channel_first else 1,
+                    )
+                    if self.concat_skip
+                    else (power + skip_connections.pop())
+                )
+                power = layer(power)
+                if verbose:
+                    print(f"Decoder layer {i} shape: {power.shape}")
+
+            if self.skip_connect_patch:
+                # Concatenate or add skip connection
+                power = (
+                    torch.cat(
+                        (power, skip_connections.pop()),
+                        dim=-1 if not self.channel_first else 1,
+                    )
+                    if self.concat_skip
+                    else (power + skip_connections.pop())
+                )
+            if verbose:
+                print(f"Output layer input shape: {power.shape}")
+
+            # Output layer
+            power = self.output_layer(power)
+
+            if verbose:
+                print(f"Patch output shape: {power.shape}")
+        else:
+            # Encoder
+            for i, layer in enumerate(self.layers_encoder):
+                power = layer(power)
+                if i < self.num_layers - 1:
+                    skip_connections.append(power)
+                if verbose:
+                    print(f"Encoder layer {i} shape: {power.shape}")
+            if verbose:
+                # Print shape of each item in skip_connections
+                for i, skip in enumerate(skip_connections):
+                    print(f"Skip connection {i} shape: {skip.shape}")
+            # Decoder
+            for i, layer in enumerate(self.layers_decoder):
+                # Concatenate or add skip connection
+                if i != 0:
+                    power = (
+                        torch.cat(
+                            (power, skip_connections.pop()),
+                            dim=-1 if not self.channel_first else 1,
+                        )
+                        if self.concat_skip
+                        else (power + skip_connections.pop())
+                    )
+                power = layer(power)
+                if verbose:
+                    print(f"Decoder layer {i} shape: {power.shape}")
+
+            if self.skip_connect_patch:
+                # Concatenate or add skip connection
+                power = (
+                    torch.cat(
+                        (power, skip_connections.pop()),
+                        dim=-1 if not self.channel_first else 1,
+                    )
+                    if self.skip_connect_patch
+                    else (power + skip_connections.pop())
+                )
+            if verbose:
+                print(f"Output layer input shape: {power.shape}")
+
+            # Output layer
+            power = self.output_layer(power)
+
+            if verbose:
+                print(f"Patch output shape: {power.shape}")
+
+        if self.channel_first:
+            power = power.permute(0, 2, 3, 1)
+
+        power = power + residual_power
+        # Concatenate the first freq back
+        power = torch.cat([power_first_freq, power], dim=-2)
+
+        # Inverse the spectrogram and return the waveform
+        wav = self._i_power_spec(power)
+        wav = wav[..., :length]
+
+        return wav
+
+    def forward(self, x, hf):
+        # return self._forward_separated(x, None)
+        return self._forward_combined(x, hf)
 
     @staticmethod
     def _make_patch_embed_v1(

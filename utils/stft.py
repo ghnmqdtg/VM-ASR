@@ -3,6 +3,7 @@ from typing import Tuple
 import torch
 import torchaudio
 import torchaudio.transforms as T
+from torchaudio.functional import griffinlim
 
 
 class DBToAmplitude(T.AmplitudeToDB):
@@ -83,7 +84,7 @@ def spectro2wav(
     window = torch.hann_window(win_length).to(mag.device)
 
     *other, freqs, frames = mag.shape
-    n_fft = 2 * freqs - 2
+    n_fft = 2 * (freqs - 1)
 
     mag = mag.view(-1, freqs, frames)
     phase = phase.view(-1, freqs, frames)
@@ -106,6 +107,69 @@ def spectro2wav(
         normalized=True,
         center=True,
     )
+
+    _, length = waveform.shape
+
+    return waveform.view(*other, length)
+
+
+def wav2power(
+    waveform: torch.Tensor,
+    n_fft: int,
+    hop_length: int,
+    win_length: int,
+) -> Tuple[torch.Tensor, torch.Tensor]:
+    """
+    Apply short time Fourier transform to the waveform and return the power spectrogram
+    """
+    window = torch.hann_window(win_length).to(waveform.device)
+    *other, length = waveform.shape
+    waveform = waveform.reshape(-1, length)
+
+    spec = torch.stft(
+        waveform,
+        n_fft=n_fft,
+        hop_length=hop_length,
+        win_length=win_length,
+        window=window,
+        normalized=False,
+        return_complex=True,
+    ).to(waveform.device)
+
+    _, freqs, frame = spec.shape
+
+    # Return the power spectrogram (|spec|^2)
+    power = torch.log2((torch.abs(spec) ** 2) + 1e-8)
+    return power.view(*other, freqs, frame)
+
+
+def power2wav(
+    power: torch.Tensor,
+    n_fft: int,
+    hop_length: int,
+    win_length: int,
+) -> torch.Tensor:
+    """
+    Apply  and return the waveform
+    """
+    # Define the STFT parameters
+    window = torch.hann_window(win_length).to(power.device)
+
+    *other, freqs, frames = power.shape
+    n_fft = 2 * (freqs - 1)
+
+    waveform = griffinlim(
+        torch.exp2(power).view(-1, freqs, frames),
+        window=window,
+        n_fft=n_fft,
+        win_length=win_length,
+        hop_length=hop_length,
+        power=2,
+        n_iter=32,
+        momentum=0.99,
+        length=None,
+        rand_init=True,
+    ).to(power.device)
 
     _, length = waveform.shape
 
