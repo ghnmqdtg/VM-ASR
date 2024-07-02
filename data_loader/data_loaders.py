@@ -136,7 +136,7 @@ class CustomVCTK_092(datasets.VCTK_092):
         # For 48kHz target: 1.705 * 48000 = 81840 samples
         # For 16kHz target: 2.555 * 48000 * (16000 / 48000) = 40880 samples, downsample is applied after loading the audio
         self.num_frames = int(
-            self.config.DATA.SEGMENT * self.config.DATA.FLAC2WAV.SRC_SR
+            round(self.config.DATA.SEGMENT * self.config.DATA.FLAC2WAV.SRC_SR)
         )
 
         # Initialize the sample IDs

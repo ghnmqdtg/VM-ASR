@@ -324,11 +324,22 @@ def update_config(config, args):
     # Update configs based on the target SR
     if config.DATA.TARGET_SR == 48000:
         config.DATA.RANDOM_RESAMPLE = [8000, 48000]
-        config.DATA.STFT.HOP_LENGTH = 240
+        if config.DATA.SEGMENT == 2.55:
+            config.DATA.STFT.N_FFT = 512
+            config.DATA.STFT.HOP_LENGTH = 480
+            config.DATA.STFT.WIN_LENGTH = 512
+        else:
+            config.DATA.STFT.HOP_LENGTH = 240
         config.DATA.WEIGHTED_SR.RANGES = [(8000, 16000), (16000, 24000), (24000, 48000)]
     else:
         config.DATA.RANDOM_RESAMPLE = [2000, 16000]
-        config.DATA.STFT.HOP_LENGTH = 80
+        if config.DATA.SEGMENT == 2.55:
+            config.DATA.STFT.N_FFT = 512
+            config.DATA.STFT.HOP_LENGTH = 160
+            config.DATA.STFT.WIN_LENGTH = 512
+        else:
+            config.DATA.STFT.HOP_LENGTH = 80
+
         config.DATA.WEIGHTED_SR.RANGES = [(2000, 8000), (8000, 12000), (12000, 16000)]
 
     if _check_args("input_sr"):
