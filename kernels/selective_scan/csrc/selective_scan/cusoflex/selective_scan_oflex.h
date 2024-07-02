@@ -26,17 +26,20 @@ struct SSMScanParamsBase {
 struct SSMParamsBase {
     using index_t = uint32_t;
 
-    int batch, dim, seqlen, n_groups, n_chunks;
-    int dim_ngroups_ratio;
+    int batch, dim, seqlen, dstate, n_groups, n_chunks;
+    int dim_ngroups_ratio, dim_deltagroups_ratio;
 
     bool delta_softplus;
 
     index_t A_d_stride;
+    index_t A_dstate_stride;
     index_t B_batch_stride;
     index_t B_d_stride;
+    index_t B_dstate_stride;
     index_t B_group_stride;
     index_t C_batch_stride;
     index_t C_d_stride;
+    index_t C_dstate_stride;
     index_t C_group_stride;
     index_t u_batch_stride;
     index_t u_d_stride;
@@ -61,12 +64,15 @@ struct SSMParamsBwd: public SSMParamsBase {
     index_t dout_batch_stride;
     index_t dout_d_stride;
     index_t dA_d_stride;
+    index_t dA_dstate_stride;
     index_t dB_batch_stride;
     index_t dB_group_stride;
     index_t dB_d_stride;
+    index_t dB_dstate_stride;
     index_t dC_batch_stride;
     index_t dC_group_stride;
     index_t dC_d_stride;
+    index_t dC_dstate_stride;
     index_t du_batch_stride;
     index_t du_d_stride;
     index_t ddelta_batch_stride;
