@@ -1876,53 +1876,56 @@ if __name__ == "__main__":
     segment_length = 2.555
     spectro_scale = "log2"
     if segment_length == 2.555:
-        n_fft = 1024
-        hop_length = 80 if target_sr == 16000 else 240
+        n_fft = 1024  # Frequency bins = 513
+        hop_length = (
+            80 if target_sr == 16000 else 240
+        )  # Timre resolution = 16000 * 2.555 / 80 + 1 or 48000 * 2.555 / 240 + 1 = 512
         win_length = 1024
         length = int(target_sr * segment_length)
     else:
-        n_fft = 1024
-        hop_length = 160 if target_sr == 16000 else 480
-        win_length = 1024
+        n_fft = 512
+        hop_length = (
+            160 if target_sr == 16000 else 480
+        )  # Timre resolution = 16000 * 2.55 / 160 + 1 or 48000 * 2.55 / 480 + 1 = 256
+        win_length = 512
         length = int(target_sr * segment_length)
 
-    # model = MambaUNet(
-    #     in_chans=1,
-    #     depths=[2, 2, 2, 2],
-    #     dims=16,
-    #     # dims=[32, 64, 128, 256],
-    #     ssm_d_state=1,
-    #     ssm_ratio=1.0,
-    #     ssm_dt_rank="auto",
-    #     ssm_conv=3,
-    #     ssm_conv_bias=False,
-    #     forward_type="v05_noz",
-    #     mlp_ratio=4.0,
-    #     drop_path_rate=0.2,
-    #     norm_layer="LN",
-    #     patchembed_version="v2",
-    #     downsample_version="v3",
-    #     upsample_version="v2",
-    #     output_version="v3",
-    #     concat_skip=True,
-    #     skip_connect_patch=False,
-    #     # FFT related parameters
-    #     n_fft=n_fft,
-    #     hop_length=hop_length,
-    #     win_length=win_length,
-    #     spectro_scale=spectro_scale,
-    #     low_freq_replacement=True,
-    #     drop_last_encoder=True,
-    # ).to("cuda")
+    model = MambaUNet(
+        in_chans=1,
+        depths=[2, 2, 2, 2],
+        dims=32,
+        ssm_d_state=16,
+        ssm_ratio=1.0,
+        ssm_dt_rank="auto",
+        ssm_conv=3,
+        ssm_conv_bias=False,
+        forward_type="v04_ondwconv3",
+        mlp_ratio=4.0,
+        drop_path_rate=0.2,
+        norm_layer="LN",
+        patchembed_version="v2",
+        downsample_version="v3",
+        upsample_version="v2",
+        output_version="v1",
+        concat_skip=True,
+        skip_connect_patch=False,
+        # FFT related parameters
+        n_fft=n_fft,
+        hop_length=hop_length,
+        win_length=win_length,
+        spectro_scale=spectro_scale,
+        low_freq_replacement=True,
+        drop_last_encoder=True,
+    ).to("cuda")
 
-    # print(model.flops(shape=(1, length)))
-    # print(model.throughput(shape=(1, length)))
-    # print(model.profile(shape=(1, length)))
+    print(model.flops(shape=(1, length)))
+    print(model.throughput(shape=(1, length)))
+    print(model.profile(shape=(1, length)))
 
     model = DualStreamInteractiveMambaUNet(
         in_chans=1,
-        depths=[2, 2, 2, 2],
-        dims=16,
+        depths=[2, 2, 8, 2],
+        dims=32,
         # dims=[16, 32, 64, 128, 256],
         ssm_d_state=1,
         ssm_ratio=1.0,
@@ -1932,7 +1935,7 @@ if __name__ == "__main__":
         forward_type="v05_noz",
         mlp_ratio=4.0,
         drop_path_rate=0.1,
-        norm_layer="LN",
+        norm_layer="LN2D",
         patchembed_version="v2",
         downsample_version="v3",
         upsample_version="v2",
