@@ -24,7 +24,7 @@ _C.DATA.MIC_ID = "mic1"
 _C.DATA.RESAMPLER = "scipy"
 # Shuffle data
 _C.DATA.SHUFFLE = True
-# Number of workers for dataloading
+# Number of workers for data loading
 _C.DATA.NUM_WORKERS = 0
 # Quantity of data to use
 _C.DATA.USE_QUANTITY = 0.1
@@ -98,7 +98,7 @@ _C.MODEL.VSSM.IN_CHANS = 1
 _C.MODEL.VSSM.PATCH_SIZE = 4
 _C.MODEL.VSSM.DEPTHS = [2, 2, 2, 2]
 _C.MODEL.VSSM.DIMS = 16
-_C.MODEL.VSSM.SSM_D_STATE = 1
+_C.MODEL.VSSM.SSM_D_STATE = 16
 _C.MODEL.VSSM.SSM_RATIO = 1.0
 _C.MODEL.VSSM.SSM_DT_RANK = "auto"
 _C.MODEL.VSSM.SSM_ACT_LAYER = "silu"
