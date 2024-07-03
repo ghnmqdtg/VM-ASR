@@ -2,44 +2,60 @@ MODEL:
   TYPE: 'VM_ASR'
   NAME: 'MambaUNet'
   VSSM:
-    DIMS: 16
-    PATCHEMBED: "v2"
+    DEPTHS: [2, 2, 2, 2]
+    DIMS: 32
+    SSM_D_STATE: 16
+    SSM_DT_RANK: "auto"
+    SSM_RATIO: 1.0
+    SSM_CONV: 3
+    SSM_CONV_BIAS: false
+    SSM_FORWARDTYPE: "v04_ondwconv3"
+    MLP_RATIO: 4.0
+    DROP_PATH_RATE: 0.2
     DOWNSAMPLE: "v3"
     UPSAMPLE: "v2"
-    OUTPUT: "v3"
+    PATCHEMBED: "v2"
+    NORM_LAYER: "ln"
+    OUTPUT: "v1"
     CONCAT_SKIP: True
-    SKIP_CONNECT_PATCH: False
-    DROP_LAST_ENCODER: False
+    SKIP_CONNECT_PATCH: True
+    DROP_LAST_ENCODER: True
 
 TRAIN:
   EARLY_STOPPING: 10
   LOSSES:
+    GEN: ["multi_resolution_stft", "l2"]
     STFT_LOSS:
       SC_FACTOR: 1.0
       MAG_FACTOR: 1.0
-      PHASE_FACTOR: 0.2
+      PHASE_FACTOR: 0.0
 
-  LOW_FREQ_REPLACEMENT: True
+  LOW_FREQ_REPLACEMENT: False
   CLIP_GRAD:
+    ENABLE: True
+    MAX_NORM: 1e-2
+  GRADIENT_PENALTY:
     ENABLE: False
   ADVERSARIAL:
     ENABLE: False
     DISCRIMINATORS: ["mpd"]
     GAN_LOSS_TYPE: "lsgan"
+  BASE_LR: 1e-4
 
 DATA:
-  BATCH_SIZE: 60
-  NUM_WORKERS: 2
+  BATCH_SIZE: 50
   TARGET_SR: 16000
-  USE_QUANTITY: 0.1
+  SEGMENT: 2.555
+  USE_QUANTITY: 0.5
   VALID_SPLIT: 0.1
   WEIGHTED_SR:
     ENABLE: True
   LPF:
     MULTIFILTER: True
+  NUM_WORKERS: 10
 
 DEBUG: False
 
 WANDB:
   ENABLE: True
-  TAGS: ["16k", "Data_0.1", "Single-Stream", "MPD", "LS-GAN"]
+  TAGS: ["16k", "Data_0.5", "SINGLE", "CG"]

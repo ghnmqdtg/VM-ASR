@@ -686,8 +686,8 @@ class MambaUNet(BaseModel):
         return wav
 
     def forward(self, x, hf):
-        # return self._forward_separated(x, None)
-        return self._forward_combined(x, hf)
+        return self._forward_separated(x, hf)
+        # return self._forward_combined(x, hf)
 
     @staticmethod
     def _make_patch_embed_v1(
