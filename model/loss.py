@@ -6,8 +6,34 @@ def mae_loss(output, target):
     return F.l1_loss(output, target)
 
 
-def mse_loss(output, target):
-    return F.mse_loss(output, target)
+def mse_loss(output, target, config):
+    # Create a Hann window
+    window = torch.hann_window(config.DATA.STFT.WIN_LENGTH).to(output.device)
+    # Flatten the output and target waves
+    output = output.view(-1, output.size(-1))
+    target = target.view(-1, target.size(-1))
+    # Convert the output and target waves to spectrograms
+    output_spec = torch.stft(
+        output,
+        n_fft=config.DATA.STFT.N_FFT,
+        hop_length=config.DATA.STFT.HOP_LENGTH,
+        win_length=config.DATA.STFT.WIN_LENGTH,
+        window=window,
+        return_complex=True,
+    )
+    target_spec = torch.stft(
+        target,
+        n_fft=config.DATA.STFT.N_FFT,
+        hop_length=config.DATA.STFT.HOP_LENGTH,
+        win_length=config.DATA.STFT.WIN_LENGTH,
+        window=window,
+        return_complex=True,
+    )
+
+    output_power = torch.log(torch.abs(output_spec).pow(2) + 1e-8)
+    target_power = torch.log(torch.abs(target_spec).pow(2) + 1e-8)
+
+    return F.mse_loss(output_power, target_power)
 
 
 # ==================== MultiResolutionSTFTLoss ==================== #

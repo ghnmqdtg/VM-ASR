@@ -333,7 +333,9 @@ class Trainer(BaseTrainer):
             if "l1" in self.config.TRAIN.LOSSES.GEN:
                 losses["generator"].update({"l1": mae_loss(wave_out, wave_target)})
             if "l2" in self.config.TRAIN.LOSSES.GEN:
-                losses["generator"].update({"l2": mse_loss(wave_out, wave_target)})
+                losses["generator"].update(
+                    {"l2": mse_loss(wave_out, wave_target, self.config)}
+                )
             if "multi_resolution_stft" in self.config.TRAIN.LOSSES.GEN:
                 losses["generator"].update(
                     {
