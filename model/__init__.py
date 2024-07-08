@@ -8,8 +8,8 @@ from utils.stft import *
 def get_model(config):
     models = {"generator": None}
 
-    if config.MODEL.NAME == "DualStreamInteractiveMambaUNet":
-        generator = DualStreamInteractiveMambaUNet(
+    if config.MODEL.NAME == "DualStreamVMUNet":
+        generator = DualStreamVMUNet(
             in_chans=config.MODEL.VSSM.IN_CHANS,
             patch_size=config.MODEL.VSSM.PATCH_SIZE,
             depths=config.MODEL.VSSM.DEPTHS,
@@ -54,8 +54,8 @@ def get_model(config):
             low_freq_replacement=config.TRAIN.LOW_FREQ_REPLACEMENT,
         )
         models["generator"] = generator
-    elif config.MODEL.NAME == "MambaUNet":
-        generator = MambaUNet(
+    elif config.MODEL.NAME == "VMUNet":
+        generator = VMUNet(
             in_chans=config.MODEL.VSSM.IN_CHANS,
             patch_size=config.MODEL.VSSM.PATCH_SIZE,
             depths=config.MODEL.VSSM.DEPTHS,

@@ -1,6 +1,6 @@
 MODEL:
   TYPE: 'VM_ASR'
-  NAME: 'DualStreamInteractiveMambaUNet'
+  NAME: 'DualStreamVMUNet'
   VSSM:
     DEPTHS: [2, 2, 2, 2]
     DIMS: 32

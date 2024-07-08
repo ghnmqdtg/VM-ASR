@@ -56,7 +56,7 @@ class PatchExpanding(nn.Module):
         return x
 
 
-class MambaUNet(BaseModel):
+class VMUNet(BaseModel):
     """
     Mamba-based U-Net model. Inherits from BaseModel and VSSM.
     """
@@ -1243,7 +1243,7 @@ class MambaUNet(BaseModel):
         )
 
 
-class DualStreamInteractiveMambaUNet(MambaUNet):
+class DualStreamVMUNet(VMUNet):
     """
     InteractiveVSSLayers
     """
@@ -1283,7 +1283,7 @@ class DualStreamInteractiveMambaUNet(MambaUNet):
         interact="dual",  # "dual", "m2p", "p2m"
         **kwargs,
     ):
-        # Initialize the MambaUNet
+        # Initialize the VMUNet
         super().__init__(
             patch_size,
             in_chans,
@@ -1314,7 +1314,7 @@ class DualStreamInteractiveMambaUNet(MambaUNet):
             drop_last_encoder,
             **kwargs,
         )
-        # Deep copy patch embedding, encoder, latent, decoder and output in MambaUNet
+        # Deep copy patch embedding, encoder, latent, decoder and output in VMUNet
         # Create magnitude stream
         self.patch_embed_mag = deepcopy(self.patch_embed)
         self.layers_encoder_mag = deepcopy(self.layers_encoder)
@@ -1334,7 +1334,7 @@ class DualStreamInteractiveMambaUNet(MambaUNet):
         # Set the interact mode
         self.interact = interact
 
-        # Delete layers in MambaUNet to save memory
+        # Delete layers in VMUNet to save memory
         del self.patch_embed
         del self.layers_encoder
         del self.layers_latent
@@ -1890,7 +1890,7 @@ if __name__ == "__main__":
         win_length = 512
         length = int(target_sr * segment_length)
 
-    model = MambaUNet(
+    model = VMUNet(
         in_chans=1,
         depths=[2, 2, 2, 2],
         dims=32,
@@ -1922,7 +1922,7 @@ if __name__ == "__main__":
     print(model.throughput(shape=(1, length)))
     print(model.profile(shape=(1, length)))
 
-    model = DualStreamInteractiveMambaUNet(
+    model = DualStreamVMUNet(
         in_chans=1,
         depths=[2, 2, 8, 2],
         dims=32,
