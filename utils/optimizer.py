@@ -2,7 +2,7 @@ from torch import optim
 import itertools
 
 
-def get_optimizer(config, models, logger, **kwargs):
+def get_optimizer(config, models, logger, gan="generator", **kwargs):
     """
     Build optimizer, setting weight decay of normalization to 0 by default for multiple models.
     """
@@ -33,7 +33,7 @@ def get_optimizer(config, models, logger, **kwargs):
             all_parameters,
             momentum=config.TRAIN.OPTIMIZER.MOMENTUM,
             nesterov=True,
-            lr=config.TRAIN.BASE_LR,
+            lr=config.TRAIN.BASE_LR_G if gan == "generator" else config.TRAIN.BASE_LR_D,
             weight_decay=config.TRAIN.WEIGHT_DECAY,
         )
     elif opt_lower == "adamw":
@@ -41,7 +41,7 @@ def get_optimizer(config, models, logger, **kwargs):
             all_parameters,
             eps=config.TRAIN.OPTIMIZER.EPS,
             betas=config.TRAIN.OPTIMIZER.BETAS,
-            lr=config.TRAIN.BASE_LR,
+            lr=config.TRAIN.BASE_LR_G if gan == "generator" else config.TRAIN.BASE_LR_D,
             weight_decay=config.TRAIN.WEIGHT_DECAY,
         )
     else:

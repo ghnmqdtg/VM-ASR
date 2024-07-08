@@ -193,7 +193,7 @@ class MambaUNet(BaseModel):
         for i_layer in range(self.num_layers):
             if len(self.dims) == 5:
                 downsample = _make_downsample(
-                    # Here we have 4 stages, each stage has a different number of input and ouptut dimensions
+                    # Here we have 4 stages, each stage has a different number of input and output dimensions
                     # The original VMamba code didn't set the downsampling for the last stage
                     # So we add extra dim for the last stage
                     self.dims[i_layer],

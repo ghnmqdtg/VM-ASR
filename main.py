@@ -110,7 +110,9 @@ def main(config):
         optimizers = {"generator": None, "discriminator": None}
         lr_schedulers = {"generator": None, "discriminator": None}
         # Get the optimizer and lr_scheduler for the generator
-        optimizers["generator"] = get_optimizer(config, models["generator"], logger)
+        optimizers["generator"] = get_optimizer(
+            config, models["generator"], logger, "generator"
+        )
         lr_schedulers["generator"] = (
             get_scheduler(
                 config,
@@ -132,7 +134,9 @@ def main(config):
                         for disc_name in config.TRAIN.ADVERSARIAL.DISCRIMINATORS
                     ],
                     logger,
+                    "discriminator",
                 )
+                # ! Note: The discriminator scheduler uses the same MIN_LR as generator
                 lr_schedulers["discriminator"] = (
                     get_scheduler(
                         config,

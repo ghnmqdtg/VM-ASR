@@ -40,7 +40,8 @@ TRAIN:
     ENABLE: False
     DISCRIMINATORS: ["mpd"]
     GAN_LOSS_TYPE: "lsgan"
-  BASE_LR: 1e-4
+  BASE_LR_G: 1e-4
+  BASE_LR_D: 1e-5
 
 DATA:
   BATCH_SIZE: 50
