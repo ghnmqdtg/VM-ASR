@@ -2,10 +2,20 @@ MODEL:
   TYPE: 'VM_ASR'
   NAME: 'DualStreamInteractiveMambaUNet'
   VSSM:
-    DIMS: 16
-    PATCHEMBED: "v2"
+    DEPTHS: [2, 2, 8, 2]
+    DIMS: 32
+    SSM_D_STATE: 16
+    SSM_DT_RANK: "auto"
+    SSM_RATIO: 1.0
+    SSM_CONV: 3
+    SSM_CONV_BIAS: false
+    SSM_FORWARDTYPE: "v05_noz"
+    MLP_RATIO: 4.0
+    DROP_PATH_RATE: 0.2
     DOWNSAMPLE: "v3"
     UPSAMPLE: "v2"
+    PATCHEMBED: "v2"
+    NORM_LAYER: "ln2d"
     OUTPUT: "v3"
     CONCAT_SKIP: True
     SKIP_CONNECT_PATCH: False
@@ -22,22 +32,27 @@ TRAIN:
   LOW_FREQ_REPLACEMENT: True
   CLIP_GRAD:
     ENABLE: False
+    MAX_NORM: 1e-2
+  GRADIENT_PENALTY:
+    ENABLE: False
   ADVERSARIAL:
     ENABLE: False
     DISCRIMINATORS: ["mpd"]
     GAN_LOSS_TYPE: "lsgan"
 
 DATA:
-  BATCH_SIZE: 32
+  BATCH_SIZE: 45
   TARGET_SR: 16000
+  SEGMENT: 2.55
   USE_QUANTITY: 0.1
   VALID_SPLIT: 0.1
   WEIGHTED_SR:
-    ENABLE: False
+    ENABLE: True
   LPF:
     MULTIFILTER: True
 
 DEBUG: False
+SEED: 42
 
 WANDB:
   ENABLE: True

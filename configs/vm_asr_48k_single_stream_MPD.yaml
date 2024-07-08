@@ -1,6 +1,6 @@
 MODEL:
   TYPE: 'VM_ASR'
-  NAME: 'DualStreamInteractiveMambaUNet'
+  NAME: 'MambaUNet'
   VSSM:
     DEPTHS: [2, 2, 2, 2]
     DIMS: 32
@@ -24,12 +24,13 @@ MODEL:
 TRAIN:
   EARLY_STOPPING: 10
   LOSSES:
+    GEN: ["multi_resolution_stft", "l2"]
     STFT_LOSS:
       SC_FACTOR: 1.0
       MAG_FACTOR: 1.0
       PHASE_FACTOR: 0.0
 
-  LOW_FREQ_REPLACEMENT: True
+  LOW_FREQ_REPLACEMENT: False
   CLIP_GRAD:
     ENABLE: True
     MAX_NORM: 1e-2
@@ -39,10 +40,12 @@ TRAIN:
     ENABLE: True
     DISCRIMINATORS: ["mpd"]
     GAN_LOSS_TYPE: "lsgan"
+  BASE_LR_G: 1e-4
+  BASE_LR_D: 1e-5
 
 DATA:
-  BATCH_SIZE: 10
-  TARGET_SR: 16000
+  BATCH_SIZE: 6
+  TARGET_SR: 48000
   SEGMENT: 2.555
   USE_QUANTITY: 0.5
   VALID_SPLIT: 0.1
@@ -50,9 +53,10 @@ DATA:
     ENABLE: True
   LPF:
     MULTIFILTER: True
+  NUM_WORKERS: 10
 
 DEBUG: False
 
 WANDB:
   ENABLE: True
-  TAGS: ["16k", "Data_0.5", "MPD", "LS-GAN", "Deep"]
+  TAGS: ["48k", "Data_0.5", "MPD", "LS-GAN", "SINGLE", "DELAYED_START"]
