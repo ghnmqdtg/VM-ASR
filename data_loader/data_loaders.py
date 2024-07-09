@@ -454,6 +454,34 @@ class CustomVCTK_092(datasets.VCTK_092):
 
             # Upsample the audio
             input = self.resample_audio(input, sr_input, sr, self.config.DATA.RESAMPLER)
+
+            if self.config.DATA.RESAMPLER == "sox":
+                # The noise is removed by the sox, we need to add it back
+                # Otherwise, the phase will be empty
+                if pad_length:
+                    white_noise = (
+                        torch.randn((pad_length)) * self.config.DATA.PAD_WHITENOISE
+                    ).unsqueeze(0)
+                    # Replace the padded part with white noise
+                    input[:, -pad_length:] = white_noise
+
+                # Add high-frequency white noise (target_sr ~ sr_input) as artifacts to the input
+                # Generate white noise with the same length as the input
+                white_noise = (
+                    torch.randn((input.shape[-1] - pad_length))
+                    * self.config.DATA.PAD_WHITENOISE
+                ).unsqueeze(0)
+                # High pass filter the white noise
+                white_noise = filter(
+                    white_noise,
+                    int(sr_input * 0.5),
+                    filter_,
+                    self.config.DATA.TARGET_SR,
+                    "highpass",
+                )
+                # Add the white noise to the input
+                input = input + F.pad(white_noise, (0, pad_length))
+
             # Align the waveform length
             input = align_waveform(input, output)
         else:
@@ -464,29 +492,6 @@ class CustomVCTK_092(datasets.VCTK_092):
             (1 + self.config.DATA.STFT.N_FFT // 2)
             * (sr_input / self.config.DATA.TARGET_SR)
         )
-        if self.config.DATA.RESAMPLER == "sox":
-            # The noise is removed by the sox, we need to add it back
-            # Otherwise, the phase will be empty
-            if pad_length:
-                white_noise = (
-                    torch.randn((pad_length)) * self.config.DATA.PAD_WHITENOISE
-                ).unsqueeze(0)
-                # Replace the padded part with white noise
-                input[:, -pad_length:] = white_noise
-
-            # Add high-frequency white noise (target_sr ~ sr_input) as artifacts to the input
-            # Generate white noise with the same length as the input
-            white_noise = (torch.randn((input.shape[-1] - pad_length))).unsqueeze(0)
-            # High pass filter the white noise
-            white_noise = filter(
-                white_noise,
-                int(sr_input * 0.5),
-                filter_,
-                self.config.DATA.TARGET_SR,
-                "highpass",
-            )
-            # Add the white noise to the input
-            input = input + F.pad(white_noise, (0, pad_length))
 
         if self.config.DEBUG:
             self._debug_spectrograms(input, name="up")
