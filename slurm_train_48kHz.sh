@@ -7,5 +7,9 @@
 #SBATCH --account=MST112230
 
 python main.py \
-    --cfg configs/vm_asr_48k.yaml \
-    --tag 48k_DeciData_MPD_Local
+    --cfg configs/vm_asr_48k_single_stream.yaml \
+    --tag 48k_Full_Single_CG_smLR_Local
+
+python main.py \
+    --cfg configs/vm_asr_48k_single_stream_MPD.yaml \
+    --tag 48k_Full_MPD_Single_CG_smLR_Local

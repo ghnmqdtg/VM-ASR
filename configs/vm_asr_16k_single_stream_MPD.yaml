@@ -47,7 +47,7 @@ DATA:
   BATCH_SIZE: 14
   TARGET_SR: 16000
   SEGMENT: 2.555
-  USE_QUANTITY: 0.5
+  USE_QUANTITY: 1.0
   VALID_SPLIT: 0.1
   WEIGHTED_SR:
     ENABLE: True
@@ -59,4 +59,4 @@ DEBUG: False
 
 WANDB:
   ENABLE: True
-  TAGS: ["16k", "Data_0.5", "MPD", "LS-GAN", "SINGLE"]
+  TAGS: ["16k", "Data_1.0", "MPD", "LS-GAN", "SINGLE"]

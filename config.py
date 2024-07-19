@@ -322,11 +322,6 @@ def update_config(config, args):
     else:
         config.OUTPUT = config.MODEL.RESUME_PATH
 
-    # Set the STFT scale based on the model architecture
-    # The VMUNet model is a single stream model, so we prepocess the input as power spectrogram
-    # Which is the combination of the magnitude and phase
-    if config.MODEL.NAME == "VMUNet":
-        config.DATA.STFT.SCALE = "power"
     # Update configs based on the target SR
     if config.DATA.TARGET_SR == 48000:
         config.DATA.RANDOM_RESAMPLE = [8000, 48000]
