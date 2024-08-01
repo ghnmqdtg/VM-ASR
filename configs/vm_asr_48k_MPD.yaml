@@ -10,14 +10,13 @@ TRAIN:
   ADVERSARIAL:
     ENABLE: True
     DISCRIMINATORS: ["mpd"]
-    GAN_LOSS_TYPE: "wgan-gp"
     STFT_LOSS:
       EMPHASIZE_HIGH_FREQ: False
 
 DATA:
-  BATCH_SIZE: 8
-  TARGET_SR: 16000
-  USE_QUANTITY: 0.1
+  BATCH_SIZE: 4
+  TARGET_SR: 48000
+  USE_QUANTITY: 1.0
   VALID_SPLIT: 0.1
   WEIGHTED_SR:
     ENABLE: False
@@ -28,4 +27,4 @@ DEBUG: False
 
 WANDB:
   ENABLE: True
-  TAGS: ["16k", "Data_0.1", "MPD", "WGAN-GP"]
+  TAGS: ["48k", "Data_1.0", "MPD"]

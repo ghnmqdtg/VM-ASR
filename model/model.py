@@ -1038,6 +1038,7 @@ class DualStreamInteractiveMambaUNet(MambaUNet):
         upsample_version: str = "v1",  # "v1"
         output_version: str = "v2",  # "v1", "v2", "v3"
         concat_skip=False,
+        interact="dual",  # "dual", "m2p", "p2m"
         **kwargs,
     ):
         # Initialize the MambaUNet
@@ -1086,6 +1087,8 @@ class DualStreamInteractiveMambaUNet(MambaUNet):
         )
         self.layers_decoder_phase = deepcopy(self.layers_decoder)
         self.output_layer_phase = deepcopy(self.output_layer)
+        # Set the interact mode
+        self.interact = interact
 
         # Delete layers in MambaUNet to save memory
         del self.patch_embed
@@ -1096,7 +1099,7 @@ class DualStreamInteractiveMambaUNet(MambaUNet):
 
         self.apply(self._init_weights)
 
-    def forward(self, x, hf):
+    def _forward_inter(self, x, hf):
         length = x.shape[-1]
         mag, phase = self._mag_phase(x)
         mag_first_freq = mag[..., :1, :].clone()
@@ -1105,12 +1108,11 @@ class DualStreamInteractiveMambaUNet(MambaUNet):
         # We will concatenate it back with the residual mag and phase after the model
         mag = mag[..., 1:, :]
         phase = phase[..., 1:, :]
+        # Clone the input for residual connection
+        residual_mag = mag.clone()
         # # Normalize the magnitude and phase
         # mag, mag_mean, mag_std = self._normalize(mag)
         # phase, phase_mean, phase_std = self._normalize(phase)
-        # Clone the input for residual connection
-        residual_mag = mag.clone()
-        residual_phase = phase.clone()
         # Skip connections
         skip_connections = []
         # Patch embedding
@@ -1205,7 +1207,7 @@ class DualStreamInteractiveMambaUNet(MambaUNet):
         # Residual connection
         mag = mag + residual_mag
         # Recover the magnitude and phase
-        # mag = mag * mag_std + mag_mean
+        # mag = mag * mag_std + mag_mean + residual_mag
         # phase = phase * phase_std + phase_mean
         # Concatenate the first freq back
         mag = torch.cat([mag_first_freq, mag], dim=-2)
@@ -1222,6 +1224,246 @@ class DualStreamInteractiveMambaUNet(MambaUNet):
         wav = wav[..., :length]
 
         return wav
+
+    def _forward_p2m(self, x, hf):
+        length = x.shape[-1]
+        mag, phase = self._mag_phase(x)
+        mag_first_freq = mag[..., :1, :].clone()
+        phase_first_freq = phase[..., :1, :].clone()
+        # Remove the first freq to make the shape even
+        # We will concatenate it back with the residual mag and phase after the model
+        mag = mag[..., 1:, :]
+        phase = phase[..., 1:, :]
+        # Clone the input for residual connection
+        residual_mag = mag.clone()
+        # Skip connections
+        skip_connections = []
+        # Patch embedding
+        mag = self.patch_embed_mag(mag)
+        phase = self.patch_embed_phase(phase)
+        skip_connections.append((mag, phase))
+        if len(self.dims) == 5:
+            # Encoders (zip is used to iterate over two lists at the same time)
+            for i, (encoder_mag, encoder_phase) in enumerate(
+                zip(self.layers_encoder_mag, self.layers_encoder_phase)
+            ):
+                mag = encoder_mag(mag)
+                phase = encoder_phase(phase)
+                skip_connections.append((mag, phase))
+                # Interacting
+                mag = mag + phase
+            # Latent layer
+            for i, (latent_mag, latent_phase) in enumerate(
+                zip(self.layers_latent_mag, self.layers_latent_phase)
+            ):
+                mag = latent_mag(mag)
+                phase = latent_phase(phase)
+            # Decoders
+            for i, (decoder_mag, decoder_phase) in enumerate(
+                zip(self.layers_decoder_mag, self.layers_decoder_phase)
+            ):
+                # Concatenate or add skip connection
+                mag_skip, phase_skip = skip_connections.pop()
+                if self.concat_skip:
+                    mag = decoder_mag(torch.cat((mag, mag_skip), dim=-1))
+                    phase = decoder_mag(torch.cat((phase, phase_skip), dim=-1))
+                else:
+                    mag = decoder_mag(mag + mag_skip)
+                    phase = decoder_phase(phase + phase_skip)
+
+                # Interacting
+                mag = mag + phase
+
+            # Concatenate or add skip connection for the output layer
+            mag_skip, phase_skip = skip_connections.pop()
+            if self.concat_skip:
+                mag = self.output_layer_mag(torch.cat((mag, mag_skip), dim=-1))
+                phase = self.output_layer_phase(torch.cat((phase, phase_skip), dim=-1))
+            else:
+                mag = self.output_layer_mag(mag + mag_skip)
+                phase = self.output_layer_phase(phase + phase_skip)
+        else:
+            # Encoders (zip is used to iterate over two lists at the same time)
+            for i, (encoder_mag, encoder_phase) in enumerate(
+                zip(self.layers_encoder_mag, self.layers_encoder_phase)
+            ):
+                mag = encoder_mag(mag)
+                phase = encoder_phase(phase)
+                if i < self.num_layers - 1:
+                    skip_connections.append((mag, phase))
+                # Interacting
+                mag = mag + phase
+
+            # Decoders
+            for i, (decoder_mag, decoder_phase) in enumerate(
+                zip(self.layers_decoder_mag, self.layers_decoder_phase)
+            ):
+                if i != 0:
+                    # Concatenate or add skip connection
+                    mag_skip, phase_skip = skip_connections.pop()
+                    if self.concat_skip:
+                        mag = decoder_mag(torch.cat((mag, mag_skip), dim=-1))
+                        phase = decoder_mag(torch.cat((phase, phase_skip), dim=-1))
+                    else:
+                        mag = decoder_mag(mag + mag_skip)
+                        phase = decoder_phase(phase + phase_skip)
+                else:
+                    mag = decoder_mag(mag)
+                    phase = decoder_phase(phase)
+
+                # Interacting
+                mag = mag + phase
+
+            # Concatenate or add skip connection for the output layer
+            mag_skip, phase_skip = skip_connections.pop()
+            if self.concat_skip:
+                mag = self.output_layer_mag(torch.cat((mag, mag_skip), dim=-1))
+                phase = self.output_layer_phase(torch.cat((phase, phase_skip), dim=-1))
+            else:
+                mag = self.output_layer_mag(mag + mag_skip)
+                phase = self.output_layer_phase(phase + phase_skip)
+
+        # Residual connection
+        mag = mag + residual_mag
+        # Concatenate the first freq back
+        mag = torch.cat([mag_first_freq, mag], dim=-2)
+        phase = torch.cat([phase_first_freq, phase], dim=-2)
+        # Replace the output low frequency band with the input's
+        if self.low_freq_replacement:
+            mag_org, phase_org = self._mag_phase(x)
+            # Replace the output low frequency band with the input's
+            mag = self._low_freq_replacement(mag, mag_org, hf)
+            phase = self._low_freq_replacement(phase, phase_org, hf)
+        # Inverse STFT
+        wav = self._i_mag_phase(mag, phase)
+        # Truncate the output to the original length
+        wav = wav[..., :length]
+
+        return wav
+
+    def _forward_m2p(self, x, hf):
+        length = x.shape[-1]
+        mag, phase = self._mag_phase(x)
+        mag_first_freq = mag[..., :1, :].clone()
+        phase_first_freq = phase[..., :1, :].clone()
+        # Remove the first freq to make the shape even
+        # We will concatenate it back with the residual mag and phase after the model
+        mag = mag[..., 1:, :]
+        phase = phase[..., 1:, :]
+        # Clone the input for residual connection
+        residual_mag = mag.clone()
+        # Skip connections
+        skip_connections = []
+        # Patch embedding
+        mag = self.patch_embed_mag(mag)
+        phase = self.patch_embed_phase(phase)
+        skip_connections.append((mag, phase))
+        if len(self.dims) == 5:
+            # Encoders (zip is used to iterate over two lists at the same time)
+            for i, (encoder_mag, encoder_phase) in enumerate(
+                zip(self.layers_encoder_mag, self.layers_encoder_phase)
+            ):
+                mag = encoder_mag(mag)
+                phase = encoder_phase(phase)
+                skip_connections.append((mag, phase))
+                # Interacting
+                phase = phase + mag
+            # Latent layer
+            for i, (latent_mag, latent_phase) in enumerate(
+                zip(self.layers_latent_mag, self.layers_latent_phase)
+            ):
+                mag = latent_mag(mag)
+                phase = latent_phase(phase)
+            # Decoders
+            for i, (decoder_mag, decoder_phase) in enumerate(
+                zip(self.layers_decoder_mag, self.layers_decoder_phase)
+            ):
+                # Concatenate or add skip connection
+                mag_skip, phase_skip = skip_connections.pop()
+                if self.concat_skip:
+                    mag = decoder_mag(torch.cat((mag, mag_skip), dim=-1))
+                    phase = decoder_mag(torch.cat((phase, phase_skip), dim=-1))
+                else:
+                    mag = decoder_mag(mag + mag_skip)
+                    phase = decoder_phase(phase + phase_skip)
+
+                # Interacting
+                phase = phase + mag
+
+            # Concatenate or add skip connection for the output layer
+            mag_skip, phase_skip = skip_connections.pop()
+            if self.concat_skip:
+                mag = self.output_layer_mag(torch.cat((mag, mag_skip), dim=-1))
+                phase = self.output_layer_phase(torch.cat((phase, phase_skip), dim=-1))
+            else:
+                mag = self.output_layer_mag(mag + mag_skip)
+                phase = self.output_layer_phase(phase + phase_skip)
+        else:
+            # Encoders (zip is used to iterate over two lists at the same time)
+            for i, (encoder_mag, encoder_phase) in enumerate(
+                zip(self.layers_encoder_mag, self.layers_encoder_phase)
+            ):
+                mag = encoder_mag(mag)
+                phase = encoder_phase(phase)
+                if i < self.num_layers - 1:
+                    skip_connections.append((mag, phase))
+                # Interacting
+                phase = phase + mag
+
+            # Decoders
+            for i, (decoder_mag, decoder_phase) in enumerate(
+                zip(self.layers_decoder_mag, self.layers_decoder_phase)
+            ):
+                if i != 0:
+                    # Concatenate or add skip connection
+                    mag_skip, phase_skip = skip_connections.pop()
+                    if self.concat_skip:
+                        mag = decoder_mag(torch.cat((mag, mag_skip), dim=-1))
+                        phase = decoder_mag(torch.cat((phase, phase_skip), dim=-1))
+                    else:
+                        mag = decoder_mag(mag + mag_skip)
+                        phase = decoder_phase(phase + phase_skip)
+                else:
+                    mag = decoder_mag(mag)
+                    phase = decoder_phase(phase)
+
+                # Interacting
+                phase = phase + mag
+
+            # Concatenate or add skip connection for the output layer
+            mag_skip, phase_skip = skip_connections.pop()
+            if self.concat_skip:
+                mag = self.output_layer_mag(torch.cat((mag, mag_skip), dim=-1))
+                phase = self.output_layer_phase(torch.cat((phase, phase_skip), dim=-1))
+            else:
+                mag = self.output_layer_mag(mag + mag_skip)
+                phase = self.output_layer_phase(phase + phase_skip)
+
+        # Residual connection
+        mag = mag + residual_mag
+        # Concatenate the first freq back
+        mag = torch.cat([mag_first_freq, mag], dim=-2)
+        phase = torch.cat([phase_first_freq, phase], dim=-2)
+        # Replace the output low frequency band with the input's
+        if self.low_freq_replacement:
+            mag_org, phase_org = self._mag_phase(x)
+            # Replace the output low frequency band with the input's
+            mag = self._low_freq_replacement(mag, mag_org, hf)
+            phase = self._low_freq_replacement(phase, phase_org, hf)
+        # Inverse STFT
+        wav = self._i_mag_phase(mag, phase)
+        # Truncate the output to the original length
+        wav = wav[..., :length]
+
+        return wav
+
+    def forward(self, x, hf):
+        if self.interact == "p2m":
+            return self._forward_p2m(x, hf)
+        elif self.interact == "m2p":
+            return self._forward_m2p(x, hf)
+        else:
+            return self._forward_inter(x, hf)
 
 
 if __name__ == "__main__":
@@ -1281,6 +1523,7 @@ if __name__ == "__main__":
         upsample_version="v1",
         output_version="v3",
         concat_skip=True,
+        interact="p2m",
         # FFT related parameters
         n_fft=n_fft,
         hop_length=hop_length,

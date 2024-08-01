@@ -42,6 +42,7 @@ def get_model(config):
             upsample_version=config.MODEL.VSSM.UPSAMPLE,
             output_version=config.MODEL.VSSM.OUTPUT,
             concat_skip=config.MODEL.VSSM.CONCAT_SKIP,
+            interact=config.MODEL.VSSM.INTERACT,
             # =========================
             # FFT related parameters
             n_fft=config.DATA.STFT.N_FFT,

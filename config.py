@@ -118,6 +118,7 @@ _C.MODEL.VSSM.DOWNSAMPLE = "v1"
 _C.MODEL.VSSM.UPSAMPLE = "v1"
 _C.MODEL.VSSM.OUTPUT = "v3"
 _C.MODEL.VSSM.CONCAT_SKIP = True
+_C.MODEL.VSSM.INTERACT = "dual"
 
 # -----------------------------------------------------------------------------
 # Training settings
