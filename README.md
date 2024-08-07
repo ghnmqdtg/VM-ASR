@@ -76,6 +76,30 @@ $ sh slurm_test_16kHz.sh
 $ sh slurm_test_48kHz.sh
 ```
 
+### Pretrained Models
+Please check the release page for the pretrained models. To use the pretrained models, you can download them and decompress them to the `./logs/DualStreamInteractiveMambaUNet` directory. For example, `logs/DualStreamInteractiveMambaUNet/16k_2k_FullData_MPD`. The pretrained models are trained on the VCTK dataset with the following configurations:
+
+| Target SR (kHz) | Input SR (kHz) | Model ID                         |
+|:-----------------:|:----------------:|----------------------------------|
+| **Specialized Models** |                |                                  |
+| 16              | 2              | `16k_2k_FullData_MPD`            |
+| 16              | 4              | `16k_4k_FullData_MPD`            |
+| 16              | 8              | `16k_8k_FullData_MPD`            |
+| 16              | 12             | `16k_12k_FullData_MPD`           |
+| 48              | 8              | `48k_8k_FullData_MPD`            |
+| 48              | 12             | `48k_12k_FullData_MPD`           |
+| 48              | 16             | `48k_16k_FullData_MPD`           |
+| 48              | 24             | `48k_24k_FullData_MPD`           |
+| **Versatile Models**  |           |                                  |
+| 16              | 2~16           | `16k_FullData_MPD`               |
+| 48              | 8~48           | `48k_FullData_MPD`               |
+| **Ablation Study**    |           |                                  |
+| 48              | 16             | `48k_16k_FullData`               |
+| 48              | 16             | `48k_16k_FullData_MPD_woPost`    |
+| 48              | 16             | `48k_16k_FullData_woPost`        |
+| 48              | 16             | `48k_16k_FullData_MPD_M2P`       |
+| 48              | 16             | `48k_16k_FullData_MPD_P2M`       |
+
 ### Q&A
 1. **Can I run the training commands directly?**
 

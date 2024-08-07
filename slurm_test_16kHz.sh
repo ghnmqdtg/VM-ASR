@@ -24,28 +24,28 @@ done
 # Uncomment the following lines to test specialized models
 # # 2kHz input, 16kHz output
 # python main.py \
-#     --cfg configs/sm_asr_16k.yaml \
+#     --cfg configs/vm_asr_16k.yaml \
 #     --resume logs/DualStreamInteractiveMambaUNet/16k_2k_FullData_MPD \
 #     --eval \
 #     --tag 2000_16000
 
 # # 4kHz input, 16kHz output
 # python main.py \
-#     --cfg configs/sm_asr_16k.yaml \
+#     --cfg configs/vm_asr_16k.yaml \
 #     --resume logs/DualStreamInteractiveMambaUNet/16k_4k_FullData_MPD \
 #     --eval \
 #     --tag 4000_16000
 
 # # 8kHz input, 16kHz output
 # python main.py \
-#     --cfg configs/sm_asr_16k.yaml \
+#     --cfg configs/vm_asr_16k.yaml \
 #     --resume logs/DualStreamInteractiveMambaUNet/16k_8k_FullData_MPD \
 #     --eval \
 #     --tag 8000_16000
 
 # # 12kHz input, 16kHz output
 # python main.py \
-#     --cfg configs/sm_asr_16k.yaml \
+#     --cfg configs/vm_asr_16k.yaml \
 #     --resume logs/DualStreamInteractiveMambaUNet/16k_12k_FullData_MPD \
 #     --eval \
 #     --tag 12000_16000
