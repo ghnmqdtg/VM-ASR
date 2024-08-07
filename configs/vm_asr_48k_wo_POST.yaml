@@ -1,0 +1,30 @@
+MODEL:
+  TYPE: 'VM_ASR'
+  NAME: 'DualStreamInteractiveMambaUNet'
+  VSSM:
+    DIMS: 16
+
+TRAIN:
+  EARLY_STOPPING: 10
+  LOW_FREQ_REPLACEMENT: True
+  ADVERSARIAL:
+    ENABLE: False
+    DISCRIMINATORS: ["mpd"]
+    STFT_LOSS:
+      EMPHASIZE_HIGH_FREQ: False
+
+DATA:
+  BATCH_SIZE: 35
+  TARGET_SR: 48000
+  USE_QUANTITY: 1.0
+  VALID_SPLIT: 0.1
+  WEIGHTED_SR:
+    ENABLE: False
+  LPF:
+    MULTIFILTER: True
+
+DEBUG: False
+
+WANDB:
+  ENABLE: True
+  TAGS: ["48k", "Data_1.0"]
