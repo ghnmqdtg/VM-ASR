@@ -85,96 +85,97 @@ Please check the release page for the pretrained models. To use the pretrained m
       <th>Target SR (kHz)</th>
       <th>Input SR (kHz)</th>
       <th>Model ID</th>
+      <th>Description</th>
     </tr>
   </thead>
   <tbody>
     <tr>
-      <td align="center" colspan="3"><strong>Specialized Models</strong></td>
+      <td align="center" colspan="4"><strong>Specialized Models</strong></td>
     </tr>
     <tr>
-      <td>16</td>
-      <td>2</td>
+      <td align="center" rowspan="4">16</td>
+      <td align="center">2</td>
       <td><code>16k_2k_FullData_MPD</code></td>
+      <td>2 to 16kHz</td>
     </tr>
     <tr>
-      <td>16</td>
-      <td>4</td>
+      <td align="center">4</td>
       <td><code>16k_4k_FullData_MPD</code></td>
+      <td>4 to 16kHz</td>
     </tr>
     <tr>
-      <td>16</td>
-      <td>8</td>
+      <td align="center">8</td>
       <td><code>16k_8k_FullData_MPD</code></td>
+      <td>8 to 16kHz</td>
     </tr>
     <tr>
-      <td>16</td>
-      <td>12</td>
+      <td align="center">12</td>
       <td><code>16k_12k_FullData_MPD</code></td>
+      <td>12 to 16kHz</td>
     </tr>
     <tr>
-      <td>48</td>
-      <td>8</td>
+      <td align="center" rowspan="4">48</td>
+      <td align="center">8</td>
       <td><code>48k_8k_FullData_MPD</code></td>
+      <td>8 to 48kHz</td>
     </tr>
     <tr>
-      <td>48</td>
-      <td>12</td>
+      <td align="center">12</td>
       <td><code>48k_12k_FullData_MPD</code></td>
+      <td>12 to 48kHz</td>
     </tr>
     <tr>
-      <td>48</td>
-      <td>16</td>
+      <td align="center">16</td>
       <td><code>48k_16k_FullData_MPD</code></td>
+      <td>16 to 48kHz</td>
     </tr>
     <tr>
-      <td>48</td>
-      <td>24</td>
+      <td align="center">24</td>
       <td><code>48k_24k_FullData_MPD</code></td>
+      <td>24 to 48kHz</td>
     </tr>
     <tr>
-      <td align="center" colspan="3"><strong>Versatile Models</strong></td>
+      <td align="center" colspan="4"><strong>Versatile Models</strong></td>
     </tr>
     <tr>
-      <td>16</td>
-      <td>2~16</td>
+      <td align="center">16</td>
+      <td align="center">2~16</td>
       <td><code>16k_FullData_MPD</code></td>
+      <td>2~16 to 16kHz</td>
     </tr>
     <tr>
-      <td>48</td>
-      <td>8~48</td>
+      <td align="center">48</td>
+      <td align="center">8~48</td>
       <td><code>48k_FullData_MPD</code></td>
+      <td>8~48 to 48kHz</td>
     </tr>
     <tr>
-      <td align="center" colspan="3"><strong>Ablation Study</strong></td>
+      <td align="center" colspan="4"><strong>Ablation Study</strong></td>
     </tr>
     <tr>
-      <td>48</td>
-      <td>16</td>
+      <td align="center" rowspan="5">48</td>
+      <td align="center" rowspan="5">16</td>
       <td><code>48k_16k_FullData</code></td>
+      <td>GAN (X) & Post Processing (O)</td>
     </tr>
     <tr>
-      <td>48</td>
-      <td>16</td>
       <td><code>48k_16k_FullData_MPD_woPost</code></td>
+      <td>GAN (O) & Post Processing (X)</td>
     </tr>
     <tr>
-      <td>48</td>
-      <td>16</td>
       <td><code>48k_16k_FullData_woPost</code></td>
+      <td>GAN (X) & Post Processing (X)</td>
     </tr>
     <tr>
-      <td>48</td>
-      <td>16</td>
       <td><code>48k_16k_FullData_MPD_M2P</code></td>
+      <td>Interactions: Magnitude to Phase</td>
     </tr>
     <tr>
-      <td>48</td>
-      <td>16</td>
       <td><code>48k_16k_FullData_MPD_P2M</code></td>
+      <td>Interactions: Phase to Magnitude</td>
     </tr>
   </tbody>
 </table>
-
 
 ### Q&A
 1. **Can I run the training commands directly?**
