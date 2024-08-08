@@ -79,26 +79,102 @@ $ sh slurm_test_48kHz.sh
 ### Pretrained Models
 Please check the release page for the pretrained models. To use the pretrained models, you can download them and decompress them to the `./logs/DualStreamInteractiveMambaUNet` directory. For example, `logs/DualStreamInteractiveMambaUNet/16k_2k_FullData_MPD`. The pretrained models are trained on the VCTK dataset with the following configurations:
 
-| Target SR (kHz) | Input SR (kHz) | Model ID                         |
-|:-----------------:|:----------------:|----------------------------------|
-| **Specialized Models** |                |                                  |
-| 16              | 2              | `16k_2k_FullData_MPD`            |
-| 16              | 4              | `16k_4k_FullData_MPD`            |
-| 16              | 8              | `16k_8k_FullData_MPD`            |
-| 16              | 12             | `16k_12k_FullData_MPD`           |
-| 48              | 8              | `48k_8k_FullData_MPD`            |
-| 48              | 12             | `48k_12k_FullData_MPD`           |
-| 48              | 16             | `48k_16k_FullData_MPD`           |
-| 48              | 24             | `48k_24k_FullData_MPD`           |
-| **Versatile Models**  |           |                                  |
-| 16              | 2~16           | `16k_FullData_MPD`               |
-| 48              | 8~48           | `48k_FullData_MPD`               |
-| **Ablation Study**    |           |                                  |
-| 48              | 16             | `48k_16k_FullData`               |
-| 48              | 16             | `48k_16k_FullData_MPD_woPost`    |
-| 48              | 16             | `48k_16k_FullData_woPost`        |
-| 48              | 16             | `48k_16k_FullData_MPD_M2P`       |
-| 48              | 16             | `48k_16k_FullData_MPD_P2M`       |
+<table>
+  <thead>
+    <tr>
+      <th>Target SR (kHz)</th>
+      <th>Input SR (kHz)</th>
+      <th>Model ID</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td align="center" colspan="3"><strong>Specialized Models</strong></td>
+    </tr>
+    <tr>
+      <td>16</td>
+      <td>2</td>
+      <td><code>16k_2k_FullData_MPD</code></td>
+    </tr>
+    <tr>
+      <td>16</td>
+      <td>4</td>
+      <td><code>16k_4k_FullData_MPD</code></td>
+    </tr>
+    <tr>
+      <td>16</td>
+      <td>8</td>
+      <td><code>16k_8k_FullData_MPD</code></td>
+    </tr>
+    <tr>
+      <td>16</td>
+      <td>12</td>
+      <td><code>16k_12k_FullData_MPD</code></td>
+    </tr>
+    <tr>
+      <td>48</td>
+      <td>8</td>
+      <td><code>48k_8k_FullData_MPD</code></td>
+    </tr>
+    <tr>
+      <td>48</td>
+      <td>12</td>
+      <td><code>48k_12k_FullData_MPD</code></td>
+    </tr>
+    <tr>
+      <td>48</td>
+      <td>16</td>
+      <td><code>48k_16k_FullData_MPD</code></td>
+    </tr>
+    <tr>
+      <td>48</td>
+      <td>24</td>
+      <td><code>48k_24k_FullData_MPD</code></td>
+    </tr>
+    <tr>
+      <td align="center" colspan="3"><strong>Versatile Models</strong></td>
+    </tr>
+    <tr>
+      <td>16</td>
+      <td>2~16</td>
+      <td><code>16k_FullData_MPD</code></td>
+    </tr>
+    <tr>
+      <td>48</td>
+      <td>8~48</td>
+      <td><code>48k_FullData_MPD</code></td>
+    </tr>
+    <tr>
+      <td align="center" colspan="3"><strong>Ablation Study</strong></td>
+    </tr>
+    <tr>
+      <td>48</td>
+      <td>16</td>
+      <td><code>48k_16k_FullData</code></td>
+    </tr>
+    <tr>
+      <td>48</td>
+      <td>16</td>
+      <td><code>48k_16k_FullData_MPD_woPost</code></td>
+    </tr>
+    <tr>
+      <td>48</td>
+      <td>16</td>
+      <td><code>48k_16k_FullData_woPost</code></td>
+    </tr>
+    <tr>
+      <td>48</td>
+      <td>16</td>
+      <td><code>48k_16k_FullData_MPD_M2P</code></td>
+    </tr>
+    <tr>
+      <td>48</td>
+      <td>16</td>
+      <td><code>48k_16k_FullData_MPD_P2M</code></td>
+    </tr>
+  </tbody>
+</table>
+
 
 ### Q&A
 1. **Can I run the training commands directly?**
