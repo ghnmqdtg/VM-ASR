@@ -1609,7 +1609,7 @@ if __name__ == "__main__":
         upsample_version="v1",
         output_version="v3",
         concat_skip=True,
-        interact="single",
+        interact="dual",
         # FFT related parameters
         n_fft=n_fft,
         hop_length=hop_length,

@@ -80,3 +80,21 @@ python main.py \
 #     --cfg configs/vm_asr_48k_16k_nfft2048.yaml \
 #     --tag 48k_16k_FullData_MPD_NFFT2048 \
 #     --input_sr 16000
+
+# # Hyperparams: VSSM 8
+# python main.py \
+#     --cfg configs/vm_asr_48k_16k_MPD_VSSM8.yaml \
+#     --tag 48k_16k_FullData_MPD_VSSM8 \
+#     --input_sr 16000
+
+# # Hyperparams: VSSM 24
+# python main.py \
+#     --cfg configs/vm_asr_48k_16k_MPD_VSSM24.yaml \
+#     --tag 48k_16k_FullData_MPD_VSSM24 \
+#     --input_sr 16000
+
+# # Hyperparams: VSSM 32
+# python main.py \
+#     --cfg configs/vm_asr_48k_16k_MPD_VSSM32.yaml \
+#     --tag 48k_16k_FullData_MPD_VSSM32 \
+#     --input_sr 16000
