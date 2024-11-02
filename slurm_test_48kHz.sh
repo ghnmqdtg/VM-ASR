@@ -86,3 +86,10 @@ done
 #     --resume logs/DualStreamInteractiveMambaUNet/48k_16k_FullData_MPD_P2M \
 #     --eval \
 #     --tag 16000_48000
+
+# Hyperparams: N_FFT 2048
+# python main.py \
+#     --cfg configs/vm_asr_48k_16k_nfft2048.yaml \
+#     --resume logs/DualStreamInteractiveMambaUNet/48k_16k_FullData_MPD_NFFT2048 \
+#     --eval \
+#     --tag 16000_48000
