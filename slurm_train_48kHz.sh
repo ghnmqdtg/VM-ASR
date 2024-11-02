@@ -4,7 +4,7 @@
 #SBATCH --nodes=1
 #SBATCH --gpus-per-node=1
 #SBATCH --ntasks-per-node=1
-#SBATCH --account=MST112230
+#SBATCH --account=MST113341
 
 # Train the versatile model for 16kHz output
 python main.py \

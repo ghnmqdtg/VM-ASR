@@ -4,7 +4,7 @@
 #SBATCH --nodes=1
 #SBATCH --gpus-per-node=1
 #SBATCH --ntasks-per-node=1
-#SBATCH --account=MST112230
+#SBATCH --account=MST113341
 
 # Test the versatile model for 48kHz output
 # Array of sample rates
