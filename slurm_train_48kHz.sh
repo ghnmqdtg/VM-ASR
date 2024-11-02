@@ -69,8 +69,14 @@ python main.py \
 #     --tag 48k_16k_FullData_MPD_P2M \
 #     --input_sr 16000
 
-# Hyperparams: N_FFT 2048
+# # Interactions: Magnitude alone
+# python main.py \
+#     --cfg configs/vm_asr_48k_MPD_SINGLE.yaml \
+#     --tag 48k_16k_FullData_MPD_SINGLE \
+#     --input_sr 16000
+
+# # Hyperparams: N_FFT 2048
 # python main.py \
 #     --cfg configs/vm_asr_48k_16k_nfft2048.yaml \
-#     --tag 48k_16k_FullData_MPD_NFFT2048
+#     --tag 48k_16k_FullData_MPD_NFFT2048 \
 #     --input_sr 16000
