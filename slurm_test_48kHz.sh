@@ -87,9 +87,37 @@ done
 #     --eval \
 #     --tag 16000_48000
 
-# Hyperparams: N_FFT 2048
+# # Interactions: Magnitude alone
+# python main.py \
+#     --cfg configs/vm_asr_48k_MPD_SINGLE.yaml \
+#     --resume logs/DualStreamInteractiveMambaUNet/48k_16k_FullData_MPD_SINGLE \
+#     --eval \
+#     --tag 16000_48000
+
+# # Hyperparams: N_FFT 2048
 # python main.py \
 #     --cfg configs/vm_asr_48k_16k_nfft2048.yaml \
 #     --resume logs/DualStreamInteractiveMambaUNet/48k_16k_FullData_MPD_NFFT2048 \
+#     --eval \
+#     --tag 16000_48000
+
+# # Hyperparams: VSSM 8
+# python main.py \
+#     --cfg configs/vm_asr_48k_16k_MPD_VSSM8.yaml \
+#     --resume logs/DualStreamInteractiveMambaUNet/48k_16k_FullData_MPD_VSSM8 \
+#     --eval \
+#     --tag 16000_48000
+
+# # Hyperparams: VSSM 24
+# python main.py \
+#     --cfg configs/vm_asr_48k_16k_MPD_VSSM24.yaml \
+#     --resume logs/DualStreamInteractiveMambaUNet/48k_16k_FullData_MPD_VSSM24 \
+#     --eval \
+#     --tag 16000_48000
+
+# # Hyperparams: VSSM 32
+# python main.py \
+#     --cfg configs/vm_asr_48k_16k_MPD_VSSM32.yaml \
+#     --resume logs/DualStreamInteractiveMambaUNet/48k_16k_FullData_MPD_VSSM32 \
 #     --eval \
 #     --tag 16000_48000
