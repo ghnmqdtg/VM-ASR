@@ -115,10 +115,12 @@ _C.MODEL.VSSM.PATCH_NORM = True
 _C.MODEL.VSSM.NORM_LAYER = "LN"
 _C.MODEL.VSSM.PATCHEMBED = "v2"
 _C.MODEL.VSSM.DOWNSAMPLE = "v1"
-_C.MODEL.VSSM.UPSAMPLE = "v1"
+_C.MODEL.VSSM.UPSAMPLE = "v2"
 _C.MODEL.VSSM.OUTPUT = "v3"
 _C.MODEL.VSSM.CONCAT_SKIP = True
 _C.MODEL.VSSM.INTERACT = "dual"
+_C.MODEL.VSSM.BLOCK_TYPE = "vss"
+# _C.MODEL.VSSM.BLOCK_TYPE = "convnextv2"
 
 # -----------------------------------------------------------------------------
 # Training settings

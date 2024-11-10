@@ -121,3 +121,31 @@ python main.py \
 #     --resume logs/DualStreamInteractiveMambaUNet/48k_16k_FullData_MPD_VSSM32 \
 #     --eval \
 #     --tag 16000_48000
+
+# # Core: ConvNeXt v2 8
+# python main.py \
+#     --cfg configs/vm_asr_48k_16k_MPD_ConvNeXt_8.yaml \
+#     --resume logs/DualStreamInteractiveMambaUNet/48k_16k_FullData_MPD_ConvNeXt_8 \
+#     --eval \
+#     --tag 16000_48000
+
+# # Core: ConvNeXt v2 16
+# python main.py \
+#     --cfg configs/vm_asr_48k_16k_MPD_ConvNeXt_16.yaml \
+#     --resume logs/DualStreamInteractiveMambaUNet/48k_16k_FullData_MPD_ConvNeXt_16 \
+#     --eval \
+#     --tag 16000_48000
+
+# # Core: ConvNeXt v2 24
+# python main.py \
+#     --cfg configs/vm_asr_48k_16k_MPD_ConvNeXt_24.yaml \
+#     --resume logs/DualStreamInteractiveMambaUNet/48k_16k_FullData_MPD_ConvNeXt_24 \
+#     --eval \
+#     --tag 16000_48000
+
+# # Core: ConvNeXt v2 32
+# python main.py \
+#     --cfg configs/vm_asr_48k_16k_MPD_ConvNeXt_32.yaml \
+#     --resume logs/DualStreamInteractiveMambaUNet/48k_16k_FullData_MPD_ConvNeXt_32 \
+#     --eval \
+#     --tag 16000_48000
