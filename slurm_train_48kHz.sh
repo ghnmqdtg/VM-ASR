@@ -98,3 +98,27 @@ python main.py \
 #     --cfg configs/vm_asr_48k_16k_MPD_VSSM32.yaml \
 #     --tag 48k_16k_FullData_MPD_VSSM32 \
 #     --input_sr 16000
+
+# # Core: ConvNeXt v2 8
+# python main.py \
+#     --cfg configs/vm_asr_48k_16k_MPD_ConvNeXt_8.yaml \
+#     --tag 48k_16k_FullData_MPD_ConvNeXt_8 \
+#     --input_sr 16000
+
+# # Core: ConvNeXt v2 16
+# python main.py \
+#     --cfg configs/vm_asr_48k_16k_MPD_ConvNeXt_16.yaml \
+#     --tag 48k_16k_FullData_MPD_ConvNeXt_16 \
+#     --input_sr 16000
+
+# # Core: ConvNeXt v2 24
+# python main.py \
+#     --cfg configs/vm_asr_48k_16k_MPD_ConvNeXt_24.yaml \
+#     --tag 48k_16k_FullData_MPD_ConvNeXt_24 \
+#     --input_sr 16000
+
+# # Core: ConvNeXt v2 32
+# python main.py \
+#     --cfg configs/vm_asr_48k_16k_MPD_ConvNeXt_32.yaml \
+#     --tag 48k_16k_FullData_MPD_ConvNeXt_32 \
+#     --input_sr 16000

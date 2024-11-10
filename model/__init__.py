@@ -51,6 +51,7 @@ def get_model(config):
             spectro_scale=config.DATA.STFT.SCALE,
             # =========================
             low_freq_replacement=config.TRAIN.LOW_FREQ_REPLACEMENT,
+            block_type=config.MODEL.VSSM.BLOCK_TYPE,
         )
         models["generator"] = generator
 
