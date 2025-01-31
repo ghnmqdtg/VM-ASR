@@ -1,7 +1,7 @@
 # VM-ASR
 **VM-ASR: A Lightweight Dual-Stream U-Net Model for Efﬁcient Audio Super-Resolution**
 
-The official PyTorch implementation of VM-ASR, a model designed for high-fidelity audio super-resolution. [paper(unpublished)](), [demo](https://ghnmqdtg.github.io/vm-asr-demo/).
+The official PyTorch implementation of VM-ASR, a model designed for high-fidelity audio super-resolution. [paper(early access)](https://ieeexplore.ieee.org/document/10852332), [demo](https://ghnmqdtg.github.io/vm-asr-demo/).
 
 ## Introduction
 VM-ASR is a novel lightweight audio super-resolution (ASR) model that leverages the Visual State Space (VSS) block of [VMamba](https://github.com/MzeroMiko/VMamba) to effectively capture global and local contextual information within audio spectrograms. This enables VM-ASR to model harmonic relationships more accurately, improving audio quality. Our experiments on the VCTK dataset demonstrate that VM-ASR consistently outperforms state-of-the-art methods in spectral reconstruction across various input-output sample rate pairs, achieving significantly lower Log-Spectral Distance (LSD) while maintaining a smaller model size (3.01M parameters) and lower computational complexity (2.98 GFLOPS).
@@ -244,7 +244,18 @@ Some frequently used hyperparameter you may want to adjust in yaml files:
 
 ## Citation & Contact
 ### Citation
-Not available yet. Stay tuned!
+```
+@article{article,
+author = {Zhang, Ting-Wei and Ruan, Shanq-Jang},
+year = {2025},
+month = {01},
+pages = {1-12},
+title = {VM-ASR: A Lightweight Dual-Stream U-Net Model for Efficient Audio Super-Resolution},
+volume = {PP},
+journal = {IEEE Transactions on Audio, Speech and Language Processing},
+doi = {10.1109/TASLPRO.2025.3533365}
+}
+```
 
 ### Contact
 If you find any bugs or have any suggestions, please feel free to open an issue or submit a pull request. You can also email us at ghmmqdtg@gmail.com.
