@@ -1,10 +1,11 @@
 # VM-ASR
 **VM-ASR: A Lightweight Dual-Stream U-Net Model for Efﬁcient Audio Super-Resolution**
 
-The official PyTorch implementation of VM-ASR, a model designed for high-fidelity audio super-resolution. [paper(early access)](https://ieeexplore.ieee.org/document/10852332), [demo](https://ghnmqdtg.github.io/vm-asr-demo/).
+- The official PyTorch implementation of VM-ASR, a model designed for high-fidelity audio super-resolution.
+- This research has been published in the *IEEE/ACM Transactions on Audio, Speech, and Language Processing* on 24 January 2025. [Paper](https://ieeexplore.ieee.org/document/10852332), [Demo](https://ghnmqdtg.github.io/vm-asr-demo/).
 
-## Introduction
-VM-ASR is a novel lightweight audio super-resolution (ASR) model that leverages the Visual State Space (VSS) block of [VMamba](https://github.com/MzeroMiko/VMamba) to effectively capture global and local contextual information within audio spectrograms. This enables VM-ASR to model harmonic relationships more accurately, improving audio quality. Our experiments on the VCTK dataset demonstrate that VM-ASR consistently outperforms state-of-the-art methods in spectral reconstruction across various input-output sample rate pairs, achieving significantly lower Log-Spectral Distance (LSD) while maintaining a smaller model size (3.01M parameters) and lower computational complexity (2.98 GFLOPS).
+## Abstract
+Audio super-resolution (ASR), also known as bandwidth extension (BWE), aims to enhance the quality of low-resolution audio by recovering high-frequency components. However, existing methods often struggle to model harmonic relationships accurately and balance the inference speed and computational complexity. In this paper, we propose VM-ASR, a novel lightweight ASR model that leverages the Visual State Space (VSS) block to effectively capture global and local contextual information within audio spectrograms. This enables VM-ASR to model harmonic relationships more accurately, improving audio quality. Our experiments on the VCTK dataset demonstrate that VM-ASR consistently outperforms state-of-the-art methods in spectral reconstruction across various input-output sample rate pairs, achieving significantly lower Log-Spectral Distance (LSD) while maintaining a smaller model size (3.01M parameters) and lower computational complexity (2.98 GFLOPS). This makes VM-ASR not only a promising solution for real-time applications and resource-constrained environments but also opens up exciting possibilities in telecommunications, speech synthesis, and audio restoration.
 
 <!-- Image -->
 <p align="center">
@@ -245,15 +246,15 @@ Some frequently used hyperparameter you may want to adjust in yaml files:
 ## Citation & Contact
 ### Citation
 ```
-@article{article,
-author = {Zhang, Ting-Wei and Ruan, Shanq-Jang},
-year = {2025},
-month = {01},
-pages = {1-12},
-title = {VM-ASR: A Lightweight Dual-Stream U-Net Model for Efficient Audio Super-Resolution},
-volume = {PP},
-journal = {IEEE Transactions on Audio, Speech and Language Processing},
-doi = {10.1109/TASLPRO.2025.3533365}
+@ARTICLE{10852332,
+  author={Zhang, Ting-Wei and Ruan, Shanq-Jang},
+  journal={IEEE Transactions on Audio, Speech and Language Processing}, 
+  title={VM-ASR: A Lightweight Dual-Stream U-Net Model for Efficient Audio Super-Resolution}, 
+  year={2025},
+  volume={33},
+  number={},
+  pages={666-677},
+  doi={10.1109/TASLPRO.2025.3533365}
 }
 ```
 
