@@ -2,6 +2,7 @@ import os
 import time
 import glob
 from tqdm import tqdm
+from tqdm.contrib.logging import logging_redirect_tqdm
 from pathlib import Path
 from scipy.signal import resample_poly
 
@@ -44,7 +45,7 @@ class Inferencer(BaseInference):
         # Create the dataset
         self.data = InferenceData(config)
 
-    def infer_file(self, file_path, output_dir=None):
+    def infer_file(self, file_path, output_dir=None, iters=False):
         """
         Run inference on a single audio file
 
@@ -102,8 +103,8 @@ class Inferencer(BaseInference):
                 )
 
         run_time = time.time() - start_time
-        rtf = run_time / (wave_input.size(2) / self.target_sr)
-        self.logger.info(f"Processing completed in {run_time:.2f}s (RTF: {rtf:.3f})")
+        if not iters:
+            self.logger.info(f"Processing completed in {run_time:.2f}s")
 
         # Save the result
         output_file = os.path.join(output_dir, f"{Path(file_path).stem}_enhanced.wav")
@@ -113,7 +114,8 @@ class Inferencer(BaseInference):
             self.target_sr,
             bits_per_sample=16,
         )
-        self.logger.info(f"Enhanced audio saved to {output_file}")
+        if not iters:
+            self.logger.info(f"Enhanced audio saved to {output_file}")
 
         return wave_out
 
@@ -156,10 +158,18 @@ class Inferencer(BaseInference):
 
         # Process each file
         processed_files = []
-        with tqdm(audio_files, desc="Processing files", unit="file") as t:
-            for file_path in t:
-                t.set_description(f"Processing {os.path.basename(file_path)}")
-                output = self.infer_file(file_path, output_dir)
+        with logging_redirect_tqdm(loggers=[self.logger], tqdm_class=tqdm):
+            with tqdm(
+                audio_files,
+                desc=f"[INFERENCE] | {self.input_sr} to {self.target_sr} | Loading...",
+                unit="file",
+                bar_format="{l_bar}{bar:10}{r_bar}{bar:-10b}",
+            ) as t:
+                for file_path in t:
+                    t.set_description(
+                        f"[INFERENCE] | {self.input_sr} to {self.target_sr} | {os.path.basename(file_path)}"
+                    )
+                    output = self.infer_file(file_path, output_dir, iters=True)
                 if output is not None:
                     output_file = os.path.join(
                         output_dir, f"{Path(file_path).stem}_enhanced.wav"
