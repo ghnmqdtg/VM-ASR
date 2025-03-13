@@ -123,7 +123,7 @@ class Inferencer(BaseInference):
         self,
         dir_path,
         output_dir=None,
-        file_types=(".wav", ".mp3", ".flac"),
+        file_types=(".wav"),
     ):
         """
         Run inference on all audio files in a directory
