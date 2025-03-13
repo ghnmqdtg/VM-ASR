@@ -118,7 +118,7 @@ def load_from_path(models, optimizer, config, logger):
 
     logger.info(f"Loading checkpoint from folder: {resume_path}")
     # Check if there are any checkpoints
-    if not config.EVAL_MODE:
+    if not config.EVAL_MODE and not config.INFERENCE_MODE:
         # Training mode: Try to load the latest checkpoint, if not found, train from scratch
         # Get all the .pth files that has "best" in the name
         checkpoint_files = glob.glob(os.path.join(resume_path, "*best*.pth"))
@@ -150,10 +150,8 @@ def load_from_path(models, optimizer, config, logger):
                         start_epoch = checkpoint["epoch"] + 1
                     # Log the loaded model
                     logger.info(f"Loaded {key} from {file}")
-                except:
-                    logger.error(
-                        f"Error loading {file}, the .pth file might be corrupted"
-                    )
+                except Exception as e:
+                    logger.error(f"Error loading {file}: {e}")
                     exit(1)
     else:
         # Evaluation mode: Load the best checkpoint, if not found, exit

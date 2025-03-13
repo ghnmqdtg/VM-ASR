@@ -10,6 +10,7 @@ from data_loader.data_loaders import get_loader
 
 from trainer.trainer import Trainer
 from trainer.tester import Tester
+from trainer.inferencer import Inferencer
 from logger.logger import create_logger
 
 import torch
@@ -26,7 +27,7 @@ from config import get_config
 
 def parse_option():
     parser = argparse.ArgumentParser(
-        "VM-ASR training and evaluation script", add_help=False
+        "VM-ASR training, evaluation, and inference script", add_help=False
     )
     parser.add_argument(
         "--cfg",
@@ -73,6 +74,12 @@ def parse_option():
         help="tag of experiment",
     )
     parser.add_argument("--eval", action="store_true", help="Perform evaluation only")
+    parser.add_argument(
+        "--inference", action="store_true", help="Perform inference only"
+    )
+    parser.add_argument(
+        "--input", type=str, help="Input file or directory for inference"
+    )
     # TODO: Add throughput mode
     parser.add_argument(
         "--throughput", action="store_true", help="Test throughput only"
@@ -96,10 +103,63 @@ def main(config):
     # Get the metrics
     metrics = [getattr(module_metric, met) for met in config.TRAIN.METRICS]
 
-    if config.WANDB.ENABLE and not config.EVAL_MODE:
+    if config.WANDB.ENABLE and not config.EVAL_MODE and not config.INFERENCE_MODE:
         init_wandb_run(config)
 
-    if not config.EVAL_MODE:
+    # Inference mode
+    if config.INFERENCE_MODE:
+        logger.info(f"Starting inference...")
+        logger.info(f"Loading checkpoint from {config.MODEL.RESUME_PATH}")
+        # Make sure we only have the generator model for inference
+        models = {"generator": models["generator"]}
+
+        # Create the inferencer
+        inferencer = Inferencer(
+            models=models,
+            metric_ftns=metrics,
+            config=config,
+            device=(device, device_ids),
+            logger=logger,
+        )
+
+        # Check if input is specified
+        if args.input is None:
+            logger.error("Input path must be specified for inference mode")
+            return
+
+        # Run inference on the specified input
+        if os.path.isfile(args.input):
+            inferencer.infer_file(args.input)
+        elif os.path.isdir(args.input):
+            inferencer.infer_directory(args.input)
+        else:
+            logger.error(f"Input path does not exist: {args.input}")
+
+        logger.info("Inference completed successfully")
+        return
+
+    # Evaluation mode
+    elif config.EVAL_MODE:
+        logger.info(f"Starting evaluation ...")
+        logger.info(f"Loading checkpoint from {config.MODEL.RESUME_PATH}")
+        # Remove models except the generator
+        models = {"generator": models["generator"]}
+        data_loader_test = get_loader(config, logger)
+        logger.info(f"TESTING: ({len(data_loader_test)} files)")
+        # Test the trained model
+        tester = Tester(
+            models=models,
+            metric_ftns=metrics,
+            config=config,
+            device=(device, device_ids),
+            data_loader=data_loader_test,
+            logger=logger,
+        )
+
+        tester.evaluate()
+
+    # Training mode
+    else:
         data_loader_train, data_loader_val = get_loader(config, logger)
         # Initialize the optimizer and learning rate scheduler
         optimizers = {"generator": None, "discriminator": None}
@@ -160,24 +220,6 @@ def main(config):
         )
 
         trainer.train()
-    else:
-        logger.info(f"Starting evaluation ...")
-        logger.info(f"Loading checkpoint from {config.MODEL.RESUME_PATH}")
-        # Remove models except the generator
-        models = {"generator": models["generator"]}
-        data_loader_test = get_loader(config, logger)
-        logger.info(f"TESTING: ({len(data_loader_test)} files)")
-        # Test the trained model
-        tester = Tester(
-            models=models,
-            metric_ftns=metrics,
-            config=config,
-            device=(device, device_ids),
-            data_loader=data_loader_test,
-            logger=logger,
-        )
-
-        tester.evaluate()
 
     if config.WANDB.ENABLE:
         wandb.finish()
@@ -187,8 +229,8 @@ def validate_resume_path(config):
     assert os.path.exists(
         config.MODEL.RESUME_PATH
     ), f"Folder not found, please check the path: {config.MODEL.RESUME_PATH}"
-    if config.EVAL_MODE:
-        # There must be a checkpoint for evaluation
+    if config.EVAL_MODE or config.INFERENCE_MODE:
+        # There must be a checkpoint for evaluation or inference
         assert (
             glob.glob(os.path.join(config.MODEL.RESUME_PATH, "*.pth")) != []
         ), f"No checkpoint found in the folder. Please check the path: {config.MODEL.RESUME_PATH}"
@@ -219,6 +261,29 @@ def setup_test(config):
     return config, logger
 
 
+def setup_inference(config):
+    # Setup for inference mode
+    assert (
+        len(config.TAG.split("_")) == 2
+    ), "TAG should be in format {input_sr}_{target_sr}"
+    input_sr, target_sr = config.TAG.split("_")
+    # Create inference output directory
+    output_dir = os.path.join(
+        config.INFERENCE.RESULTS_DIR,
+        os.path.basename(config.MODEL.RESUME_PATH),
+        target_sr,
+        input_sr,
+        "inference",
+    )
+    os.makedirs(output_dir, exist_ok=True)
+    # Update config
+    config.defrost()
+    config.OUTPUT = output_dir
+    config.freeze()
+    logger = create_logger(output_dir=config.OUTPUT, name=f"{config.MODEL.NAME}")
+    return config, logger
+
+
 if __name__ == "__main__":
     args, config = parse_option()
 
@@ -235,15 +300,17 @@ if __name__ == "__main__":
 
     if config.MODEL.RESUME_PATH is not None:
         validate_resume_path(config)
-        if not config.EVAL_MODE:
+        if config.INFERENCE_MODE:
+            config, logger = setup_inference(config)
+        elif config.EVAL_MODE:
+            config, logger = setup_test(config)
+        else:
             logger = create_logger(
                 output_dir=config.MODEL.RESUME_PATH,
                 name=f"{config.MODEL.NAME}",
                 load_existing=True,
             )
             logger.info(f"Resume training from {config.MODEL.RESUME_PATH}")
-        else:
-            config, logger = setup_test(config)
     else:
         logger = create_logger(output_dir=config.OUTPUT, name=f"{config.MODEL.NAME}")
         logger.info(config.dump())

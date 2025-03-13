@@ -126,3 +126,4 @@ sinc/
 logs/
 debug/
 results/
+results_inference/

@@ -200,6 +200,13 @@ _C.TEST.OVERLAP = 2000  # Overlap in samples
 _C.TEST.SAVE_RESULT = True
 
 # -----------------------------------------------------------------------------
+# Inference settings
+# -----------------------------------------------------------------------------
+_C.INFERENCE = CN()
+_C.INFERENCE.RESULTS_DIR = "results_inference"
+_C.INFERENCE.OVERLAP = 2000  # Overlap in samples
+
+# -----------------------------------------------------------------------------
 # Misc
 # -----------------------------------------------------------------------------
 _C.DEBUG = False
@@ -237,6 +244,9 @@ _C.WANDB.TAGS = []
 _C.TENSORBOARD = CN()
 _C.TENSORBOARD.ENABLE = True
 _C.TENSORBOARD.LOG_ITEMS = ["audio", "waveform", "spectogram"]
+
+# Add this line after EVAL_MODE
+_C.INFERENCE_MODE = False
 
 
 def _update_config_from_file(config, cfg_file):
@@ -283,6 +293,8 @@ def update_config(config, args):
         config.TAG = args.tag
     if _check_args("eval"):
         config.EVAL_MODE = True
+    if _check_args("inference"):
+        config.INFERENCE_MODE = True
     if _check_args("throughput"):
         config.THROUGHPUT_MODE = True
     if _check_args("optim"):
