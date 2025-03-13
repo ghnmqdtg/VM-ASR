@@ -77,6 +77,16 @@ $ sh slurm_test_16kHz.sh
 $ sh slurm_test_48kHz.sh
 ```
 
+### Inference
+> Remember to change the `--input` argument to the path of the `.wav` file or folder of `.wav` files you want to test.
+```shell
+# 16kHz target sample rate
+$ sh slurm_infer_16kHz.sh
+
+# 48kHz target sample rate
+$ sh slurm_infer_48kHz.sh
+```
+
 ### Pretrained Models
 Please check the release page for the pretrained models. To use the pretrained models, you can download them and decompress them to the `./logs/DualStreamInteractiveMambaUNet` directory. For example, `logs/DualStreamInteractiveMambaUNet/16k_2k_FullData_MPD`. The pretrained models are trained on the VCTK dataset with the following configurations:
 
