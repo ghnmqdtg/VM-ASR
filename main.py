@@ -273,7 +273,6 @@ def setup_inference(config):
         os.path.basename(config.MODEL.RESUME_PATH),
         target_sr,
         input_sr,
-        "inference",
     )
     os.makedirs(output_dir, exist_ok=True)
     # Update config

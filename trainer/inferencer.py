@@ -107,15 +107,15 @@ class Inferencer(BaseInference):
             self.logger.info(f"Processing completed in {run_time:.2f}s")
 
         # Save the result
-        output_file = os.path.join(output_dir, f"{Path(file_path).stem}_enhanced.wav")
+        filename = Path(file_path).stem
         torchaudio.save(
-            output_file,
+            f"{self.output_dir}/{filename}_enhanced.wav",
             wave_out[0].cpu().detach(),
             self.target_sr,
             bits_per_sample=16,
         )
         if not iters:
-            self.logger.info(f"Enhanced audio saved to {output_file}")
+            self.logger.info(f"Enhanced audio saved to {filename}")
 
         return wave_out
 

@@ -20,9 +20,7 @@ class BaseInference:
         self.target_sr = int(config.TAG.split("_")[1])
 
         # Set the output directory
-        self.output_dir = os.path.join(
-            self.config.OUTPUT, f"{self.input_sr}_{self.target_sr}_inference"
-        )
+        self.output_dir = self.config.OUTPUT
         os.makedirs(self.output_dir, exist_ok=True)
 
         # Setup visualization writer instance if needed
